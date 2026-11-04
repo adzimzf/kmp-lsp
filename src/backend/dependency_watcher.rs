@@ -165,7 +165,7 @@ async fn sync_once(
                     format!(
                         "kmp-lsp: couldn't resolve dependencies — library sources may be \
                          missing. {}",
-                        first_line(&message)
+                        headline(&message)
                     ),
                 )
                 .await;
@@ -175,6 +175,16 @@ async fn sync_once(
     true
 }
 
-fn first_line(message: &str) -> &str {
-    message.lines().next().unwrap_or(message)
+/// The popup's text: what failed and, when the tool said why, its first
+/// reason — the full output stays in the log.
+fn headline(message: &str) -> String {
+    let mut lines = message.lines().filter(|line| !line.trim().is_empty());
+    let what = lines.next().unwrap_or(message).trim_end_matches(':');
+    match lines.next() {
+        Some(reason) => {
+            let reason: String = reason.chars().take(300).collect();
+            format!("{what}: {reason} (details in the kmp-lsp log)")
+        }
+        None => what.to_owned(),
+    }
 }

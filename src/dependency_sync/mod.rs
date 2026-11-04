@@ -205,28 +205,39 @@ fn search_dirs(install: &InstallLocations) -> Vec<PathBuf> {
     directories
 }
 
-/// Marks the `PATH` in the login shell's output, which may also contain
+/// Marks values in the login shell's output, which may also contain
 /// whatever a profile prints (banners, `motd`, version managers' notices).
-const SHELL_PATH_MARKER: &str = "__KMP_LSP_PATH__";
+const SHELL_PATH_MARKER: &str = "__KMP_LSP_ENV__";
 
-/// The `PATH` the user's own login shell sets up (`.zprofile`, `.zshrc`,
+/// What the user's own login shell sets up (`.zprofile`, `.zshrc`,
 /// `.bashrc`, version managers, `zerobrew`/Homebrew shellenv …) — what a
 /// terminal sees but an editor launched from a desktop often doesn't pass on.
-/// Asked once, only when a tool wasn't found any other way; empty on
-/// Windows, without `$SHELL`, or when the shell doesn't answer in time.
-fn login_shell_path() -> &'static [PathBuf] {
-    static LOGIN_SHELL_PATH: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
-    LOGIN_SHELL_PATH.get_or_init(|| {
-        let directories = query_login_shell_path().unwrap_or_default();
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct LoginShellEnvironment {
+    pub(crate) path: Vec<PathBuf>,
+    pub(crate) java_home: Option<String>,
+}
+
+/// Asked once (only when needed); empty on Windows, without `$SHELL`, or
+/// when the shell doesn't answer in time.
+fn login_shell_environment() -> &'static LoginShellEnvironment {
+    static LOGIN_SHELL: std::sync::OnceLock<LoginShellEnvironment> = std::sync::OnceLock::new();
+    LOGIN_SHELL.get_or_init(|| {
+        let environment = query_login_shell().unwrap_or_default();
         log::info!(
-            "dependency sync: login shell PATH has {} entries",
-            directories.len()
+            "dependency sync: login shell PATH has {} entries, JAVA_HOME {}",
+            environment.path.len(),
+            environment.java_home.as_deref().unwrap_or("unset")
         );
-        directories
+        environment
     })
 }
 
-fn query_login_shell_path() -> Option<Vec<PathBuf>> {
+fn login_shell_path() -> &'static [PathBuf] {
+    &login_shell_environment().path
+}
+
+fn query_login_shell() -> Option<LoginShellEnvironment> {
     if cfg!(windows) {
         return None;
     }
@@ -237,7 +248,7 @@ fn query_login_shell_path() -> Option<Vec<PathBuf>> {
     command
         .args(["-i", "-l", "-c"])
         .arg(format!(
-            "printf '{SHELL_PATH_MARKER}%s{SHELL_PATH_MARKER}' \"$PATH\""
+            "printf '{SHELL_PATH_MARKER}%s{SHELL_PATH_MARKER}%s{SHELL_PATH_MARKER}' \"$PATH\" \"$JAVA_HOME\""
         ))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -263,21 +274,52 @@ fn query_login_shell_path() -> Option<Vec<PathBuf>> {
         }
     }
     let output = reader.join().ok()?;
-    Some(parse_shell_path(&output))
+    Some(parse_login_shell_output(&output))
 }
 
-/// The directories between the two markers in a login shell's output.
-fn parse_shell_path(output: &str) -> Vec<PathBuf> {
-    let Some(start) = output.find(SHELL_PATH_MARKER) else {
-        return Vec::new();
-    };
-    let rest = &output[start + SHELL_PATH_MARKER.len()..];
-    let Some(end) = rest.find(SHELL_PATH_MARKER) else {
-        return Vec::new();
-    };
-    std::env::split_paths(&rest[..end])
+/// `PATH` and `JAVA_HOME` from between the markers of a login shell's output.
+fn parse_login_shell_output(output: &str) -> LoginShellEnvironment {
+    let values: Vec<&str> = output.split(SHELL_PATH_MARKER).collect();
+    // `banner M path M java_home M trailer` → at least four pieces.
+    if values.len() < 4 {
+        return LoginShellEnvironment::default();
+    }
+    let path = std::env::split_paths(values[1])
         .filter(|directory| !directory.as_os_str().is_empty())
-        .collect()
+        .collect();
+    let java_home = Some(values[2].trim().to_owned()).filter(|home| !home.is_empty());
+    LoginShellEnvironment { path, java_home }
+}
+
+/// The environment a build tool runs with: the server's own `PATH`, then
+/// the launcher's directory, then the login shell's `PATH` — so the `java`
+/// that `mvn`/`gradle` look for resolves as in a terminal — and the login
+/// shell's `JAVA_HOME` when the server has none.
+fn apply_build_tool_environment(command: &mut Command, launcher: &Path) {
+    let mut path: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect())
+        .unwrap_or_default();
+    let launcher_directory = launcher
+        .parent()
+        .filter(|directory| !directory.as_os_str().is_empty())
+        .map(Path::to_path_buf);
+    let shell = login_shell_environment();
+    for directory in launcher_directory
+        .into_iter()
+        .chain(shell.path.iter().cloned())
+    {
+        if !path.contains(&directory) {
+            path.push(directory);
+        }
+    }
+    if let Ok(joined) = std::env::join_paths(&path) {
+        command.env("PATH", joined);
+    }
+    if std::env::var_os("JAVA_HOME").is_none() {
+        if let Some(java_home) = &shell.java_home {
+            command.env("JAVA_HOME", java_home);
+        }
+    }
 }
 
 /// The first executable called `name` (`name.cmd`/`.bat`/`.exe` on
@@ -317,13 +359,15 @@ fn is_executable(path: &Path) -> bool {
 /// a checkout that lost the executable bit still works.
 fn launch(launcher: &Path) -> Command {
     let is_wrapper_script = !cfg!(windows) && launcher.is_file();
-    if is_wrapper_script {
+    let mut command = if is_wrapper_script {
         let mut command = Command::new("sh");
         command.arg(launcher);
         command
     } else {
         Command::new(launcher)
-    }
+    };
+    apply_build_tool_environment(&mut command, launcher);
+    command
 }
 
 /// One resolved library: its compiled jar and, when the repository has one,
@@ -619,9 +663,11 @@ impl From<String> for BuildToolFailure {
 }
 
 fn run_build_tool(mut command: Command, description: &str) -> Result<(), BuildToolFailure> {
+    // Both streams: Maven reports its `[ERROR]`s on stdout, Gradle and the
+    // launcher scripts ("JAVA_HOME is not set") on stderr.
     command
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let program = command.get_program().to_string_lossy().into_owned();
     let mut child = command.spawn().map_err(|error| {
@@ -631,14 +677,8 @@ fn run_build_tool(mut command: Command, description: &str) -> Result<(), BuildTo
             BuildToolFailure::Failed(format!("cannot start {description}: {error}"))
         }
     })?;
-    let mut stderr = child.stderr.take();
-    let stderr_reader = std::thread::spawn(move || {
-        let mut text = String::new();
-        if let Some(stderr) = stderr.as_mut() {
-            let _ = stderr.read_to_string(&mut text);
-        }
-        text
-    });
+    let stdout_reader = read_to_end_in_background(child.stdout.take());
+    let stderr_reader = read_to_end_in_background(child.stderr.take());
     let deadline = Instant::now() + SYNC_TIMEOUT;
     let status = loop {
         match child.try_wait() {
@@ -658,18 +698,69 @@ fn run_build_tool(mut command: Command, description: &str) -> Result<(), BuildTo
             }
         }
     };
+    let stdout_text = stdout_reader.join().unwrap_or_default();
     let stderr_text = stderr_reader.join().unwrap_or_default();
     if status.success() {
         return Ok(());
     }
-    let tail: Vec<&str> = stderr_text
+    let output = format!("{stdout_text}\n{stderr_text}");
+    Err(BuildToolFailure::Failed(format!(
+        "{description} exited with {status}:\n{}",
+        failure_details(&output)
+    )))
+}
+
+fn read_to_end_in_background(
+    stream: Option<impl Read + Send + 'static>,
+) -> std::thread::JoinHandle<String> {
+    std::thread::spawn(move || {
+        let mut text = String::new();
+        if let Some(mut stream) = stream {
+            let _ = stream.read_to_string(&mut text);
+        }
+        text
+    })
+}
+
+/// The lines of a failed build-tool run worth showing: its `[ERROR]` /
+/// `FAILURE` / `What went wrong` lines when it printed any, otherwise the
+/// last lines. JVM banner noise (`Picked up JAVA_TOOL_OPTIONS`) is dropped.
+pub(crate) fn failure_details(output: &str) -> String {
+    let lines: Vec<&str> = output
         .lines()
+        .map(str::trim_end)
         .filter(|line| !line.trim().is_empty() && !line.starts_with("Picked up JAVA_TOOL_OPTIONS"))
         .collect();
-    let tail = tail[tail.len().saturating_sub(12)..].join("\n");
-    Err(BuildToolFailure::Failed(format!(
-        "{description} exited with {status}:\n{tail}"
-    )))
+    let is_error_line = |line: &str| {
+        line.starts_with("[ERROR]")
+            || line.starts_with("ERROR:")
+            || line.starts_with("Error:")
+            || line.contains("JAVA_HOME")
+            || line.starts_with("FAILURE:")
+            || line.starts_with("> ")
+    };
+    let error_lines: Vec<&str> = lines
+        .iter()
+        .copied()
+        .filter(|line| is_error_line(line))
+        // Maven's trailing "re-run with -e" / help-link boilerplate.
+        .filter(|line| {
+            let help = [
+                "[ERROR] -> [Help",
+                "[ERROR] To see the full",
+                "[ERROR] Re-run Maven",
+                "[ERROR] For more information",
+                "[ERROR] [Help",
+            ];
+            !help.iter().any(|prefix| line.starts_with(prefix)) && *line != "[ERROR]"
+        })
+        .collect();
+    let chosen: &[&str] = if error_lines.is_empty() {
+        &lines[lines.len().saturating_sub(12)..]
+    } else {
+        &error_lines[..error_lines.len().min(12)]
+    };
+    chosen.join("\n")
 }
 
 #[cfg(test)]

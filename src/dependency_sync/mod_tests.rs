@@ -296,20 +296,56 @@ fn incomplete_manifest_is_retried_only_after_the_back_off() {
 }
 
 #[test]
-fn login_shell_path_is_read_between_markers_only() {
+fn login_shell_output_is_read_between_markers_only() {
     let output = format!(
-        "Welcome to zsh!\n{SHELL_PATH_MARKER}/opt/zerobrew/bin:/usr/bin::/bin{SHELL_PATH_MARKER}\nbye"
+        "Welcome to zsh!\n{SHELL_PATH_MARKER}/opt/zerobrew/bin:/usr/bin::/bin{SHELL_PATH_MARKER}/opt/zerobrew/opt/openjdk{SHELL_PATH_MARKER}\nbye"
     );
+    let environment = parse_login_shell_output(&output);
     assert_eq!(
-        parse_shell_path(&output),
+        environment.path,
         vec![
             PathBuf::from("/opt/zerobrew/bin"),
             PathBuf::from("/usr/bin"),
             PathBuf::from("/bin"),
         ]
     );
-    assert!(parse_shell_path("no markers here").is_empty());
-    assert!(parse_shell_path(&format!("{SHELL_PATH_MARKER}/unterminated")).is_empty());
+    assert_eq!(
+        environment.java_home.as_deref(),
+        Some("/opt/zerobrew/opt/openjdk")
+    );
+
+    let no_java_home = parse_login_shell_output(&format!(
+        "{SHELL_PATH_MARKER}/usr/bin{SHELL_PATH_MARKER}{SHELL_PATH_MARKER}"
+    ));
+    assert_eq!(no_java_home.java_home, None);
+    assert_eq!(
+        parse_login_shell_output("no markers here"),
+        LoginShellEnvironment::default()
+    );
+}
+
+#[test]
+fn failure_details_pick_the_error_lines() {
+    let maven = "[INFO] Scanning for projects...\n\
+        [ERROR] Failed to execute goal org.apache.maven.plugins:maven-dependency-plugin:3.8.1:sources: \
+        Could not resolve dependencies: com.acme:missing:jar:9 was not found\n\
+        [ERROR] \n\
+        [ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.\n\
+        [ERROR] -> [Help 1]\n";
+    let details = failure_details(maven);
+    assert!(
+        details.starts_with("[ERROR] Failed to execute goal"),
+        "{details}"
+    );
+    assert!(!details.contains("stack trace"), "{details}");
+
+    let no_java = "Picked up JAVA_TOOL_OPTIONS: -Dx\nThe JAVA_HOME environment variable is not defined correctly,\n\
+        this environment variable is needed to run this program.\n";
+    assert!(failure_details(no_java).contains("JAVA_HOME"));
+    assert!(!failure_details(no_java).contains("Picked up"));
+
+    let plain = "line one\nline two\n";
+    assert_eq!(failure_details(plain), "line one\nline two");
 }
 
 #[test]
