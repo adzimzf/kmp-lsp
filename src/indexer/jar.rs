@@ -296,7 +296,7 @@ pub(crate) fn wait_for_jvm_sources_gate(
 }
 
 /// Scan for sources JARs only.
-fn scan_gradle_sources_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
+pub(crate) fn scan_gradle_sources_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
     scan_gradle_jars_split(gradle_home).1
 }
 
@@ -333,12 +333,18 @@ fn collect_all_jars(dir: &Path, out: &mut Vec<PathBuf>) {
 ///
 /// `cache_dir` overrides the parse-cache location (pass `None` in production
 /// for `~/.cache/kmp-lsp/`; tests pass an isolated tmpdir).
+///
+/// `project` is the build tool's own dependency list (see
+/// [`crate::dependency_sync`]), when a sync has run: its sources jars are
+/// mounted too (a Maven project's live in `~/.m2`, not the Gradle cache),
+/// and for an artifact it names, its version replaces the newest cached one.
 pub(crate) fn index_sources_jars(
     indexer: &crate::indexer::Indexer,
     gradle_home: Option<&Path>,
     cache_dir: Option<&Path>,
+    project: Option<&crate::dependency_sync::DependencyManifest>,
 ) -> usize {
-    let sources = scan_gradle_sources_jars(gradle_home);
+    let sources = sources_jars_to_mount(scan_gradle_sources_jars(gradle_home), project);
     if sources.is_empty() {
         log::debug!("jar: no sources JARs found in Gradle cache");
         return 0;
@@ -369,6 +375,35 @@ pub(crate) fn index_sources_jars(
     }
 
     total_symbols
+}
+
+/// The cache scan's sources jars, with every artifact the project's own
+/// dependency list names swapped for the version the project resolved.
+pub(crate) fn sources_jars_to_mount(
+    scanned: Vec<PathBuf>,
+    project: Option<&crate::dependency_sync::DependencyManifest>,
+) -> Vec<PathBuf> {
+    let Some(project) = project else {
+        return scanned;
+    };
+    let project_sources = project.sources_jars_by_artifact();
+    let mut mounted: Vec<PathBuf> = scanned
+        .into_iter()
+        .filter(|jar| {
+            let Some(meta) = parse_jar_meta(jar) else {
+                return true;
+            };
+            !project_sources
+                .iter()
+                .any(|(group, artifact, _)| *group == meta.group && *artifact == meta.artifact)
+        })
+        .collect();
+    for (_, _, jar) in project_sources {
+        if !mounted.contains(&jar) {
+            mounted.push(jar);
+        }
+    }
+    mounted
 }
 
 /// Split sources JARs into cache hits (returning ready-to-apply contributions
@@ -654,7 +689,7 @@ pub(crate) fn apply_sources_contributions(
 
 /// Extract `.kt` / `.java` entries from a sources-JAR.
 /// Returns Vec of (synthetic_uri, content) pairs.
-fn extract_sources_jar_entries(jar_path: &Path) -> Result<Vec<(Url, String)>, String> {
+pub(crate) fn extract_sources_jar_entries(jar_path: &Path) -> Result<Vec<(Url, String)>, String> {
     let file = std::fs::File::open(jar_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("zip open failed: {e}"))?;
 
@@ -1218,6 +1253,9 @@ pub(crate) fn materialize_jar_on_demand(
     if indexer.materialization_failed.contains(&jar_id) {
         return false;
     }
+    if indexer.library_sources.manages(jar_id) {
+        return super::library_sources::load(indexer, jar_id);
+    }
     let Some(path_str) = indexer.jar_table.path(jar_id) else {
         indexer.materialization_failed.insert(jar_id);
         return false;
@@ -1389,6 +1427,21 @@ fn promote_candidates_bounded(
             continue;
         }
         if indexer.materialization_failed.contains(&jar_id) {
+            continue;
+        }
+        // A library sources jar loads in-process, without the sidecar: free
+        // when its parse is cached (the common case — `library_sources::mount`
+        // caches every jar at startup), one budget unit when it must be parsed.
+        if indexer.library_sources.manages(jar_id) {
+            if !indexer.library_sources.is_cached(jar_id) {
+                if *budget == 0 {
+                    continue;
+                }
+                *budget -= 1;
+            }
+            if super::library_sources::load(indexer, jar_id) {
+                any_materialized = true;
+            }
             continue;
         }
         // Probed BEFORE taking the sidecar lock (and released before

@@ -233,7 +233,26 @@ fn resolve_symbol_with_io(
         }
     }
 
+    if let Some(facade) = java_file_facade(indexer, name, from_uri) {
+        return facade;
+    }
+
     resolve_chain(indexer, name, from_uri, io, true, None, None)
+}
+
+/// A Java reference to a Kotlin file facade (`StringUtilsKt`): no declaration
+/// carries that name, so the normal chain could only end in a blind `rg`
+/// search. Only tried for a Java caller and a type-shaped name the index
+/// doesn't declare.
+fn java_file_facade(indexer: &Indexer, name: &str, from_uri: &Url) -> Option<Vec<Location>> {
+    let is_java_caller = super::jvm_interop::language_of(from_uri) == crate::types::Language::Java;
+    let may_be_facade =
+        is_java_caller && name.starts_with_uppercase() && !indexer.definitions.contains_key(name);
+    if !may_be_facade {
+        return None;
+    }
+    let facade = super::jvm_interop::resolve_file_facade(indexer, name, from_uri);
+    (!facade.is_empty()).then_some(facade)
 }
 
 /// Resolve a call's callee name, filtering same-file candidates by `shape`

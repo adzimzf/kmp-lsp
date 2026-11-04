@@ -5,6 +5,7 @@
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 mod backend;
 mod cli;
+mod dependency_sync;
 mod features;
 mod indexer;
 mod inlay_hints;
