@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- **Dependency sync finds Maven/Gradle outside the editor's `PATH`** — an editor started from a desktop launcher or the Dock often doesn't pass on the `PATH` a shell profile sets up (SDKMAN, Homebrew, `.zshrc`), so sync failed with `cannot start mvn …: No such file or directory`. After the project's wrapper and `PATH`, the server now also looks in `$MAVEN_HOME`/`$M2_HOME`/`$GRADLE_HOME`, `~/.sdkman/candidates/*/current/bin`, Homebrew and the usual system locations; when nothing is found, the warning says so and how to fix it.
 - **Sources jars are mounted without the native sidecar** — the whole JAR pipeline returned early when `kmp-jar-indexer` wasn't installed, skipping the sources-jar phase too, although it's pure Rust. Library sources (hover docs, go-to-definition into libraries) now work on a plain `cargo install`; compiled jars still need the sidecar.
 - **Module source roots inside the workspace are no longer classified as library code** — a build-layout or `workspace.json` source root (`app/src/main/kotlin`) put every file of an ordinary Gradle/Maven project in the `Library` source set, which made the workspace look like it had no Kotlin/Java (switching the JAR pipeline off) and hid those files from importer lookups. Only source paths outside the workspace root are libraries now, matching `library_uris`.
 

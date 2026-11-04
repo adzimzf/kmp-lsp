@@ -99,14 +99,32 @@ impl BuildTool {
             "build.gradle",
         ]);
         if is_gradle {
-            let launcher = wrapper(root, "gradlew").unwrap_or_else(|| PathBuf::from("gradle"));
+            let launcher = wrapper(root, "gradlew")
+                .or_else(|| installed_tool("gradle", &search_dirs(&GRADLE_INSTALL)))
+                .unwrap_or_else(|| PathBuf::from("gradle"));
             return Some(BuildTool::Gradle { launcher });
         }
         if has_any(&["pom.xml"]) {
-            let launcher = wrapper(root, "mvnw").unwrap_or_else(|| PathBuf::from("mvn"));
+            let launcher = wrapper(root, "mvnw")
+                .or_else(|| installed_tool("mvn", &search_dirs(&MAVEN_INSTALL)))
+                .unwrap_or_else(|| PathBuf::from("mvn"));
             return Some(BuildTool::Maven { launcher });
         }
         None
+    }
+
+    /// What to tell the user when the launcher can't be started at all.
+    fn not_found_hint(&self) -> &'static str {
+        match self {
+            BuildTool::Gradle { .. } => {
+                "add the Gradle wrapper (`gradle wrapper`), put `gradle` on the PATH the \
+                 editor starts the language server with, or start the editor from a terminal"
+            }
+            BuildTool::Maven { .. } => {
+                "add the Maven wrapper (`mvn wrapper:wrapper`), put `mvn` on the PATH the \
+                 editor starts the language server with, or start the editor from a terminal"
+            }
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -128,6 +146,93 @@ fn wrapper(root: &Path, name: &str) -> Option<PathBuf> {
         .into_iter()
         .map(|file_name| root.join(file_name))
         .find(|path| path.is_file())
+}
+
+/// Where a build tool is installed when it isn't on the language server's
+/// `PATH` — an editor launched from a desktop/Dock often doesn't get the
+/// `PATH` a shell profile (`.zshrc`, SDKMAN, Homebrew) sets up.
+struct InstallLocations {
+    /// Environment variables naming the tool's home (`$VAR/bin`).
+    home_variables: &'static [&'static str],
+    /// The tool's SDKMAN candidate name (`~/.sdkman/candidates/<name>/current/bin`).
+    sdkman_candidate: &'static str,
+    /// Tool-specific install directories.
+    directories: &'static [&'static str],
+}
+
+const MAVEN_INSTALL: InstallLocations = InstallLocations {
+    home_variables: &["MAVEN_HOME", "M2_HOME"],
+    sdkman_candidate: "maven",
+    directories: &["/opt/maven/bin", "/usr/share/maven/bin"],
+};
+
+const GRADLE_INSTALL: InstallLocations = InstallLocations {
+    home_variables: &["GRADLE_HOME"],
+    sdkman_candidate: "gradle",
+    directories: &["/opt/gradle/bin"],
+};
+
+/// Package-manager bin directories shared by every tool.
+const COMMON_BIN_DIRECTORIES: &[&str] = &[
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/snap/bin",
+];
+
+/// `PATH` first, then the tool's usual install locations.
+fn search_dirs(install: &InstallLocations) -> Vec<PathBuf> {
+    let mut directories: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect())
+        .unwrap_or_default();
+    for variable in install.home_variables {
+        if let Some(home) = std::env::var_os(variable) {
+            directories.push(PathBuf::from(home).join("bin"));
+        }
+    }
+    if let Some(home) = crate::util::home_dir() {
+        directories.push(
+            home.join(".sdkman/candidates")
+                .join(install.sdkman_candidate)
+                .join("current/bin"),
+        );
+    }
+    directories.extend(install.directories.iter().map(PathBuf::from));
+    directories.extend(COMMON_BIN_DIRECTORIES.iter().map(PathBuf::from));
+    directories
+}
+
+/// The first executable called `name` (`name.cmd`/`.bat`/`.exe` on
+/// Windows) in `directories`.
+fn installed_tool(name: &str, directories: &[PathBuf]) -> Option<PathBuf> {
+    let file_names: Vec<String> = if cfg!(windows) {
+        ["cmd", "bat", "exe"]
+            .iter()
+            .map(|extension| format!("{name}.{extension}"))
+            .collect()
+    } else {
+        vec![name.to_owned()]
+    };
+    directories
+        .iter()
+        .flat_map(|directory| {
+            file_names
+                .iter()
+                .map(move |file_name| directory.join(file_name))
+        })
+        .find(|candidate| is_executable(candidate))
+}
+
+#[cfg(unix)]
+fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 /// A command running `launcher`. A Unix wrapper script runs through `sh`, so
@@ -384,6 +489,14 @@ pub(crate) fn sync(root: &Path, force: bool) -> SyncOutcome {
         BuildTool::Gradle { launcher } => gradle::resolve(root, launcher, &work_dir, &output_file),
         BuildTool::Maven { launcher } => maven::resolve(root, launcher, &output_file),
     };
+    let resolved = resolved.map_err(|failure| match failure {
+        BuildToolFailure::NotFound(launcher) => format!(
+            "`{launcher}` not found: the project has no wrapper and `{launcher}` is not on the \
+             PATH the language server was started with, nor in the usual install locations — {}",
+            tool.not_found_hint()
+        ),
+        BuildToolFailure::Failed(message) => message,
+    });
     let _ = std::fs::remove_file(&output_file);
     let resolved = match resolved {
         Ok(resolved) => resolved,
@@ -409,14 +522,35 @@ pub(crate) fn sync(root: &Path, force: bool) -> SyncOutcome {
 /// Run `command` to completion within [`SYNC_TIMEOUT`]. On failure, the
 /// error carries the last lines the tool wrote, which is where Gradle and
 /// Maven say what went wrong.
-fn run_build_tool(mut command: Command, description: &str) -> Result<(), String> {
+/// Why a build-tool run produced no dependency list.
+#[derive(Debug)]
+pub(crate) enum BuildToolFailure {
+    /// The launcher program doesn't exist (`mvn`/`gradle` not installed or
+    /// not on `PATH`).
+    NotFound(String),
+    /// It started but failed, timed out, or wrote nothing usable.
+    Failed(String),
+}
+
+impl From<String> for BuildToolFailure {
+    fn from(message: String) -> Self {
+        BuildToolFailure::Failed(message)
+    }
+}
+
+fn run_build_tool(mut command: Command, description: &str) -> Result<(), BuildToolFailure> {
     command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("cannot start {description}: {error}"))?;
+    let program = command.get_program().to_string_lossy().into_owned();
+    let mut child = command.spawn().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            BuildToolFailure::NotFound(program)
+        } else {
+            BuildToolFailure::Failed(format!("cannot start {description}: {error}"))
+        }
+    })?;
     let mut stderr = child.stderr.take();
     let stderr_reader = std::thread::spawn(move || {
         let mut text = String::new();
@@ -432,10 +566,16 @@ fn run_build_tool(mut command: Command, description: &str) -> Result<(), String>
             Ok(None) if Instant::now() > deadline => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(format!("{description} timed out after {SYNC_TIMEOUT:?}"));
+                return Err(BuildToolFailure::Failed(format!(
+                    "{description} timed out after {SYNC_TIMEOUT:?}"
+                )));
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(200)),
-            Err(error) => return Err(format!("{description} failed: {error}")),
+            Err(error) => {
+                return Err(BuildToolFailure::Failed(format!(
+                    "{description} failed: {error}"
+                )))
+            }
         }
     };
     let stderr_text = stderr_reader.join().unwrap_or_default();
@@ -447,7 +587,9 @@ fn run_build_tool(mut command: Command, description: &str) -> Result<(), String>
         .filter(|line| !line.trim().is_empty() && !line.starts_with("Picked up JAVA_TOOL_OPTIONS"))
         .collect();
     let tail = tail[tail.len().saturating_sub(12)..].join("\n");
-    Err(format!("{description} exited with {status}:\n{tail}"))
+    Err(BuildToolFailure::Failed(format!(
+        "{description} exited with {status}:\n{tail}"
+    )))
 }
 
 #[cfg(test)]

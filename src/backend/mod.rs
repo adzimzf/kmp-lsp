@@ -47,6 +47,10 @@ pub(crate) struct Backend {
     pub(super) semtok_seq: Arc<dashmap::DashMap<String, u64>>,
     /// `indexingOptions.dependencySync`, read at `initialize`.
     dependency_sync_mode: std::sync::Mutex<crate::dependency_sync::SyncMode>,
+    /// The workspace root `initialize` resolved. The actor applies it to
+    /// `indexer.workspace_root` asynchronously, so `initialized` can run
+    /// before that has happened.
+    initialize_root: std::sync::Mutex<Option<std::path::PathBuf>>,
     /// Wakes the background dependency sync on build-file changes.
     dependency_sync: Arc<dependency_watcher::DependencySyncTrigger>,
 }
@@ -70,6 +74,7 @@ impl Backend {
             completion_seq: Arc::new(dashmap::DashMap::new()),
             semtok_seq: Arc::new(dashmap::DashMap::new()),
             dependency_sync_mode: std::sync::Mutex::new(crate::dependency_sync::SyncMode::default()),
+            initialize_root: std::sync::Mutex::new(None),
             dependency_sync: Arc::new(dependency_watcher::DependencySyncTrigger::default()),
         }
     }
@@ -109,6 +114,10 @@ impl LanguageServer for Backend {
         let resolved_workspace_root = Self::resolve_workspace_root(&params);
         let workspace_pinned = resolved_workspace_root.is_some();
         if let Some(workspace_root) = resolved_workspace_root {
+            *self
+                .initialize_root
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(workspace_root.clone());
             // Pre-register the indexing progress token BEFORE returning InitializeResult.
             // Clients such as Serena call _indexing_complete.wait() immediately after
             // receiving InitializeResult. The event starts SET, so if workDoneProgress/create
@@ -155,7 +164,13 @@ impl LanguageServer for Backend {
         // Watch .git/HEAD (resolved to actual commit SHA) and trigger a full reindex
         // when it changes — branch switches swap many files at once without sending
         // per-file workspace/didChangeWatchedFiles notifications.
-        if let Some(root) = self.indexer.workspace_root.get() {
+        let root = self.indexer.workspace_root.get().or_else(|| {
+            self.initialize_root
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone()
+        });
+        if let Some(root) = root {
             git_watcher::spawn_git_head_watcher(
                 root.clone(),
                 self.event_tx.clone(),

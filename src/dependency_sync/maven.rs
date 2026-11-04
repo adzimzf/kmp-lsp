@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use super::{launch, run_build_tool, Resolved, ResolvedDependency};
+use super::{launch, run_build_tool, BuildToolFailure, Resolved, ResolvedDependency};
 
 /// Pinned so the output format below never shifts under us.
 const DEPENDENCY_PLUGIN: &str = "org.apache.maven.plugins:maven-dependency-plugin:3.8.1";
@@ -14,7 +14,7 @@ pub(crate) fn resolve(
     root: &Path,
     launcher: &Path,
     output_file: &Path,
-) -> Result<Resolved, String> {
+) -> Result<Resolved, BuildToolFailure> {
     let mut command = launch(launcher);
     command
         .current_dir(root)

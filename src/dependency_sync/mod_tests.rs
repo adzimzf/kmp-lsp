@@ -8,15 +8,26 @@ fn write(root: &Path, relative: &str, content: &str) {
 
 // ── detection ────────────────────────────────────────────────────────────────
 
+fn launcher_name(tool: Option<BuildTool>) -> Option<String> {
+    let launcher = match tool? {
+        BuildTool::Gradle { launcher } | BuildTool::Maven { launcher } => launcher,
+    };
+    Some(launcher.file_name()?.to_string_lossy().into_owned())
+}
+
 #[test]
 fn detects_gradle_and_prefers_its_wrapper() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "settings.gradle.kts", "");
-    assert_eq!(
-        BuildTool::detect(dir.path()),
-        Some(BuildTool::Gradle {
-            launcher: PathBuf::from("gradle")
-        })
+    let detected = BuildTool::detect(dir.path());
+    assert!(
+        matches!(detected, Some(BuildTool::Gradle { .. })),
+        "{detected:?}"
+    );
+    // Without a wrapper: an installed `gradle` (or the bare name, when none is found).
+    assert!(
+        launcher_name(detected).is_some_and(|name| name.starts_with("gradle")),
+        "launcher must be gradle"
     );
     write(dir.path(), "gradlew", "#!/bin/sh\n");
     if !cfg!(windows) {
@@ -36,11 +47,64 @@ fn detects_maven_and_nothing_else() {
     write(dir.path(), "src/Main.kt", "fun main() {}");
     assert_eq!(BuildTool::detect(dir.path()), None);
     write(dir.path(), "pom.xml", "<project/>");
+    let detected = BuildTool::detect(dir.path());
+    assert!(
+        matches!(detected, Some(BuildTool::Maven { .. })),
+        "{detected:?}"
+    );
+    assert!(launcher_name(detected).is_some_and(|name| name.starts_with("mvn")));
+}
+
+#[cfg(unix)]
+#[test]
+fn installed_tool_is_found_outside_path_and_must_be_executable() {
+    use std::os::unix::fs::PermissionsExt;
+    let not_executable = tempfile::tempdir().unwrap();
+    let installed = tempfile::tempdir().unwrap();
+    write(not_executable.path(), "mvn", "#!/bin/sh\n");
+    write(installed.path(), "mvn", "#!/bin/sh\n");
+    std::fs::set_permissions(
+        installed.path().join("mvn"),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+    let directories = vec![
+        PathBuf::from("/definitely/not/here"),
+        not_executable.path().to_path_buf(),
+        installed.path().to_path_buf(),
+    ];
     assert_eq!(
-        BuildTool::detect(dir.path()),
-        Some(BuildTool::Maven {
-            launcher: PathBuf::from("mvn")
-        })
+        installed_tool("mvn", &directories),
+        Some(installed.path().join("mvn"))
+    );
+    assert_eq!(installed_tool("gradle", &directories), None);
+}
+
+#[test]
+fn search_dirs_cover_sdkman_and_package_managers() {
+    let directories = search_dirs(&MAVEN_INSTALL);
+    let has = |suffix: &str| {
+        directories
+            .iter()
+            .any(|directory| directory.ends_with(suffix))
+    };
+    assert!(
+        has(".sdkman/candidates/maven/current/bin"),
+        "{directories:?}"
+    );
+    assert!(has("/opt/homebrew/bin") || cfg!(windows));
+    assert!(has("/usr/share/maven/bin"));
+}
+
+#[test]
+fn missing_launcher_is_reported_as_not_found() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = dir.path().join("out.txt");
+    let failure = maven::resolve(dir.path(), Path::new("/definitely/not/here/mvn"), &output)
+        .expect_err("a missing launcher can't succeed");
+    assert!(
+        matches!(&failure, BuildToolFailure::NotFound(program) if program.ends_with("mvn")),
+        "{failure:?}"
     );
 }
 

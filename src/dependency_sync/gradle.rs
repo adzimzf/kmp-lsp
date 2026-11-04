@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use super::{launch, run_build_tool, Resolved, ResolvedDependency};
+use super::{launch, run_build_tool, BuildToolFailure, Resolved, ResolvedDependency};
 
 const INIT_SCRIPT: &str = include_str!("kmp-lsp-dependencies.gradle");
 const INIT_SCRIPT_FILE: &str = "kmp-lsp-dependencies.gradle";
@@ -34,7 +34,7 @@ pub(crate) fn resolve(
     launcher: &Path,
     work_dir: &Path,
     output_file: &Path,
-) -> Result<Resolved, String> {
+) -> Result<Resolved, BuildToolFailure> {
     let script = work_dir.join(INIT_SCRIPT_FILE);
     std::fs::write(&script, INIT_SCRIPT)
         .map_err(|error| format!("cannot write {}: {error}", script.display()))?;
