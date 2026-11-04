@@ -372,9 +372,15 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
     fn spawn_jar_indexing(&self) {
         use crate::indexer::jar_phase::JarPhase;
 
-        // Cheap non-blocking check: skip if sidecar is unavailable.
+        // Cheap non-blocking check. Without the sidecar, compiled JARs can't
+        // be read — but sources JARs are parsed here in Rust, so library
+        // sources are still mounted (see `spawn_sources_jar_indexing`).
         match self.indexer.jar_sidecar.try_lock() {
-            Ok(guard) if guard.is_none() => return,
+            Ok(guard) if guard.is_none() => {
+                drop(guard);
+                self.spawn_sources_jar_indexing();
+                return;
+            }
             Err(_) => {
                 // Lock held by running scan — already in progress, coalesce.
                 return;
@@ -453,7 +459,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             // (synthetic line indices from the sidecar). Same Gradle gate as the
             // compiled pipeline — sources JARs come from the same cache.
             let sources_total = if compiled.workspace_uses_gradle_cache {
-                crate::indexer::jar::index_sources_jars(&indexer, None, None)
+                index_library_sources(&indexer)
             } else {
                 0
             };
@@ -512,6 +518,96 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             // Wake the actor to recompute diagnostics now that JAR symbols exist.
             let _ = jar_done_tx.send(());
         });
+    }
+}
+
+impl<R: ProgressReporter + 'static> ScanHandler<R> {
+    /// Mount library sources JARs when the sidecar is unavailable. Unlike
+    /// [`ScanHandler::spawn_jar_indexing`], `jar_phase` is left
+    /// `Unavailable`: compiled JARs are still unread, and diagnostics treat a
+    /// `Ready` phase as "every JAR symbol is known".
+    fn spawn_sources_jar_indexing(&self) {
+        // Unit-test builds never launch the sidecar (`Indexer::new`) precisely
+        // so that they run no background JAR work; their scan queue is never
+        // drained, so the gate below would wait forever and block the test
+        // runtime's shutdown. The phase is covered end-to-end by
+        // `tests/library_references.rs` and `tests/dependency_sync.rs`.
+        if cfg!(test) {
+            return;
+        }
+        log::debug!("jar: sidecar unavailable — scheduling the sources-only phase");
+        if self
+            .jar_indexing_in_progress
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+        let indexer = Arc::clone(&self.indexer);
+        let in_progress = Arc::clone(&self.jar_indexing_in_progress);
+        let jar_done_tx = self.jar_done_tx.clone();
+        let scan_queue = Arc::clone(&self.scan_queue);
+        let expected_gen = indexer
+            .workspace_root
+            .generation_atomic()
+            .load(Ordering::Acquire);
+        tokio::task::spawn_blocking(move || {
+            let generation_ok = || {
+                indexer
+                    .workspace_root
+                    .generation_atomic()
+                    .load(Ordering::Acquire)
+                    == expected_gen
+            };
+            let workspace_has_jvm_sources = crate::indexer::jar::wait_for_jvm_sources_gate(
+                &indexer,
+                || {
+                    scan_queue
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .is_in_progress()
+                },
+                generation_ok,
+                std::time::Duration::from_millis(100),
+            );
+            log::debug!(
+                "jar: sources-only phase — JVM sources: {workspace_has_jvm_sources:?}, current generation: {}",
+                generation_ok()
+            );
+            if workspace_has_jvm_sources == Some(true) && generation_ok() {
+                let total = index_library_sources(&indexer);
+                log::info!(
+                    "jar: sidecar unavailable — mounted {total} symbols from sources JARs only"
+                );
+                indexer.invalidate_completion_cache();
+            }
+            in_progress.store(false, Ordering::Release);
+            let _ = jar_done_tx.send(());
+        });
+    }
+}
+
+/// Mount library sources JARs: the Gradle cache plus the project's own
+/// resolved dependencies from the last dependency sync, if any.
+/// In the default on-demand mode only their names are loaded now (see
+/// [`crate::indexer::library_sources`]).
+fn index_library_sources(indexer: &Indexer) -> usize {
+    use crate::indexer::library_sources::LibrarySourcesMode;
+    let project = indexer
+        .workspace_root
+        .get()
+        .and_then(|root| crate::dependency_sync::load_manifest(&root));
+    match indexer.library_sources.mode() {
+        LibrarySourcesMode::Eager => {
+            crate::indexer::jar::index_sources_jars(indexer, None, None, project.as_ref())
+        }
+        LibrarySourcesMode::OnDemand => {
+            let jars = crate::indexer::jar::sources_jars_to_mount(
+                crate::indexer::jar::scan_gradle_sources_jars(None),
+                project.as_ref(),
+            );
+            crate::indexer::library_sources::mount(indexer, &jars, None)
+        }
     }
 }
 
@@ -587,9 +683,20 @@ fn index_compiled_jars_phase(
     );
 
     // Explicitly-configured jars (workspace.json `jarPaths` + init-options
-    // `jarPaths`), so non-Gradle projects (Make/Bazel/manual) get symbols too.
+    // `jarPaths`), so non-Gradle projects (Make/Bazel/manual) get symbols too,
+    // and the jars the project's build tool resolved in the last dependency
+    // sync (a Maven project's live in `~/.m2`, outside the Gradle cache).
     // Filesystem I/O (read workspace.json, walk dirs) runs here off-thread.
     if let Some(root) = indexer.workspace_root.get() {
+        if workspace_uses_gradle_cache {
+            if let Some(manifest) = crate::dependency_sync::load_manifest(&root) {
+                for jar in manifest.jars() {
+                    if !paths.contains(&jar) {
+                        paths.push(jar);
+                    }
+                }
+            }
+        }
         let mut configured = crate::workspace_json::load_configured_jar_paths(&root);
         configured.extend(crate::workspace_json::resolve_jar_path_specs(
             init_jar_specs,

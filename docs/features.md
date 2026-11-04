@@ -13,7 +13,7 @@ more precise (superclass hierarchy, cross-file resolution) as indexing completes
 | `textDocument/documentSymbol` | All symbols in the current file (outline view) |
 | `textDocument/completion` | Dot-completion (`it.`, `this.`, named params), bare-word, stdlib entries |
 | `completionItem/resolve` | Lazy KDoc/Javadoc + signature on item selection; keeps initial list fast |
-| `textDocument/references` | Project-wide `rg --word-regexp` + in-memory scan of open buffers |
+| `textDocument/references` | Project-wide `rg --word-regexp` + in-memory scan of open buffers, Java ↔ Kotlin spellings, and usages inside library sources jars |
 | `textDocument/signatureHelp` | Active function signature + highlighted parameter as you type |
 | `textDocument/rename` | Renames symbol across all files via `WorkspaceEdit`; index updated via file watcher |
 | `textDocument/foldingRange` | Brace-based region folds + consecutive comment block folds |
@@ -219,6 +219,7 @@ Library sources are resolved automatically — no manual config needed in most c
 |---|---|
 | Android SDK (`Activity`, `Context`, …) | `sdk.dir` in `local.properties` → `$ANDROID_HOME` → `$ANDROID_SDK_ROOT` |
 | Gradle library sources (Compose, coroutines, …) | `*-sources.jar` files auto-mounted from `~/.gradle/caches` at startup |
+| The project's own dependencies (Gradle or Maven) | [Dependency sync](#dependency-sync) asks the build tool, which downloads missing jars and sources |
 | IntelliJ/Android Studio project roots | `workspace.json` at project root (exported by IDE) |
 | Standard Gradle/Maven layouts | `src/main/kotlin`, `src/test/kotlin`, per-module subprojects |
 
@@ -278,6 +279,82 @@ Paths can be absolute (including `~/…`) or relative to the workspace root. The
 - Precise `fd --full-path` search uses the full package path from the import, not just the filename — dramatically faster in multi-module projects
 - Cross-file fallback via `rg` for symbols not yet in the index
 
+## Dependency sync
+
+Like jdtls (Buildship/m2e) and IntelliJ, kmp-lsp asks the project's own build tool which libraries it depends on, and has it **download** them — sources jars included — so go-to-definition and find-references reach into library code even when no IDE ever fetched those sources.
+
+| Build | What runs |
+|---|---|
+| Gradle (`settings.gradle(.kts)` / `build.gradle(.kts)` at the root) | `./gradlew` (or `gradle`) with a small init script: resolves every project's compile/runtime classpath, requests each module's sources jar (downloaded into `~/.gradle/caches`) and lists the paths |
+| Maven (`pom.xml` at the root) | `./mvnw` (or `mvn`) `dependency:sources dependency:list` — downloads into `~/.m2/repository` |
+
+- **Automatic, in the background.** Runs on startup and again when a build file changes — `build.gradle(.kts)`, `settings.gradle(.kts)`, `gradle.properties`, `*.versions.toml`, `gradle-wrapper.properties`, `pom.xml` — noticed from the editor's save / file-watch notifications, with a 30 s poll as a fallback. The server works immediately; library results appear when the sync finishes (progress token `kmp-lsp/dependency-sync`), followed by a reindex.
+- **Cached.** The result is saved per workspace under `~/.cache/kmp-lsp/dependencies/`, keyed by a hash of the build files: reopening an unchanged project doesn't run the build tool at all.
+- **Exact versions.** The JARs and sources jars the build tool resolved are indexed in place of "newest version of that artifact in the Gradle cache".
+- **Finding the build tool.** The project's wrapper (`./gradlew`, `./mvnw`) first, then `gradle`/`mvn` on the language server's `PATH`, then `$GRADLE_HOME`/`$MAVEN_HOME`/`$M2_HOME`, SDKMAN (`~/.sdkman/candidates/*/current/bin`), Homebrew, zerobrew and the usual system directories, and finally the `PATH` your login shell (`$SHELL -i -l`) sets up — editors launched from a desktop often don't pass on a shell profile's `PATH`.
+- **Fails quietly.** A broken build, no network or no JVM shows one warning and leaves everything else working; it isn't retried until the build files change. Sources that failed to download for a transient reason (network, rate limiting) are retried after 10 minutes.
+- **Runs your build scripts.** Build scripts are code — set `dependencySync` to `"off"` for projects you don't trust.
+- `kmp-lsp/syncDependencies` (execute-command) forces a sync.
+
+| `indexingOptions` key | Values | Default |
+|---|---|---|
+| `dependencySync` | `"auto"` / `"off"` | `"auto"` |
+| `referencesIncludeLibraries` | `true` / `false` | `true` |
+| `decompileLibraries` | `true` / `false` | `true` |
+| `librarySources` | `"onDemand"` / `"eager"` | `"onDemand"` |
+
+### Library sources load on demand
+
+Library sources are **not** all kept in memory. Each sources jar (downloaded or decompiled) is parsed once into two cache files under `~/.cache/kmp-lsp/library-sources-…/`: a small **index** (the names it declares, plus a hash of every identifier it mentions) and the full **parse**. Only the index stays in memory. A library is loaded from its parse cache the first time one of its names is used: an import in a file you open, go-to-definition, hover, completion on one of its types, or a find-references that may reach it.
+
+| Library | First startup (parse once) | Later startups | First use (from cache) |
+|---|---|---|---|
+| gson 2.11.0 | 53 ms | 0.4 ms | 6 ms |
+| okio-jvm 3.9.0 | 240 ms | 0.4 ms | 8 ms |
+| kotlin-stdlib 1.9.21 | 3.3 s | 1.6 ms | 55 ms |
+
+(Release build, 4 cores.)
+
+- **Completion keeps working.** Names and auto-import FQNs come from the index, so a library's classes and top-level functions are offered before it's loaded. Members after a dot load the library first, which takes the "first use" time above, once.
+- **Find-references** loads the libraries whose text mentions the name being searched and its class or package, up to 64 per request, then searches them as before.
+- **Memory** grows with the libraries you use, not with every dependency.
+- `librarySources: "eager"` restores loading everything at startup.
+
+### Libraries without sources: decompiled
+
+A dependency that publishes no `-sources.jar` (typical for internal company artifacts) is decompiled after the sync with [Vineflower](https://github.com/Vineflower/vineflower) — the maintained fork of IntelliJ's Fernflower decompiler — so navigation lands on real code: Kotlin classes come back as Kotlin, Java classes as Java (method bodies included, without comments or original local names).
+
+- The decompiler (`org.vineflower:vineflower:1.11.1`) is fetched **through your build tool** — Gradle resolves it in the sync's init script from the project's repositories, Maven runs `dependency:copy` — so company mirrors and credentials apply. It is cached under `~/.cache/kmp-lsp/decompiler/`.
+- It runs on your `java` (`$JAVA_HOME`, your login shell's `JAVA_HOME`, or `java` on `PATH`), up to 4 libraries at a time, 5 minutes and 64 MB per jar at most, 100 jars per sync.
+- Results are cached per jar version under `~/.cache/kmp-lsp/decompiled/` and mounted like a sources jar; go-to-definition, hover and find-references work on them. A library that can't be decompiled falls back to a stub of its signatures.
+- `decompileLibraries: false` turns it off.
+
+## References into library sources
+
+Find-references also returns usages **inside dependency sources** — every mounted `*-sources.jar` (from the Gradle cache or a dependency sync), Kotlin and Java alike, including the [interop spellings](#java--kotlin-interop) (`Normalizer.INSTANCE.normalize()` in a Java library file is a reference of Kotlin's `object Normalizer`'s `normalize`). It works from a usage in your code and from the declaration inside the library (after go-to-definition took you there). Library hits come back as read-only `file://` copies extracted from the jar, so any editor can open them.
+
+Only library files that can see the declaration are searched (same package, an import from its package, or a mention of its class), each occurrence must be an identifier in the parse tree (not a comment or string), and it must resolve back to the declaration — so a same-named method on another class is never included. Set `referencesIncludeLibraries` to `false` to search only the workspace. Compiled-only jars (no sources jar) have no source to search.
+
+## Java ↔ Kotlin interop
+
+Go-to-definition and find-references follow the names each language actually uses for the other's declarations (`src/resolver/jvm_interop.rs`):
+
+| Written in | Usage | Resolves to |
+|---|---|---|
+| Java | `user.getName()` / `user.setEmail(…)` | Kotlin `val name` / `var email` (a setter never reaches a `val`) |
+| Java | `user.isActive()` | Kotlin `val isActive` |
+| Java | `registry.removeAll()` | Kotlin `@JvmName("removeAll") fun clear()` |
+| Java | `Registry.INSTANCE.register(…)` / `Registry.INSTANCE` | Kotlin `object Registry` member / the object |
+| Java | `User.Companion.anonymous()` | Kotlin companion member |
+| Java | `StringUtilsKt.slugify(…)` / `TextHelper.wordCount(…)` | Kotlin top-level function; the facade class (`StringUtilsKt`, `@file:JvmName("TextHelper")`) goes to the Kotlin file |
+| Kotlin | `account.balance` | Java `getBalance()` (a `private` Java field is skipped — Kotlin can't see it) |
+| Kotlin | `account.balance = 1` | Java `setBalance(long)` |
+| Kotlin | `point.x` | Java record component `x` |
+
+Find-references on either side includes the other language's spelling: references of Kotlin `val name` include Java `getName()` calls, references of Java `setBalance` include Kotlin `account.balance = …` writes (and not reads), references of a `@JvmName` function include Java calls by the JVM name. Each extra hit is kept only when go-to-definition from it lands on the queried declaration.
+
+Not covered: `rename` across spellings (renaming `val name` does not rewrite Java `getName()`), `@get:JvmName`/`@set:JvmName`, Java nullability annotations, SAM conversion.
+
 ## Limitations
 
 - **No type inference** for generic lambda parameters — use explicit annotations for unresolvable cases
@@ -285,7 +362,9 @@ Paths can be absolute (including `~/…`) or relative to the workspace root. The
 - **Swift support is structural** — all symbols indexed; no module boundaries or closure type inference
 - **Java completion** is less refined than Kotlin
 - **`findReferences` on common names** returns noise — name-based search via `rg`, no import filtering yet
-- **Binary `.aar`/`.jar`** — hover and completions work from compiled symbol metadata; go-to-definition into library code requires a `*-sources.jar` in the Gradle cache (auto-mounted at startup). Direct class-file indexing is [planned](https://github.com/Hessesian/kmp-lsp/issues/79).
+- **Rename doesn't follow Java ↔ Kotlin spellings** — see [Java ↔ Kotlin interop](#java--kotlin-interop)
+- **Binary `.aar`/`.jar`** — hover and completions work from compiled symbol metadata; go-to-definition and find-references into library code need a `*-sources.jar` (fetched by [dependency sync](#dependency-sync) when the library publishes one). Direct class-file indexing is [planned](https://github.com/Hessesian/kmp-lsp/issues/79).
+- **Library references across overloads** — a usage of any overload of a library method counts as a reference; the call's own arity isn't used to pick the overload yet
 
 ## vs. Official Kotlin LSP
 

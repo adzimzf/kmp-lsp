@@ -716,7 +716,7 @@ fn reset_index_state_mixed_extension_receiver_no_deadlock() {
 #[test]
 fn classify_source_set_handles_flavored_kmp_test_sets() {
     use crate::types::SourceSet;
-    let classify = |path: &str| super::classify_source_set(path, &[]);
+    let classify = |path: &str| super::classify_source_set(path, &[], None);
     assert_eq!(
         classify("file:///p/app/src/main/kotlin/A.kt"),
         SourceSet::Main
@@ -799,5 +799,31 @@ fn rebuild_importable_fqns_includes_tier1_only_candidates() {
          before its JAR is materialized — this is the case that categorically \
          cannot be covered by import-scoped eager promotion (no ImportEntry \
          exists yet for a symbol nobody has imported)"
+    );
+}
+
+/// Regression: a build-layout / `workspace.json` module root INSIDE the
+/// workspace (`/p/app/src/main/kotlin`) is workspace code, not a library —
+/// only source paths outside the root are. Classifying module roots as
+/// `Library` made an ordinary Gradle project look like it had no JVM sources,
+/// which switched off the whole JAR pipeline.
+#[test]
+fn classify_source_set_keeps_in_workspace_source_roots_as_workspace_code() {
+    use crate::types::SourceSet;
+    let root = std::path::Path::new("/p");
+    let source_paths = vec![
+        "/p/app/src/main/kotlin".to_owned(),
+        "src/main/java".to_owned(),
+        "/home/me/.kmp-lsp/sources".to_owned(),
+    ];
+    let classify = |uri: &str| super::classify_source_set(uri, &source_paths, Some(root));
+    assert_eq!(
+        classify("file:///p/app/src/main/kotlin/A.kt"),
+        SourceSet::Main
+    );
+    assert_eq!(classify("file:///p/src/main/java/B.java"), SourceSet::Main);
+    assert_eq!(
+        classify("file:///home/me/.kmp-lsp/sources/kotlinx/Flow.kt"),
+        SourceSet::Library
     );
 }

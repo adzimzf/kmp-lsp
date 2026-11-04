@@ -29,3 +29,53 @@ fn symbol_keyword_function_is_fun() {
 fn symbol_keyword_class_is_class() {
     assert_eq!(JavaParser.symbol_keyword(SymbolKind::CLASS), "class");
 }
+
+#[test]
+fn parse_records_declared_types_of_parameters_locals_fields_and_for_variables() {
+    let data = JavaParser.parse(concat!(
+        "class Holder {\n",
+        "    private Account account;\n",
+        "    void run(User user, java.util.List<Order> orders) {\n",
+        "        Payment payment = null;\n",
+        "        var inferred = payment;\n",
+        "        for (Order order : orders) {}\n",
+        "    }\n",
+        "}\n",
+    ));
+    let typed: Vec<(&str, &str)> = data
+        .type_annotations
+        .iter()
+        .map(|(_, name, type_text)| (name.as_str(), type_text.as_str()))
+        .collect();
+    for expected in [
+        ("account", "Account"),
+        ("user", "User"),
+        ("orders", "java.util.List<Order>"),
+        ("payment", "Payment"),
+        ("order", "Order"),
+    ] {
+        assert!(
+            typed.contains(&expected),
+            "{expected:?} missing from {typed:?}"
+        );
+    }
+    assert!(
+        !typed.iter().any(|(name, _)| *name == "inferred"),
+        "a `var` local has no written type: {typed:?}"
+    );
+}
+
+#[test]
+fn parse_indexes_record_components_as_public_fields() {
+    let data = JavaParser
+        .parse("public record Point(int x, int y) {\n    int sum() { return x + y; }\n}\n");
+    for component in ["x", "y"] {
+        let symbol = data
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == component)
+            .unwrap_or_else(|| panic!("record component {component} not indexed"));
+        assert_eq!(symbol.kind, SymbolKind::FIELD);
+        assert_eq!(symbol.visibility, crate::types::Visibility::Public);
+    }
+}
