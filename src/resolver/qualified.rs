@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use tower_lsp::lsp_types::{Location, Url};
 
 use crate::indexer::Indexer;
-use crate::types::CallerContext;
+use crate::types::{CallerContext, Language};
 use crate::StrExt;
 
 use super::container::resolve_companion_member;
@@ -20,6 +20,7 @@ use super::hierarchy::{
     walk_hierarchy, walk_hierarchy_breadth_first, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
 };
 use super::infer::{infer_field_type, infer_variable_type};
+use super::jvm_interop;
 use super::resolve::{resolve_symbol, resolve_symbol_index_only, ResolveIo};
 
 /// STAGE: parsing. What the qualifier's ROOT segment is, decided ONCE here
@@ -141,6 +142,11 @@ pub(super) fn resolve_qualified_in_type_scope(
     from_uri: &Url,
     io: ResolveIo,
 ) -> Vec<Location> {
+    let caller = jvm_interop::language_of(from_uri);
+    let qualifier = match caller {
+        Language::Java => java_singleton_receiver(qualifier),
+        _ => qualifier,
+    };
     let parsed = parse_qualifier(qualifier);
 
     // ── Keyword roots ────────────────────────────────────────────────────────
@@ -170,6 +176,11 @@ pub(super) fn resolve_qualified_in_type_scope(
     let companion_applies = matches!(&parsed, QualifierRoot::TypePath { .. });
 
     for anchor in anchors_for(indexer, &parsed, type_scope, from_uri, io) {
+        if caller == Language::Java && name == jvm_interop::OBJECT_INSTANCE_FIELD {
+            if let Some(object) = kotlin_object_declaration(indexer, &anchor) {
+                return vec![object];
+            }
+        }
         if companion_applies {
             let companion_locations = companion_member_on(indexer, &anchor, name);
             if !companion_locations.is_empty() {
@@ -479,27 +490,21 @@ pub(super) fn candidates_on(
     from_uri: &Url,
 ) -> QualifiedCandidates {
     let (own_members, inherited_members) = member_tiers(indexer, anchor, name, from_uri);
+    let caller = jvm_interop::language_of(from_uri);
+    let (own_members, inherited_members) = if caller == Language::Kotlin {
+        (
+            jvm_interop::retain_visible_to_kotlin(indexer, own_members),
+            jvm_interop::retain_visible_to_kotlin(indexer, inherited_members),
+        )
+    } else {
+        (own_members, inherited_members)
+    };
 
-    // Kotlin's Java-interop synthetic-property rule: `obj.fail` may really mean
-    // `obj.getFail()`. Retry the identical member/inherited-member pair with the
-    // getter name, but ONLY after a real `name` member came up completely
-    // empty — a real member always wins. A Kotlin `fun getFail()` is never
-    // exposed as `.fail` from Kotlin, so every getter candidate the retry
-    // finds is filtered by ITS OWN declaring file's language, not the
-    // receiver's: gating on `anchor.declaration`'s language (the earlier
-    // shape) rejected a getter genuinely inherited from a Java ANCESTOR
-    // whenever the receiver's own class happens to be Kotlin-declared — real
-    // shape, e.g. `class KotlinFoo : JavaBase()` where only `JavaBase`
-    // declares `getFail()`. `setFoo`/`isFoo`/records are deliberately out of
-    // scope — see the 2026-09-09 jar-promotion-latency-budget-plan, Task 1.
+    // A real `name` member always wins; only when none exists does the other
+    // language's spelling of the same declaration get a chance.
     let (own_members, inherited_members) = if own_members.is_empty() && inherited_members.is_empty()
     {
-        let (getter_own, getter_inherited) =
-            member_tiers(indexer, anchor, &kotlin_getter_name(name), from_uri);
-        (
-            retain_java_declared(getter_own),
-            retain_java_declared(getter_inherited),
-        )
+        interop_member_tiers(indexer, anchor, name, from_uri, caller)
     } else {
         (own_members, inherited_members)
     };
@@ -761,6 +766,83 @@ pub(super) fn resolve_from_class_hierarchy_scoped(
             ))
         })
         .collect()
+}
+
+/// Java reaches a Kotlin `object`'s members through its singleton field:
+/// `Registry.INSTANCE.register(…)` is Kotlin's `Registry.register(…)`. Drops
+/// that trailing `.INSTANCE` so the type path names the object itself.
+fn java_singleton_receiver(qualifier: &str) -> &str {
+    qualifier
+        .strip_suffix(jvm_interop::OBJECT_INSTANCE_FIELD)
+        .and_then(|type_path| type_path.strip_suffix('.'))
+        .unwrap_or(qualifier)
+}
+
+/// The anchor's own declaration when it is a Kotlin `object` — the target of
+/// Java's `Registry.INSTANCE`.
+fn kotlin_object_declaration(indexer: &Indexer, anchor: &ReceiverAnchor) -> Option<Location> {
+    let declaration = anchor.declaration.as_ref()?;
+    jvm_interop::is_kotlin_object(indexer, declaration).then(|| declaration.clone())
+}
+
+/// The `(own, inherited)` member tiers for `name` as the OTHER language
+/// spells the same declaration — see [`jvm_interop`] for the mapping table.
+///
+/// - Kotlin caller: `obj.fail` may be Java's `getFail()`. Every candidate is
+///   filtered by ITS OWN declaring file's language, not the receiver's: a
+///   getter genuinely inherited from a Java ancestor counts even when the
+///   receiver's own class is Kotlin (`class KotlinFoo : JavaBase()`), while a
+///   Kotlin `fun getFail()` is never exposed as `.fail`. Assignments
+///   (`obj.fail = x`) are mapped to the setter by the CST path, which knows
+///   the access — see `resolve_identity`.
+/// - Java caller: `user.getName()` / `user.setEmail(…)` reach a Kotlin
+///   property; `registry.removeAll()` reaches `@JvmName("removeAll") fun clear()`.
+fn interop_member_tiers(
+    indexer: &Indexer,
+    anchor: &ReceiverAnchor,
+    name: &str,
+    from_uri: &Url,
+    caller: Language,
+) -> (Vec<Location>, Vec<Location>) {
+    match caller {
+        Language::Kotlin => {
+            let (getter_own, getter_inherited) =
+                member_tiers(indexer, anchor, &kotlin_getter_name(name), from_uri);
+            (
+                retain_java_declared(getter_own),
+                retain_java_declared(getter_inherited),
+            )
+        }
+        Language::Java => java_view_of_kotlin_members(indexer, anchor, name, from_uri),
+        Language::Swift => (vec![], vec![]),
+    }
+}
+
+/// Java's spelling of a Kotlin member: a property accessor, or an
+/// `@JvmName`-renamed function.
+fn java_view_of_kotlin_members(
+    indexer: &Indexer,
+    anchor: &ReceiverAnchor,
+    name: &str,
+    from_uri: &Url,
+) -> (Vec<Location>, Vec<Location>) {
+    if let Some(accessor) = jvm_interop::parse_java_accessor(name) {
+        for property_name in &accessor.property_names {
+            let (own, inherited) = member_tiers(indexer, anchor, property_name, from_uri);
+            let own = jvm_interop::retain_kotlin_properties_for(indexer, own, accessor.access);
+            let inherited =
+                jvm_interop::retain_kotlin_properties_for(indexer, inherited, accessor.access);
+            if !own.is_empty() || !inherited.is_empty() {
+                return (own, inherited);
+            }
+        }
+    }
+    let jvm_named = anchor
+        .declaration
+        .as_ref()
+        .map(|declaration| jvm_interop::members_with_jvm_name(indexer, declaration, name))
+        .unwrap_or_default();
+    (jvm_named, vec![])
 }
 
 /// Kotlin's Java-interop synthetic-property name for a getter-style call:

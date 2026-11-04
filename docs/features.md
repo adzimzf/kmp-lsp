@@ -278,6 +278,26 @@ Paths can be absolute (including `~/…`) or relative to the workspace root. The
 - Precise `fd --full-path` search uses the full package path from the import, not just the filename — dramatically faster in multi-module projects
 - Cross-file fallback via `rg` for symbols not yet in the index
 
+## Java ↔ Kotlin interop
+
+Go-to-definition and find-references follow the names each language actually uses for the other's declarations (`src/resolver/jvm_interop.rs`):
+
+| Written in | Usage | Resolves to |
+|---|---|---|
+| Java | `user.getName()` / `user.setEmail(…)` | Kotlin `val name` / `var email` (a setter never reaches a `val`) |
+| Java | `user.isActive()` | Kotlin `val isActive` |
+| Java | `registry.removeAll()` | Kotlin `@JvmName("removeAll") fun clear()` |
+| Java | `Registry.INSTANCE.register(…)` / `Registry.INSTANCE` | Kotlin `object Registry` member / the object |
+| Java | `User.Companion.anonymous()` | Kotlin companion member |
+| Java | `StringUtilsKt.slugify(…)` / `TextHelper.wordCount(…)` | Kotlin top-level function; the facade class (`StringUtilsKt`, `@file:JvmName("TextHelper")`) goes to the Kotlin file |
+| Kotlin | `account.balance` | Java `getBalance()` (a `private` Java field is skipped — Kotlin can't see it) |
+| Kotlin | `account.balance = 1` | Java `setBalance(long)` |
+| Kotlin | `point.x` | Java record component `x` |
+
+Find-references on either side includes the other language's spelling: references of Kotlin `val name` include Java `getName()` calls, references of Java `setBalance` include Kotlin `account.balance = …` writes (and not reads), references of a `@JvmName` function include Java calls by the JVM name. Each extra hit is kept only when go-to-definition from it lands on the queried declaration.
+
+Not covered: `rename` across spellings (renaming `val name` does not rewrite Java `getName()`), `@get:JvmName`/`@set:JvmName`, Java nullability annotations, SAM conversion.
+
 ## Limitations
 
 - **No type inference** for generic lambda parameters — use explicit annotations for unresolvable cases
@@ -285,6 +305,7 @@ Paths can be absolute (including `~/…`) or relative to the workspace root. The
 - **Swift support is structural** — all symbols indexed; no module boundaries or closure type inference
 - **Java completion** is less refined than Kotlin
 - **`findReferences` on common names** returns noise — name-based search via `rg`, no import filtering yet
+- **Rename doesn't follow Java ↔ Kotlin spellings** — see [Java ↔ Kotlin interop](#java--kotlin-interop)
 - **Binary `.aar`/`.jar`** — hover and completions work from compiled symbol metadata; go-to-definition into library code requires a `*-sources.jar` in the Gradle cache (auto-mounted at startup). Direct class-file indexing is [planned](https://github.com/Hessesian/kmp-lsp/issues/79).
 
 ## vs. Official Kotlin LSP

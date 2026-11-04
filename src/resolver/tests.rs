@@ -11603,3 +11603,173 @@ fn receiver_callee_resolves_the_receiver_type_name_in_its_own_scope() {
         .collect();
     assert_eq!(paths, vec!["/test/types/Box.kt"]);
 }
+
+// ── Java ↔ Kotlin interop spellings (see `jvm_interop`) ──────────────────────
+
+/// Indexes `files` and returns the indexer plus each file's URI, in order.
+fn index_interop_files(files: &[(&str, &str)]) -> (Indexer, Vec<Url>) {
+    let idx = Indexer::new();
+    let uris = files
+        .iter()
+        .map(|(path, content)| {
+            let file_uri = uri(path);
+            idx.index_content(&file_uri, content);
+            file_uri
+        })
+        .collect();
+    (idx, uris)
+}
+
+const INTEROP_PERSON_KT: &str = concat!(
+    "package com.pkg\n",
+    "class Person(val name: String) {\n",
+    "    var age: Int = 0\n",
+    "}\n",
+);
+/// Decoy: same property names on an unrelated Kotlin class.
+const INTEROP_ROBOT_KT: &str = concat!(
+    "package com.pkg\n",
+    "class Robot(val name: String) {\n",
+    "    var age: Int = 0\n",
+    "}\n",
+);
+const INTEROP_CALLER_JAVA: &str = concat!(
+    "package com.pkg;\n",
+    "public class Caller {\n",
+    "    void run(Person person) {\n",
+    "        person.getName();\n",
+    "    }\n",
+    "}\n",
+);
+
+#[test]
+fn java_getter_resolves_to_the_receiver_types_kotlin_property_only() {
+    let (idx, uris) = index_interop_files(&[
+        ("/Person.kt", INTEROP_PERSON_KT),
+        ("/Robot.kt", INTEROP_ROBOT_KT),
+        ("/Caller.java", INTEROP_CALLER_JAVA),
+    ]);
+    let locs = resolve_symbol(&idx, "getName", Some("person"), &uris[2]);
+    assert_eq!(locs.len(), 1, "only Person.name, not Robot.name: {locs:?}");
+    assert_eq!(locs[0].uri, uris[0]);
+    assert_eq!(locs[0].range.start.line, 1);
+}
+
+#[test]
+fn java_setter_resolves_to_kotlin_var_but_never_to_a_val() {
+    let (idx, uris) = index_interop_files(&[
+        ("/Person.kt", INTEROP_PERSON_KT),
+        ("/Caller.java", INTEROP_CALLER_JAVA),
+    ]);
+    let setter = resolve_symbol(&idx, "setAge", Some("Person"), &uris[1]);
+    assert_eq!(setter.len(), 1, "setAge must reach `var age`: {setter:?}");
+    assert_eq!(setter[0].range.start.line, 2);
+
+    let no_setter = resolve_symbol(&idx, "setName", Some("Person"), &uris[1]);
+    assert!(
+        no_setter.is_empty(),
+        "`val name` has no setter, so setName must not reach it: {no_setter:?}"
+    );
+}
+
+#[test]
+fn kotlin_caller_never_maps_get_prefix_onto_kotlin_property() {
+    // `getName` written in KOTLIN is not an accessor call — Kotlin reads
+    // `person.name` directly. The Java-only mapping must not apply.
+    let (idx, uris) = index_interop_files(&[
+        ("/Person.kt", INTEROP_PERSON_KT),
+        (
+            "/KotlinCaller.kt",
+            "package com.pkg\nfun run(person: Person) { person.getName() }\n",
+        ),
+    ]);
+    let locs = resolve_symbol(&idx, "getName", Some("Person"), &uris[1]);
+    assert!(locs.is_empty(), "{locs:?}");
+}
+
+#[test]
+fn kotlin_read_skips_private_java_field_for_its_getter() {
+    let (idx, uris) = index_interop_files(&[
+        (
+            "/Wallet.java",
+            concat!(
+                "package com.pkg;\n",
+                "public class Wallet {\n",
+                "    private long cash;\n",
+                "    public long getCash() { return cash; }\n",
+                "}\n",
+            ),
+        ),
+        (
+            "/Spender.kt",
+            "package com.pkg\nfun spend(wallet: Wallet) = wallet.cash\n",
+        ),
+    ]);
+    let locs = resolve_symbol(&idx, "cash", Some("Wallet"), &uris[1]);
+    assert_eq!(locs.len(), 1, "{locs:?}");
+    assert_eq!(
+        locs[0].range.start.line, 3,
+        "Kotlin can't see the private field; `.cash` is getCash(): {locs:?}"
+    );
+}
+
+#[test]
+fn java_instance_field_resolves_only_for_kotlin_objects() {
+    let (idx, uris) = index_interop_files(&[
+        (
+            "/Things.kt",
+            "package com.pkg\nobject Single {\n    fun go() {}\n}\nclass Plain {\n    fun go() {}\n}\n",
+        ),
+        ("/UseThings.java", "package com.pkg;\npublic class UseThings {}\n"),
+    ]);
+    let object = resolve_symbol(&idx, "INSTANCE", Some("Single"), &uris[1]);
+    assert_eq!(object.len(), 1, "{object:?}");
+    assert_eq!(object[0].range.start.line, 1);
+
+    let member = resolve_symbol(&idx, "go", Some("Single.INSTANCE"), &uris[1]);
+    assert_eq!(member.len(), 1, "{member:?}");
+    assert_eq!(member[0].range.start.line, 2);
+
+    let plain = resolve_symbol(&idx, "INSTANCE", Some("Plain"), &uris[1]);
+    assert!(plain.is_empty(), "a class has no INSTANCE field: {plain:?}");
+}
+
+#[test]
+fn java_call_by_jvm_name_resolves_to_renamed_kotlin_member() {
+    let (idx, uris) = index_interop_files(&[
+        (
+            "/Store.kt",
+            concat!(
+                "package com.pkg\n",
+                "class Store {\n",
+                "    @JvmName(\"wipe\")\n",
+                "    fun clear() {}\n",
+                "    fun wipeOut() {}\n",
+                "}\n",
+            ),
+        ),
+        (
+            "/UseStore.java",
+            "package com.pkg;\npublic class UseStore {}\n",
+        ),
+    ]);
+    let locs = resolve_symbol(&idx, "wipe", Some("Store"), &uris[1]);
+    assert_eq!(locs.len(), 1, "{locs:?}");
+    assert_eq!(locs[0].range.start.line, 3);
+}
+
+#[test]
+fn java_facade_class_resolves_to_kotlin_file_in_imported_package() {
+    let (idx, uris) = index_interop_files(&[
+        ("/a/Strings.kt", "package com.a\nfun shout() {}\n"),
+        // Decoy: same file name in another package.
+        ("/b/Strings.kt", "package com.b\nfun shout() {}\n"),
+        (
+            "/UseStrings.java",
+            "package com.app;\nimport com.a.StringsKt;\npublic class UseStrings {}\n",
+        ),
+    ]);
+    let locs = resolve_symbol(&idx, "StringsKt", None, &uris[2]);
+    assert_eq!(locs.len(), 1, "{locs:?}");
+    assert_eq!(locs[0].uri, uris[0]);
+}

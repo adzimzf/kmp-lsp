@@ -25,6 +25,7 @@ use crate::queries::{
     KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 use crate::resolver::api::Definitions;
+use crate::resolver::jvm_interop::{self, PropertyAccess};
 use crate::semantic_tokens::is_named_argument_label;
 use crate::types::CursorPos;
 use tower_lsp::lsp_types::{Location, Position, Url};
@@ -158,6 +159,20 @@ pub(crate) fn enclosing_nav_expr_if_member(node: Node<'_>) -> Option<Node<'_>> {
     .then_some(nav)
 }
 
+/// The assignment target `obj.member` when `node` is its `member`
+/// identifier: `account.balance = 1` parses as a
+/// `directly_assignable_expression`, not a `navigation_expression`, but has
+/// the same receiver + `navigation_suffix` children.
+pub(crate) fn enclosing_assignment_target_if_member(node: Node<'_>) -> Option<Node<'_>> {
+    let target = node
+        .parent()
+        .and_then(|suffix| (suffix.kind() == KIND_NAV_SUFFIX).then_some(suffix))
+        .and_then(|suffix| suffix.parent())?;
+    (target.kind() == crate::queries::KIND_DIRECTLY_ASSIGNABLE_EXPR
+        && navigation_member_ident(target).is_some_and(|member| member.id() == node.id()))
+    .then_some(target)
+}
+
 pub(crate) fn is_call_callee(node: Node<'_>) -> bool {
     let Some(parent) = node.parent() else {
         return false;
@@ -212,6 +227,9 @@ pub(crate) enum SymbolRole {
         receiver_type: Option<ResolvedType>,
         is_call: bool,
         shape: Option<CallShape>,
+        /// `Write` only for an assignment target (`obj.member = …`), which
+        /// reaches a Java setter where a read reaches the getter.
+        access: PropertyAccess,
     },
     ImportSegment,
 }
@@ -294,8 +312,15 @@ pub(crate) fn classify_symbol_at(
         });
     }
 
-    // Member reference: the identifier is the member name of a nav_expr's suffix.
-    if let Some(nav) = enclosing_nav_expr_if_member(node) {
+    // Member reference: the identifier is the member name of a nav_expr's
+    // suffix, or of an assignment target (`obj.member = …`).
+    let member_access = enclosing_nav_expr_if_member(node)
+        .map(|nav| (nav, PropertyAccess::Read))
+        .or_else(|| {
+            enclosing_assignment_target_if_member(node)
+                .map(|target| (target, PropertyAccess::Write))
+        });
+    if let Some((nav, access)) = member_access {
         let call_expr = is_call_callee(nav).then(|| nav.parent()).flatten();
         let is_call = call_expr.is_some();
         let shape = call_expr.map(|expr| super::cst_lambda::call_shape_of(expr, &doc.bytes));
@@ -327,6 +352,7 @@ pub(crate) fn classify_symbol_at(
                 receiver_type,
                 is_call,
                 shape,
+                access,
             },
         });
     }
@@ -346,6 +372,7 @@ pub(crate) fn classify_symbol_at(
             receiver_type: None,
             is_call,
             shape,
+            access: PropertyAccess::Read,
         },
     })
 }
@@ -410,12 +437,24 @@ pub(crate) fn resolve_identity_with_io(
         SymbolRole::Reference {
             receiver_type: Some(receiver_type),
             shape,
+            access,
             ..
         } => {
-            let locations = if index_only {
-                indexer.find_member_of_type_index_only(&symbol.name, receiver_type, uri)
+            let find_member = |name: &str| {
+                if index_only {
+                    indexer.find_member_of_type_index_only(name, receiver_type, uri)
+                } else {
+                    indexer.find_member_of_type(name, receiver_type, uri)
+                }
+            };
+            let java_setter = match access {
+                PropertyAccess::Write => java_setter_for_assignment(&symbol.name, uri, find_member),
+                PropertyAccess::Read => Vec::new(),
+            };
+            let locations = if java_setter.is_empty() {
+                find_member(&symbol.name)
             } else {
-                indexer.find_member_of_type(&symbol.name, receiver_type, uri)
+                java_setter
             };
             // A call's own shape rules out a same-named, wrong-arity member/
             // extension on the same receiver type — e.g. `triggers.collect {
@@ -445,6 +484,24 @@ pub(crate) fn resolve_identity_with_io(
             find_definition_qualified(&symbol.name, None, uri),
         )),
     }
+}
+
+/// Kotlin's `obj.balance = x` on a Java class calls `setBalance(x)`: the Java
+/// setter, when the receiver's type has one. Empty for a Kotlin caller whose
+/// target isn't Java, so a real Kotlin `var` keeps resolving by its own name.
+fn java_setter_for_assignment(
+    property_name: &str,
+    uri: &Url,
+    find_member: impl Fn(&str) -> Vec<Location>,
+) -> Vec<Location> {
+    if jvm_interop::language_of(uri) != crate::types::Language::Kotlin {
+        return Vec::new();
+    }
+    let setter_name = jvm_interop::java_accessor_name(property_name, PropertyAccess::Write);
+    find_member(&setter_name)
+        .into_iter()
+        .filter(|location| jvm_interop::language_of(&location.uri) == crate::types::Language::Java)
+        .collect()
 }
 
 /// Classify `locations` by whether each one's own declared arity `shape`

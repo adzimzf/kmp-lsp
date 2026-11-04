@@ -67,7 +67,60 @@ pub(crate) async fn find_references_with_qualifier(
         }
     }
     resolved_first.append(&mut name_scanned);
+    for location in interop_reference_locations(index, uri, position).await {
+        if !resolved_first.contains(&location) {
+            resolved_first.push(location);
+        }
+    }
     resolved_first
+}
+
+/// Usages written in the other JVM language under a different spelling —
+/// Java's `user.getName()` for Kotlin's `val name`, Kotlin's `account.balance`
+/// for Java's `getBalance()`, a call by `@JvmName` (see
+/// [`crate::resolver::jvm_interop`]). Each spelling is searched in that
+/// language's files, and an occurrence counts only when it resolves back to
+/// the declaration.
+async fn interop_reference_locations(
+    index: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Vec<Location> {
+    use crate::resolver::jvm_interop::{language_of, InteropReferenceTarget};
+
+    let Some(target) = InteropReferenceTarget::at(index, uri, position) else {
+        return vec![];
+    };
+    let file_path = if index.is_library_uri(uri) {
+        None
+    } else {
+        uri.to_file_path().ok()
+    };
+    let (workspace_root, source_roots, _matcher) = index.rg_scope_for_path(file_path.as_deref());
+    let Some(workspace_root) = workspace_root else {
+        return vec![];
+    };
+    let aliases = target.aliases.clone();
+    let join_result = tokio::task::spawn_blocking(move || {
+        aliases
+            .iter()
+            .flat_map(|alias| {
+                crate::rg::rg_word_search(&alias.name, &workspace_root, &source_roots)
+                    .into_iter()
+                    .filter(|location| language_of(&location.uri) == alias.language)
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<Location>>()
+    })
+    .await;
+    let Ok(candidates) = join_result else {
+        return vec![];
+    };
+    candidates
+        .into_iter()
+        .filter(|location| !index.is_library_uri(&location.uri))
+        .filter(|location| target.is_reached_from(index, location))
+        .collect()
 }
 
 /// Recall (rg + index, unchanged from 6b) plus 6b's per-candidate CST

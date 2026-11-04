@@ -13,6 +13,7 @@ mod import_edit;
 mod imports;
 pub(crate) mod infer;
 pub(crate) mod infer_lines;
+pub(crate) mod jvm_interop;
 mod package;
 mod package_scope;
 mod platform_types;
