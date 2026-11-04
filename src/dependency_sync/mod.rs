@@ -101,12 +101,14 @@ impl BuildTool {
         if is_gradle {
             let launcher = wrapper(root, "gradlew")
                 .or_else(|| installed_tool("gradle", &search_dirs(&GRADLE_INSTALL)))
+                .or_else(|| installed_tool("gradle", login_shell_path()))
                 .unwrap_or_else(|| PathBuf::from("gradle"));
             return Some(BuildTool::Gradle { launcher });
         }
         if has_any(&["pom.xml"]) {
             let launcher = wrapper(root, "mvnw")
                 .or_else(|| installed_tool("mvn", &search_dirs(&MAVEN_INSTALL)))
+                .or_else(|| installed_tool("mvn", login_shell_path()))
                 .unwrap_or_else(|| PathBuf::from("mvn"));
             return Some(BuildTool::Maven { launcher });
         }
@@ -175,6 +177,7 @@ const GRADLE_INSTALL: InstallLocations = InstallLocations {
 /// Package-manager bin directories shared by every tool.
 const COMMON_BIN_DIRECTORIES: &[&str] = &[
     "/opt/homebrew/bin",
+    "/opt/zerobrew/bin",
     "/usr/local/bin",
     "/usr/bin",
     "/snap/bin",
@@ -200,6 +203,81 @@ fn search_dirs(install: &InstallLocations) -> Vec<PathBuf> {
     directories.extend(install.directories.iter().map(PathBuf::from));
     directories.extend(COMMON_BIN_DIRECTORIES.iter().map(PathBuf::from));
     directories
+}
+
+/// Marks the `PATH` in the login shell's output, which may also contain
+/// whatever a profile prints (banners, `motd`, version managers' notices).
+const SHELL_PATH_MARKER: &str = "__KMP_LSP_PATH__";
+
+/// The `PATH` the user's own login shell sets up (`.zprofile`, `.zshrc`,
+/// `.bashrc`, version managers, `zerobrew`/Homebrew shellenv …) — what a
+/// terminal sees but an editor launched from a desktop often doesn't pass on.
+/// Asked once, only when a tool wasn't found any other way; empty on
+/// Windows, without `$SHELL`, or when the shell doesn't answer in time.
+fn login_shell_path() -> &'static [PathBuf] {
+    static LOGIN_SHELL_PATH: std::sync::OnceLock<Vec<PathBuf>> = std::sync::OnceLock::new();
+    LOGIN_SHELL_PATH.get_or_init(|| {
+        let directories = query_login_shell_path().unwrap_or_default();
+        log::info!(
+            "dependency sync: login shell PATH has {} entries",
+            directories.len()
+        );
+        directories
+    })
+}
+
+fn query_login_shell_path() -> Option<Vec<PathBuf>> {
+    if cfg!(windows) {
+        return None;
+    }
+    let shell = std::env::var_os("SHELL")?;
+    let mut command = Command::new(shell);
+    // Interactive + login, like a terminal: zsh users commonly set PATH in
+    // `.zshrc`, which only interactive shells read.
+    command
+        .args(["-i", "-l", "-c"])
+        .arg(format!(
+            "printf '{SHELL_PATH_MARKER}%s{SHELL_PATH_MARKER}' \"$PATH\""
+        ))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let mut child = command.spawn().ok()?;
+    let mut stdout = child.stdout.take()?;
+    let reader = std::thread::spawn(move || {
+        let mut text = String::new();
+        let _ = stdout.read_to_string(&mut text);
+        text
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if Instant::now() > deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(50)),
+            Err(_) => return None,
+        }
+    }
+    let output = reader.join().ok()?;
+    Some(parse_shell_path(&output))
+}
+
+/// The directories between the two markers in a login shell's output.
+fn parse_shell_path(output: &str) -> Vec<PathBuf> {
+    let Some(start) = output.find(SHELL_PATH_MARKER) else {
+        return Vec::new();
+    };
+    let rest = &output[start + SHELL_PATH_MARKER.len()..];
+    let Some(end) = rest.find(SHELL_PATH_MARKER) else {
+        return Vec::new();
+    };
+    std::env::split_paths(&rest[..end])
+        .filter(|directory| !directory.as_os_str().is_empty())
+        .collect()
 }
 
 /// The first executable called `name` (`name.cmd`/`.bat`/`.exe` on
@@ -483,6 +561,7 @@ pub(crate) fn sync(root: &Path, force: bool) -> SyncOutcome {
     if let Err(error) = std::fs::create_dir_all(&work_dir) {
         return SyncOutcome::Failed(format!("cannot create {}: {error}", work_dir.display()));
     }
+    log::info!("dependency sync: running {tool:?} in {}", root.display());
     let output_file = manifest_path(root).with_extension("output");
     let _ = std::fs::remove_file(&output_file);
     let resolved = match &tool {
@@ -492,7 +571,8 @@ pub(crate) fn sync(root: &Path, force: bool) -> SyncOutcome {
     let resolved = resolved.map_err(|failure| match failure {
         BuildToolFailure::NotFound(launcher) => format!(
             "`{launcher}` not found: the project has no wrapper and `{launcher}` is not on the \
-             PATH the language server was started with, nor in the usual install locations — {}",
+             PATH the language server was started with, your login shell's PATH, nor the usual \
+             install locations — {}",
             tool.not_found_hint()
         ),
         BuildToolFailure::Failed(message) => message,

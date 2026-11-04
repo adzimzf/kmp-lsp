@@ -294,3 +294,28 @@ fn incomplete_manifest_is_retried_only_after_the_back_off() {
     };
     assert!(!complete.is_due_for_retry(u64::MAX / 2));
 }
+
+#[test]
+fn login_shell_path_is_read_between_markers_only() {
+    let output = format!(
+        "Welcome to zsh!\n{SHELL_PATH_MARKER}/opt/zerobrew/bin:/usr/bin::/bin{SHELL_PATH_MARKER}\nbye"
+    );
+    assert_eq!(
+        parse_shell_path(&output),
+        vec![
+            PathBuf::from("/opt/zerobrew/bin"),
+            PathBuf::from("/usr/bin"),
+            PathBuf::from("/bin"),
+        ]
+    );
+    assert!(parse_shell_path("no markers here").is_empty());
+    assert!(parse_shell_path(&format!("{SHELL_PATH_MARKER}/unterminated")).is_empty());
+}
+
+#[test]
+fn zerobrew_prefix_is_a_known_location() {
+    let directories = search_dirs(&MAVEN_INSTALL);
+    assert!(directories
+        .iter()
+        .any(|directory| directory.ends_with("/opt/zerobrew/bin")));
+}
