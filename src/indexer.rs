@@ -295,6 +295,9 @@ pub(crate) struct Indexer {
     /// These are treated as library sources: available for hover/definition/autocomplete
     /// but excluded from findReferences and rename.
     pub(crate) library_uris: DashSet<String>,
+    /// Whether find-references also searches mounted library sources
+    /// (`indexingOptions.referencesIncludeLibraries`, on by default).
+    pub(crate) references_include_libraries: std::sync::atomic::AtomicBool,
     /// Extracted-on-disk JAR source `file://` URI string → its original
     /// `jar:…!/Foo.kt` sources URI. Populated when go-to-definition extracts a
     /// `*-sources.jar` entry to disk. Lets features map an opened extracted file
@@ -1068,6 +1071,7 @@ impl Indexer {
             workspace_source_roots: RwLock::new(Vec::new()),
             module_dependencies: RwLock::new(HashMap::new()),
             library_uris: DashSet::new(),
+            references_include_libraries: std::sync::atomic::AtomicBool::new(true),
             extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
@@ -1503,6 +1507,11 @@ impl Indexer {
     /// If `uri` is an extracted JAR-source `file://`, return its original
     /// `jar:…!/Foo.kt` sources URI (which is the one indexed with the real package
     /// and symbols). Returns `None` for any other URI.
+    pub(crate) fn references_include_libraries(&self) -> bool {
+        self.references_include_libraries
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub(crate) fn original_jar_source_uri(&self, uri: &Url) -> Option<Url> {
         let jar = self.extracted_jar_sources.get(uri.as_str())?;
         Url::parse(jar.value()).ok()

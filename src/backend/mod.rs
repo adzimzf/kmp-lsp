@@ -15,6 +15,7 @@ pub(crate) mod actions;
 pub(crate) mod capabilities;
 pub(crate) mod commands;
 pub(crate) mod cursor;
+pub(crate) mod dependency_watcher;
 pub(crate) mod format;
 pub(crate) mod git_watcher;
 pub(crate) mod handlers;
@@ -44,6 +45,10 @@ pub(crate) struct Backend {
     /// thread. Coalescing bursts to a single response prevents the popup from
     /// being delayed by a queue of redundant token payloads.
     pub(super) semtok_seq: Arc<dashmap::DashMap<String, u64>>,
+    /// `indexingOptions.dependencySync`, read at `initialize`.
+    dependency_sync_mode: std::sync::Mutex<crate::dependency_sync::SyncMode>,
+    /// Wakes the background dependency sync on build-file changes.
+    dependency_sync: Arc<dependency_watcher::DependencySyncTrigger>,
 }
 
 impl Backend {
@@ -64,6 +69,23 @@ impl Backend {
             snippet_support: Arc::new(AtomicBool::new(false)),
             completion_seq: Arc::new(dashmap::DashMap::new()),
             semtok_seq: Arc::new(dashmap::DashMap::new()),
+            dependency_sync_mode: std::sync::Mutex::new(crate::dependency_sync::SyncMode::default()),
+            dependency_sync: Arc::new(dependency_watcher::DependencySyncTrigger::default()),
+        }
+    }
+}
+
+impl Backend {
+    /// A build file changed: let the dependency sync re-check now rather than
+    /// at its next poll.
+    fn wake_dependency_sync_for(&self, uri: &Url) {
+        let is_build_file = uri
+            .path()
+            .rsplit('/')
+            .next()
+            .is_some_and(crate::dependency_sync::is_build_file_name);
+        if is_build_file {
+            self.dependency_sync.wake();
         }
     }
 }
@@ -134,7 +156,22 @@ impl LanguageServer for Backend {
         // when it changes — branch switches swap many files at once without sending
         // per-file workspace/didChangeWatchedFiles notifications.
         if let Some(root) = self.indexer.workspace_root.get() {
-            git_watcher::spawn_git_head_watcher(root, self.event_tx.clone(), self.client.clone());
+            git_watcher::spawn_git_head_watcher(
+                root.clone(),
+                self.event_tx.clone(),
+                self.client.clone(),
+            );
+            let mode = *self
+                .dependency_sync_mode
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            dependency_watcher::spawn_dependency_sync(
+                root,
+                mode,
+                Arc::clone(&self.dependency_sync),
+                self.event_tx.clone(),
+                self.client.clone(),
+            );
         }
     }
 
@@ -208,6 +245,7 @@ impl LanguageServer for Backend {
     // ── textDocument/didSave ─────────────────────────────────────────────────
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        self.wake_dependency_sync_for(&params.text_document.uri);
         let _ = self
             .event_tx
             .send(Event::FileSaved {
@@ -221,6 +259,7 @@ impl LanguageServer for Backend {
         // This fires after workspace/rename edits are applied to closed files,
         // keeping the in-memory symbol index consistent.
         for change in params.changes {
+            self.wake_dependency_sync_for(&change.uri);
             if change.typ == FileChangeType::DELETED {
                 // Remove from index; definition map cleanup is handled lazily.
                 if self

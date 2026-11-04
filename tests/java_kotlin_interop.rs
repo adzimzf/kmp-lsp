@@ -18,7 +18,7 @@ mod common;
 use std::path::Path;
 
 use common::*;
-use serde_json::{json, Value};
+use serde_json::json;
 
 const FIXTURE_DIR: &str = "tests/fixtures/interop";
 
@@ -189,41 +189,6 @@ impl InteropWorkspace {
             "references of `{token}` in {from} must not include {usage_file}:{} ({usage_needle:?}); got {found:?}",
             unexpected.1
         );
-    }
-}
-
-/// `(uri, start line)` for every location in a definition/references result
-/// (`Location`, `Location[]` or `LocationLink[]`).
-fn locations(result: &Value) -> Vec<(String, u64)> {
-    let items: Vec<&Value> = match result {
-        Value::Array(items) => items.iter().collect(),
-        Value::Null => Vec::new(),
-        single => vec![single],
-    };
-    items
-        .into_iter()
-        .filter_map(|item| {
-            let uri = item["uri"].as_str().or(item["targetUri"].as_str())?;
-            let range = if item["range"].is_object() {
-                &item["range"]
-            } else {
-                &item["targetSelectionRange"]
-            };
-            Some((uri.to_owned(), range["start"]["line"].as_u64()?))
-        })
-        .collect()
-}
-
-fn copy_dir(source: &Path, destination: &Path) {
-    for entry in std::fs::read_dir(source).unwrap() {
-        let entry = entry.unwrap();
-        let target = destination.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            std::fs::create_dir_all(&target).unwrap();
-            copy_dir(&entry.path(), &target);
-        } else {
-            std::fs::copy(entry.path(), target).unwrap();
-        }
     }
 }
 

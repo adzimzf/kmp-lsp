@@ -67,7 +67,8 @@ pub(crate) async fn find_references_with_qualifier(
         }
     }
     resolved_first.append(&mut name_scanned);
-    for location in interop_reference_locations(index, uri, position).await {
+    let extra = beyond_rg_reference_locations(index, uri, position).await;
+    for location in extra {
         if !resolved_first.contains(&location) {
             resolved_first.push(location);
         }
@@ -75,22 +76,45 @@ pub(crate) async fn find_references_with_qualifier(
     resolved_first
 }
 
-/// Usages written in the other JVM language under a different spelling —
-/// Java's `user.getName()` for Kotlin's `val name`, Kotlin's `account.balance`
-/// for Java's `getBalance()`, a call by `@JvmName` (see
-/// [`crate::resolver::jvm_interop`]). Each spelling is searched in that
-/// language's files, and an occurrence counts only when it resolves back to
-/// the declaration.
-async fn interop_reference_locations(
+/// References the workspace `rg` pass can't see:
+///
+/// - usages written under another spelling (Java's `user.getName()` for
+///   Kotlin's `val name`, a call by `@JvmName`, … — see
+///   [`crate::resolver::jvm_interop`]), searched in the workspace;
+/// - usages inside dependency sources (mounted `*-sources.jar` entries),
+///   unless `referencesIncludeLibraries` is off. Those come back as `file://`
+///   copies extracted from the jar, so the editor can open them.
+///
+/// Every occurrence counts only when it resolves back to the declaration.
+async fn beyond_rg_reference_locations(
     index: &Indexer,
     uri: &Url,
     position: Position,
 ) -> Vec<Location> {
-    use crate::resolver::jvm_interop::{language_of, InteropReferenceTarget};
+    use crate::resolver::reference_target::ReferenceTarget;
 
-    let Some(target) = InteropReferenceTarget::at(index, uri, position) else {
+    let Some(target) = ReferenceTarget::at(index, uri, position) else {
         return vec![];
     };
+    let mut found = other_spelling_locations(index, uri, &target).await;
+    if index.references_include_libraries() {
+        let library = target.library_references(index);
+        found.extend(crate::jar_extract::rewrite_jar_locations(index, library));
+    }
+    found
+}
+
+/// Workspace usages of `target` under a spelling other than the word the
+/// `rg` pass searched for.
+async fn other_spelling_locations(
+    index: &Indexer,
+    uri: &Url,
+    target: &crate::resolver::reference_target::ReferenceTarget,
+) -> Vec<Location> {
+    let spellings = target.other_spellings();
+    if spellings.is_empty() {
+        return vec![];
+    }
     let file_path = if index.is_library_uri(uri) {
         None
     } else {
@@ -100,14 +124,13 @@ async fn interop_reference_locations(
     let Some(workspace_root) = workspace_root else {
         return vec![];
     };
-    let aliases = target.aliases.clone();
     let join_result = tokio::task::spawn_blocking(move || {
-        aliases
+        spellings
             .iter()
-            .flat_map(|alias| {
-                crate::rg::rg_word_search(&alias.name, &workspace_root, &source_roots)
+            .flat_map(|spelling| {
+                crate::rg::rg_word_search(&spelling.name, &workspace_root, &source_roots)
                     .into_iter()
-                    .filter(|location| language_of(&location.uri) == alias.language)
+                    .filter(|location| spelling.is_written_in(&location.uri))
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<Location>>()

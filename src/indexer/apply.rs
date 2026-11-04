@@ -33,9 +33,26 @@ use crate::types::{
 };
 use crate::StrExt;
 
-fn classify_source_set(uri: &str, source_paths: &[String]) -> SourceSet {
+/// `Library` for a file under a source path OUTSIDE the workspace root
+/// (`~/.kmp-lsp/sources`, an SDK, a configured library dir). A source path
+/// inside the workspace — a module root from `workspace.json` or the build
+/// layout (`app/src/main/kotlin`) — is the workspace's own code, the same
+/// rule `library_uris` applies; classifying it `Library` hid every file of an
+/// ordinary Gradle/Maven project from the JVM-sources gate and from
+/// importer lookups.
+fn classify_source_set(
+    uri: &str,
+    source_paths: &[String],
+    workspace_root: Option<&std::path::Path>,
+) -> SourceSet {
     for source_path in source_paths {
-        let normalized = to_forward_slash(std::path::Path::new(source_path));
+        let path = std::path::Path::new(source_path);
+        let inside_workspace =
+            !path.is_absolute() || workspace_root.is_some_and(|root| path.starts_with(root));
+        if inside_workspace {
+            continue;
+        }
+        let normalized = to_forward_slash(path);
         if uri.contains(&normalized) {
             return SourceSet::Library;
         }
@@ -516,7 +533,8 @@ impl Indexer {
             .source_paths_raw
             .read()
             .unwrap_or_else(|e| e.into_inner());
-        classify_source_set(uri, &guard)
+        let workspace_root = self.workspace_root.get();
+        classify_source_set(uri, &guard, workspace_root.as_deref())
     }
 
     fn with_classified_source_set(&self, uri: &str, file_data: Arc<FileData>) -> Arc<FileData> {

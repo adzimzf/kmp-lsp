@@ -15,6 +15,10 @@ impl Backend {
         match params.command.as_str() {
             "kmp-lsp/reindex" => self.handle_reindex_command().await,
             "kmp-lsp/clearCache" => self.handle_clear_cache_command(params).await,
+            "kmp-lsp/syncDependencies" => {
+                self.dependency_sync.force();
+                Ok(None)
+            }
             _ => Ok(None),
         }
     }

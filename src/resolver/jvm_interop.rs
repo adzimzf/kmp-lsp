@@ -25,12 +25,13 @@
 
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
+use tower_lsp::lsp_types::{Location, SymbolKind, Url};
 
 use crate::indexer::Indexer;
 use crate::types::{FileData, Language, SymbolEntry, Visibility};
 
 use super::container::range_encloses;
+use super::reference_target::Spelling;
 use super::resolve::ensure_file_data;
 
 /// The Java name of the singleton field a Kotlin `object` compiles to.
@@ -358,95 +359,13 @@ pub(crate) fn resolve_file_facade(
 
 // ─── find-references across the language boundary ─────────────────────────────
 
-/// A spelling of a declaration that only code in `language` uses — what
-/// find-references must also search for to see that language's usages.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct InteropAlias {
-    pub(crate) name: String,
-    pub(crate) language: Language,
-}
-
-/// The declaration(s) a find-references request is about, and the other
-/// language's spellings of them.
-pub(crate) struct InteropReferenceTarget {
-    declarations: Vec<Location>,
-    pub(crate) aliases: Vec<InteropAlias>,
-}
-
-impl InteropReferenceTarget {
-    /// The target under `position`: the declaration itself when the cursor
-    /// is on one, otherwise whatever the usage under the cursor resolves to.
-    /// `None` when nothing resolves or no declaration has a cross-language
-    /// spelling.
-    pub(crate) fn at(indexer: &Indexer, uri: &Url, position: Position) -> Option<Self> {
-        let cursor_word = indexer
-            .word_and_qualifier_at(uri, position)
-            .map(|(word, _)| word)?;
-        let declarations = match declaration_under_cursor(indexer, uri, position) {
-            Some(declaration) => vec![declaration],
-            None => definitions_at(indexer, uri, position, LookupIo::Full),
-        };
-        let mut aliases: Vec<InteropAlias> = Vec::new();
-        for location in &declarations {
-            let Some(declaration) = DeclarationAt::find(indexer, location) else {
-                continue;
-            };
-            let own_name = InteropAlias {
-                name: declaration.symbol().name.clone(),
-                language: language_of(&location.uri),
-            };
-            // Asked from a usage spelled the other way (`getName()` for
-            // `val name`): the declaration's own spelling still needs a search.
-            let spellings = aliases_of(&location.uri, &declaration)
-                .into_iter()
-                .chain((own_name.name != cursor_word).then_some(own_name));
-            for alias in spellings {
-                if !aliases.contains(&alias) {
-                    aliases.push(alias);
-                }
-            }
-        }
-        (!aliases.is_empty()).then_some(InteropReferenceTarget {
-            declarations,
-            aliases,
-        })
-    }
-
-    /// Whether the occurrence at `location` is a usage of this target: it
-    /// goes to one of the target's declarations, exactly as go-to-definition
-    /// from that spot would. The resolver's own interop rules (getter vs.
-    /// setter for a read vs. a write, receiver type, `INSTANCE`, facades)
-    /// are what accept or reject it.
-    pub(crate) fn is_reached_from(&self, indexer: &Indexer, location: &Location) -> bool {
-        let is_declaration = self.declarations.iter().any(|declaration| {
-            declaration.uri == location.uri && declaration.range == location.range
-        });
-        if is_declaration {
-            return false;
-        }
-        definitions_at(
-            indexer,
-            &location.uri,
-            location.range.start,
-            LookupIo::IndexOnly,
-        )
-        .iter()
-        .any(|definition| {
-            self.declarations.iter().any(|declaration| {
-                declaration.uri == definition.uri
-                    && declaration.range.start == definition.range.start
-            })
-        })
-    }
-}
-
 /// The other language's spellings of one declaration — see the module docs.
-fn aliases_of(uri: &Url, declaration: &DeclarationAt) -> Vec<InteropAlias> {
+pub(crate) fn aliases_of(uri: &Url, declaration: &DeclarationAt) -> Vec<Spelling> {
     let symbol = declaration.symbol();
     let lines = &declaration.file.lines;
-    let java_spelling = |name: String| InteropAlias {
+    let java_spelling = |name: String| Spelling {
         name,
-        language: Language::Java,
+        language: Some(Language::Java),
     };
     match language_of(uri) {
         Language::Kotlin => {
@@ -477,64 +396,14 @@ fn aliases_of(uri: &Url, declaration: &DeclarationAt) -> Vec<InteropAlias> {
                 .then(|| kotlin_synthetic_property(&symbol.name))
                 .flatten();
             synthetic_property
-                .map(|(property_name, _)| InteropAlias {
+                .map(|(property_name, _)| Spelling {
                     name: property_name,
-                    language: Language::Kotlin,
+                    language: Some(Language::Kotlin),
                 })
                 .into_iter()
                 .collect()
         }
         Language::Swift => vec![],
-    }
-}
-
-/// The indexed declaration whose name the cursor is on, if any.
-fn declaration_under_cursor(indexer: &Indexer, uri: &Url, position: Position) -> Option<Location> {
-    let file = ensure_file_data(indexer, uri)?;
-    let symbol = file.symbols.iter().find(|symbol| {
-        let range = symbol.selection_range;
-        range.start.line == position.line
-            && range.start.character <= position.character
-            && position.character <= range.end.character
-    })?;
-    Some(Location {
-        uri: uri.clone(),
-        range: symbol.selection_range,
-    })
-}
-
-/// How much work [`definitions_at`] may do.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum LookupIo {
-    /// Go-to-definition's full chain, `rg`/`fd` fallbacks included — for the
-    /// one cursor position a request is about.
-    Full,
-    /// Index only, never a subprocess — for verifying each of possibly
-    /// hundreds of `rg` hits.
-    IndexOnly,
-}
-
-/// Where go-to-definition from `position` lands: the CST-resolved identity
-/// when the CST can type the receiver, otherwise the qualified/bare lookup.
-fn definitions_at(indexer: &Indexer, uri: &Url, position: Position, io: LookupIo) -> Vec<Location> {
-    let index_only = io == LookupIo::IndexOnly;
-    if let Some(symbol) = crate::indexer::classify_cursor(indexer, uri, position) {
-        if let crate::indexer::NavigationSource::CstResolved(definitions) =
-            crate::indexer::resolve_identity_with_io(&symbol, indexer, uri, index_only)
-        {
-            if !definitions.is_empty() {
-                return definitions.0;
-            }
-        }
-    }
-    let Some((word, qualifier)) = indexer.word_and_qualifier_at(uri, position) else {
-        return vec![];
-    };
-    match io {
-        LookupIo::Full => indexer.find_definition_qualified(&word, qualifier.as_deref(), uri),
-        LookupIo::IndexOnly => {
-            indexer.find_definition_qualified_index_only(&word, qualifier.as_deref(), uri)
-        }
     }
 }
 

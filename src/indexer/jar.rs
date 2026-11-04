@@ -333,12 +333,18 @@ fn collect_all_jars(dir: &Path, out: &mut Vec<PathBuf>) {
 ///
 /// `cache_dir` overrides the parse-cache location (pass `None` in production
 /// for `~/.cache/kmp-lsp/`; tests pass an isolated tmpdir).
+///
+/// `project` is the build tool's own dependency list (see
+/// [`crate::dependency_sync`]), when a sync has run: its sources jars are
+/// mounted too (a Maven project's live in `~/.m2`, not the Gradle cache),
+/// and for an artifact it names, its version replaces the newest cached one.
 pub(crate) fn index_sources_jars(
     indexer: &crate::indexer::Indexer,
     gradle_home: Option<&Path>,
     cache_dir: Option<&Path>,
+    project: Option<&crate::dependency_sync::DependencyManifest>,
 ) -> usize {
-    let sources = scan_gradle_sources_jars(gradle_home);
+    let sources = sources_jars_to_mount(scan_gradle_sources_jars(gradle_home), project);
     if sources.is_empty() {
         log::debug!("jar: no sources JARs found in Gradle cache");
         return 0;
@@ -369,6 +375,35 @@ pub(crate) fn index_sources_jars(
     }
 
     total_symbols
+}
+
+/// The cache scan's sources jars, with every artifact the project's own
+/// dependency list names swapped for the version the project resolved.
+fn sources_jars_to_mount(
+    scanned: Vec<PathBuf>,
+    project: Option<&crate::dependency_sync::DependencyManifest>,
+) -> Vec<PathBuf> {
+    let Some(project) = project else {
+        return scanned;
+    };
+    let project_sources = project.sources_jars_by_artifact();
+    let mut mounted: Vec<PathBuf> = scanned
+        .into_iter()
+        .filter(|jar| {
+            let Some(meta) = parse_jar_meta(jar) else {
+                return true;
+            };
+            !project_sources
+                .iter()
+                .any(|(group, artifact, _)| *group == meta.group && *artifact == meta.artifact)
+        })
+        .collect();
+    for (_, _, jar) in project_sources {
+        if !mounted.contains(&jar) {
+            mounted.push(jar);
+        }
+    }
+    mounted
 }
 
 /// Split sources JARs into cache hits (returning ready-to-apply contributions

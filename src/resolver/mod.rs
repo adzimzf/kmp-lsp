@@ -18,6 +18,7 @@ mod package;
 mod package_scope;
 mod platform_types;
 mod qualified;
+pub(crate) mod reference_target;
 pub(crate) use qualified::{resolve_type_path_declarations, split_package_prefix, TypeScope};
 pub(crate) use resolve::ResolveIo;
 pub(crate) mod resolve;

@@ -132,6 +132,15 @@ pub(crate) fn rewrite_jar_definitions(
     }
 }
 
+/// [`rewrite_jar_definitions`] for a plain list of locations (find-references
+/// results that land in library sources).
+pub(crate) fn rewrite_jar_locations(indexer: &Indexer, locations: Vec<Location>) -> Vec<Location> {
+    locations
+        .into_iter()
+        .map(|location| rewrite_location(indexer, location))
+        .collect()
+}
+
 fn rewrite_location(indexer: &Indexer, location: Location) -> Location {
     match rewrite_jar_uri(indexer, &location.uri) {
         Some(file_uri) => Location {
