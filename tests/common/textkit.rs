@@ -115,3 +115,46 @@ fn write_zip(destination: &Path, entries: &[(String, Vec<u8>)]) {
     }
     zip.finish().unwrap();
 }
+
+// ── `greeter`: a library published WITHOUT a sources jar ─────────────────────
+
+pub const GREETER_ARTIFACT: &str = "greeter";
+
+/// Compile the `greeter` fixture library with `javac` and publish only its
+/// classes (`greeter-1.0.0.jar` + POM, no sources jar) to the Maven
+/// repository at `repository_root`. `false` when `javac` isn't available.
+pub fn publish_compiled_greeter(repository_root: &Path) -> bool {
+    let classes = tempfile::tempdir().unwrap();
+    let source = fixture_dir().join("greeter/src/main/java/com/acme/greeter/Greeter.java");
+    let compiled = std::process::Command::new("javac")
+        .arg("-d")
+        .arg(classes.path())
+        .arg(&source)
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if !compiled {
+        eprintln!("skipping: `javac` is not available to compile the greeter fixture");
+        return false;
+    }
+    let mut entries = vec![(
+        "META-INF/MANIFEST.MF".to_owned(),
+        b"Manifest-Version: 1.0\r\n\r\n".to_vec(),
+    )];
+    collect_files(classes.path(), classes.path(), &mut entries);
+    let directory = repository_root
+        .join(GROUP.replace('.', "/"))
+        .join(GREETER_ARTIFACT)
+        .join(VERSION);
+    std::fs::create_dir_all(&directory).unwrap();
+    let base = format!("{GREETER_ARTIFACT}-{VERSION}");
+    write_zip(&directory.join(format!("{base}.jar")), &entries);
+    std::fs::write(
+        directory.join(format!("{base}.pom")),
+        pom().replace(
+            &format!("<artifactId>{ARTIFACT}</artifactId>"),
+            &format!("<artifactId>{GREETER_ARTIFACT}</artifactId>"),
+        ),
+    )
+    .unwrap();
+    true
+}

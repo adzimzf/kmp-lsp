@@ -11773,3 +11773,23 @@ fn java_facade_class_resolves_to_kotlin_file_in_imported_package() {
     assert_eq!(locs.len(), 1, "{locs:?}");
     assert_eq!(locs[0].uri, uris[0]);
 }
+
+#[test]
+fn decompiled_kotlin_object_access_through_instance_resolves() {
+    // Vineflower writes `Normalizer.INSTANCE.normalize(…)` in the Kotlin it
+    // decompiles; resolving it lets find-references see such calls.
+    let (idx, uris) = index_interop_files(&[
+        (
+            "/Normalizer.kt",
+            "package com.pkg\nobject Normalizer {\n    fun normalize(text: String): String = text\n}\n",
+        ),
+        (
+            "/Slugger.kt",
+            "package com.pkg\nclass Slugger {\n    fun slug(title: String) = Normalizer.INSTANCE.normalize(title)\n}\n",
+        ),
+    ]);
+    let locs = resolve_symbol(&idx, "normalize", Some("Normalizer.INSTANCE"), &uris[1]);
+    assert_eq!(locs.len(), 1, "{locs:?}");
+    assert_eq!(locs[0].uri, uris[0]);
+    assert_eq!(locs[0].range.start.line, 2);
+}

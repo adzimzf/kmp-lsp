@@ -91,6 +91,8 @@ fn serve_directory(root: PathBuf) -> String {
     format!("http://{address}/")
 }
 
+const WELCOME_KT: &str = "src/main/kotlin/com/acme/app/Welcome.kt";
+
 struct SyncWorkspace {
     _dir: tempfile::TempDir,
     base: PathBuf,
@@ -102,11 +104,18 @@ impl SyncWorkspace {
     /// The `app` fixture plus `build_files`, with an isolated Gradle home,
     /// Maven repository and cache dir.
     fn new(build_files: &[(&str, String)]) -> Self {
+        Self::from_fixture("app", build_files)
+    }
+
+    /// `fixture` (a directory under `tests/fixtures/library-refs`) plus
+    /// `build_files`, with an isolated Gradle home, Maven repository and
+    /// cache dir.
+    fn from_fixture(fixture: &str, build_files: &[(&str, String)]) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let base = canonical_root(dir.path());
         let root = base.join("app");
         std::fs::create_dir_all(&root).unwrap();
-        copy_dir(&textkit::fixture_dir().join("app"), &root);
+        copy_dir(&textkit::fixture_dir().join(fixture), &root);
         write(&root, "workspace.json", r#"{"sourcePaths":[]}"#);
         for (name, content) in build_files {
             write(&root, name, content);
@@ -358,5 +367,179 @@ fn dependency_sync_off_never_runs_the_build_tool() {
     assert!(
         !workspace.gradle_cache().exists(),
         "the build tool must not have run"
+    );
+}
+
+// ── libraries published without sources: decompiled ─────────────────────────
+
+fn file_text_line(uri: &str, line: u64) -> String {
+    let path = tower_lsp::lsp_types::Url::parse(uri)
+        .unwrap()
+        .to_file_path()
+        .unwrap_or_else(|_| panic!("{uri} must be a file:// location an editor can open"));
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .nth(line as usize)
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// `(line, column)` of `greet` in `greeter.greet(name)` in `Welcome.kt`.
+fn greet_call(workspace: &SyncWorkspace) -> (u64, u64) {
+    let text = std::fs::read_to_string(workspace.root.join(WELCOME_KT)).unwrap();
+    let (line_index, line) = text
+        .lines()
+        .enumerate()
+        .find(|(_, line)| line.contains("greeter.greet(name)"))
+        .unwrap();
+    (line_index as u64, line.find("greet(").unwrap() as u64)
+}
+
+/// Go-to-definition from `greeter.greet(name)` must open the DECOMPILED
+/// `Greeter.java` (real code, not a signature stub) at `greet`, and
+/// find-references must include the call inside the library's own
+/// `greetAll`.
+fn assert_decompiled_library_is_navigable(workspace: &SyncWorkspace, client: &mut LspClient) {
+    let uri = file_uri(&workspace.root, WELCOME_KT);
+    let text = std::fs::read_to_string(workspace.root.join(WELCOME_KT)).unwrap();
+    client.open_file(&uri, "kotlin", &text);
+    let at = greet_call(workspace);
+
+    let deadline = Instant::now() + LIBRARY_READY_TIMEOUT;
+    let definition = loop {
+        let found = definition(client, &uri, at);
+        if found.iter().any(|(uri, _)| uri.ends_with("/Greeter.java")) || Instant::now() > deadline
+        {
+            break found;
+        }
+        std::thread::sleep(Duration::from_millis(300));
+    };
+    let (greeter_uri, line) = definition
+        .iter()
+        .find(|(uri, _)| uri.ends_with("/Greeter.java"))
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!("definition must open the decompiled Greeter.java: {definition:?}")
+        });
+    let declaration = file_text_line(&greeter_uri, line);
+    assert!(
+        declaration.contains("public String greet("),
+        "must land on the decompiled declaration, got {declaration:?}"
+    );
+
+    let response = client.request(
+        "textDocument/references",
+        json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": at.0, "character": at.1},
+            "context": {"includeDeclaration": false},
+        }),
+    );
+    let references = locations(&response["result"]);
+    let inside_library: Vec<String> = references
+        .iter()
+        .filter(|(uri, _)| uri.ends_with("/Greeter.java"))
+        .map(|(uri, line)| file_text_line(uri, *line))
+        .collect();
+    assert!(
+        inside_library.iter().any(|line| line.contains("greet(")),
+        "references must include greetAll's call inside the decompiled library: {references:?}"
+    );
+}
+
+#[test]
+fn maven_sync_decompiles_a_library_published_without_sources() {
+    if !tool_available("mvn") {
+        return;
+    }
+    let repository = tempfile::tempdir().unwrap();
+    if !textkit::publish_compiled_greeter(repository.path()) {
+        return;
+    }
+    let repository_url = tower_lsp::lsp_types::Url::from_directory_path(repository.path())
+        .unwrap()
+        .to_string();
+    let pom = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <project xmlns=\"http://maven.apache.org/POM/4.0.0\">\n\
+         <modelVersion>4.0.0</modelVersion>\n\
+         <groupId>com.acme</groupId><artifactId>app</artifactId><version>1.0.0</version>\n\
+         <repositories><repository><id>greeter-fixture</id><url>{repository_url}</url></repository></repositories>\n\
+         <dependencies><dependency><groupId>com.acme</groupId><artifactId>greeter</artifactId><version>1.0.0</version></dependency></dependencies>\n\
+         </project>\n"
+    );
+    let workspace = SyncWorkspace::from_fixture("greeter-app", &[("pom.xml", pom)]);
+    let mut client = workspace.start(Value::Null);
+    assert!(
+        client.wait_for_progress(SYNC_TOKEN, "end", 1, SYNC_TIMEOUT),
+        "Maven dependency sync never finished"
+    );
+    assert_decompiled_library_is_navigable(&workspace, &mut client);
+}
+
+#[test]
+fn gradle_sync_decompiles_a_library_published_without_sources() {
+    if !tool_available("gradle") {
+        return;
+    }
+    let repository = tempfile::tempdir().unwrap();
+    if !textkit::publish_compiled_greeter(repository.path()) {
+        return;
+    }
+    let repository_url = serve_directory(repository.path().to_path_buf());
+    let build = format!(
+        "plugins {{ `java-library` }}\n\
+         repositories {{\n    maven {{\n        url = uri(\"{repository_url}\")\n        isAllowInsecureProtocol = true\n    }}\n    mavenCentral()\n}}\n\
+         dependencies {{ implementation(\"com.acme:greeter:1.0.0\") }}\n"
+    );
+    let workspace = SyncWorkspace::from_fixture(
+        "greeter-app",
+        &[
+            (
+                "settings.gradle.kts",
+                "rootProject.name = \"app\"\n".to_owned(),
+            ),
+            ("build.gradle.kts", build),
+        ],
+    );
+    let mut client = workspace.start(Value::Null);
+    assert!(
+        client.wait_for_progress(SYNC_TOKEN, "end", 1, SYNC_TIMEOUT),
+        "Gradle dependency sync never finished"
+    );
+    assert_decompiled_library_is_navigable(&workspace, &mut client);
+}
+
+#[test]
+fn decompile_libraries_off_leaves_libraries_without_sources_alone() {
+    if !tool_available("mvn") {
+        return;
+    }
+    let repository = tempfile::tempdir().unwrap();
+    if !textkit::publish_compiled_greeter(repository.path()) {
+        return;
+    }
+    let repository_url = tower_lsp::lsp_types::Url::from_directory_path(repository.path())
+        .unwrap()
+        .to_string();
+    let pom = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion>\n\
+         <groupId>com.acme</groupId><artifactId>app</artifactId><version>1.0.0</version>\n\
+         <repositories><repository><id>greeter-fixture</id><url>{repository_url}</url></repository></repositories>\n\
+         <dependencies><dependency><groupId>com.acme</groupId><artifactId>greeter</artifactId><version>1.0.0</version></dependency></dependencies>\n\
+         </project>\n"
+    );
+    let workspace = SyncWorkspace::from_fixture("greeter-app", &[("pom.xml", pom)]);
+    let mut client = workspace.start(json!({"indexingOptions": {"decompileLibraries": false}}));
+    assert!(
+        client.wait_for_progress(SYNC_TOKEN, "end", 1, SYNC_TIMEOUT),
+        "Maven dependency sync never finished"
+    );
+    let decompiled = workspace.base.join("xdg-cache/kmp-lsp/decompiled");
+    assert!(
+        !decompiled.exists() || std::fs::read_dir(&decompiled).unwrap().next().is_none(),
+        "decompileLibraries=false must not decompile anything"
     );
 }

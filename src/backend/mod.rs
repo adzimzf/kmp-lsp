@@ -47,6 +47,8 @@ pub(crate) struct Backend {
     pub(super) semtok_seq: Arc<dashmap::DashMap<String, u64>>,
     /// `indexingOptions.dependencySync`, read at `initialize`.
     dependency_sync_mode: std::sync::Mutex<crate::dependency_sync::SyncMode>,
+    /// `indexingOptions.decompileLibraries`, read at `initialize`.
+    decompile_libraries: AtomicBool,
     /// The workspace root `initialize` resolved. The actor applies it to
     /// `indexer.workspace_root` asynchronously, so `initialized` can run
     /// before that has happened.
@@ -74,6 +76,7 @@ impl Backend {
             completion_seq: Arc::new(dashmap::DashMap::new()),
             semtok_seq: Arc::new(dashmap::DashMap::new()),
             dependency_sync_mode: std::sync::Mutex::new(crate::dependency_sync::SyncMode::default()),
+            decompile_libraries: AtomicBool::new(true),
             initialize_root: std::sync::Mutex::new(None),
             dependency_sync: Arc::new(dependency_watcher::DependencySyncTrigger::default()),
         }
@@ -180,9 +183,13 @@ impl LanguageServer for Backend {
                 .dependency_sync_mode
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let options = crate::dependency_sync::SyncOptions {
+                decompile: self.decompile_libraries.load(Ordering::Relaxed),
+            };
             dependency_watcher::spawn_dependency_sync(
                 root,
                 mode,
+                options,
                 Arc::clone(&self.dependency_sync),
                 self.event_tx.clone(),
                 self.client.clone(),

@@ -25,6 +25,9 @@ enum GradleOutputLine {
         #[serde(rename = "incompleteSources")]
         incomplete_sources: bool,
     },
+    Decompiler {
+        decompiler: PathBuf,
+    },
 }
 
 /// Run the init script's task in `root` with `launcher` (`./gradlew` or
@@ -34,6 +37,7 @@ pub(crate) fn resolve(
     launcher: &Path,
     work_dir: &Path,
     output_file: &Path,
+    decompiler: Option<&str>,
 ) -> Result<Resolved, BuildToolFailure> {
     let script = work_dir.join(INIT_SCRIPT_FILE);
     std::fs::write(&script, INIT_SCRIPT)
@@ -48,8 +52,11 @@ pub(crate) fn resolve(
         // configuration cache rejects; the project's own setting must not
         // make the sync fail.
         .arg("--no-configuration-cache")
-        .arg(format!("-DkmpLsp.output={}", output_file.display()))
-        .arg(TASK);
+        .arg(format!("-DkmpLsp.output={}", output_file.display()));
+    if let Some(coordinate) = decompiler {
+        command.arg(format!("-DkmpLsp.decompiler={coordinate}"));
+    }
+    command.arg(TASK);
     run_build_tool(command, &format!("`{} {TASK}`", launcher.display()))?;
     let text = std::fs::read_to_string(output_file)
         .map_err(|error| format!("Gradle wrote no dependency list: {error}"))?;
@@ -69,9 +76,13 @@ pub(crate) fn parse_output(text: &str) -> Resolved {
                 coordinate,
                 jar,
                 sources,
+                decompiled: None,
             }),
             Ok(GradleOutputLine::Status { incomplete_sources }) => {
                 resolved.incomplete_sources |= incomplete_sources;
+            }
+            Ok(GradleOutputLine::Decompiler { decompiler }) => {
+                resolved.decompiler = Some(decompiler);
             }
             Err(_) => {}
         }

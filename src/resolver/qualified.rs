@@ -143,10 +143,45 @@ pub(super) fn resolve_qualified_in_type_scope(
     io: ResolveIo,
 ) -> Vec<Location> {
     let caller = jvm_interop::language_of(from_uri);
-    let qualifier = match caller {
-        Language::Java => java_singleton_receiver(qualifier),
-        _ => qualifier,
-    };
+    match caller {
+        Language::Java => resolve_qualified_spelled(
+            indexer,
+            name,
+            java_singleton_receiver(qualifier),
+            type_scope,
+            from_uri,
+            io,
+            caller,
+        ),
+        // Kotlin source never needs `Registry.INSTANCE`, but DECOMPILED
+        // Kotlin (a library without sources, see `dependency_sync::decompile`)
+        // spells every object access that way. A real `INSTANCE` member
+        // still wins.
+        _ => {
+            let direct = resolve_qualified_spelled(
+                indexer, name, qualifier, type_scope, from_uri, io, caller,
+            );
+            let singleton = java_singleton_receiver(qualifier);
+            if direct.is_empty() && singleton != qualifier {
+                return resolve_qualified_spelled(
+                    indexer, name, singleton, type_scope, from_uri, io, caller,
+                );
+            }
+            direct
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_qualified_spelled(
+    indexer: &Indexer,
+    name: &str,
+    qualifier: &str,
+    type_scope: &TypeScope<'_>,
+    from_uri: &Url,
+    io: ResolveIo,
+    caller: Language,
+) -> Vec<Location> {
     let parsed = parse_qualifier(qualifier);
 
     // ── Keyword roots ────────────────────────────────────────────────────────

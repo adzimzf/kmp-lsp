@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Features
+
+- **Decompiled sources for libraries without a sources jar** — like IntelliJ's Fernflower view, a dependency that publishes no `-sources.jar` (common for internal artifacts) is decompiled with [Vineflower](https://github.com/Vineflower/vineflower) after a dependency sync: Kotlin classes back into Kotlin, Java into Java. The decompiler is fetched through the project's own build tool (Gradle resolves it in the sync's init script, Maven with `dependency:copy`), so mirrors and credentials apply, and runs on the user's `java` (`$JAVA_HOME`, the login shell's, or `PATH`). Each library is decompiled once per jar version into a cached `…-decompiled-sources.jar` that is mounted like any sources jar — go-to-definition, hover and find-references then work on real code instead of the signature stub. Decompiled Kotlin's `Object.INSTANCE.member` spelling resolves too. `indexingOptions.decompileLibraries: false` turns it off. Covered by `tests/dependency_sync.rs` (Maven and Gradle, a `javac`-compiled library published without sources).
+
 ### Fixes
 
 - **Go-to-definition into a compiled-only JAR opens something** — a library that publishes no sources jar (common for internal artifacts) resolved to a bare `jar:file://…/x.jar` location no editor can open ("no language server provides the contents of jar:…"). Such a location now opens a read-only `.kt` stub of the signatures the sidecar read from the classes, with each symbol on its own line (`fun connect(timeout: Long): Session    // travel.core.Client`) and the cursor on its name. When the same lookup also finds real source, the compiled-only match is dropped.

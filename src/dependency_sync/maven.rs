@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use super::{launch, run_build_tool, BuildToolFailure, Resolved, ResolvedDependency};
 
 /// Pinned so the output format below never shifts under us.
-const DEPENDENCY_PLUGIN: &str = "org.apache.maven.plugins:maven-dependency-plugin:3.8.1";
+pub(super) const DEPENDENCY_PLUGIN: &str = "org.apache.maven.plugins:maven-dependency-plugin:3.8.1";
 
 pub(crate) fn resolve(
     root: &Path,
@@ -39,6 +39,7 @@ pub(crate) fn resolve(
     Ok(Resolved {
         dependencies: parse_output(&text),
         incomplete_sources: false,
+        decompiler: None,
     })
 }
 
@@ -72,6 +73,7 @@ pub(crate) fn parse_output(text: &str) -> Vec<ResolvedDependency> {
                 coordinate,
                 jar: None,
                 sources: None,
+                decompiled: None,
             });
         if file_name.ends_with("-sources.jar") {
             entry.sources = Some(path);

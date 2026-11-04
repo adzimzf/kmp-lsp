@@ -343,7 +343,7 @@ fn stub_lines(file_data: &crate::types::FileData, packages: &[String]) -> Vec<St
 }
 
 /// `(path, mtime, size)` hash — a new jar version gets a new stub.
-fn jar_fingerprint(jar_path: &Path) -> Option<u64> {
+pub(crate) fn jar_fingerprint(jar_path: &Path) -> Option<u64> {
     let metadata = std::fs::metadata(jar_path).ok()?;
     let mtime_secs = metadata
         .modified()

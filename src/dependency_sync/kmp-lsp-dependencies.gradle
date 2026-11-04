@@ -11,7 +11,11 @@
 //
 // followed by one {"incompleteSources":true} line when some sources jar
 // failed to download for a reason other than "not published" (network,
-// rate limiting, auth), so the caller knows to retry later.
+// rate limiting, auth), so the caller knows to retry later, and — when the
+// `kmpLsp.decompiler` property names a coordinate and some dependency has no
+// sources jar — one {"decompiler":"/abs/decompiler.jar"} line: the
+// decompiler resolved through the project's own repositories (mirrors,
+// credentials and all). A decompiler that can't be resolved is only logged.
 //
 // Groovy DSL and only long-stable public APIs, so it runs on Gradle 6.x–8.x.
 
@@ -97,6 +101,20 @@ rootProject {
                 }
             }
 
+            def decompilerCoordinate = System.getProperty("kmpLsp.decompiler")
+            def anyWithoutSources = byCoordinate.keySet().any { !sourcesByCoordinate.containsKey(it) }
+            def decompilerPath = null
+            if (decompilerCoordinate != null && anyWithoutSources) {
+                try {
+                    def detached = rootProject.configurations.detachedConfiguration(
+                        rootProject.dependencies.create(decompilerCoordinate))
+                    detached.transitive = false
+                    decompilerPath = detached.singleFile.absolutePath
+                } catch (Exception failure) {
+                    rootProject.logger.warn("kmp-lsp: cannot resolve the decompiler ${decompilerCoordinate}: ${failure.message}")
+                }
+            }
+
             new File(outputPath).withWriter("UTF-8") { writer ->
                 byCoordinate.each { coordinate, entry ->
                     writer.println(groovy.json.JsonOutput.toJson([
@@ -107,6 +125,9 @@ rootProject {
                 }
                 if (incompleteSources) {
                     writer.println(groovy.json.JsonOutput.toJson([incompleteSources: true]))
+                }
+                if (decompilerPath != null) {
+                    writer.println(groovy.json.JsonOutput.toJson([decompiler: decompilerPath]))
                 }
             }
         }

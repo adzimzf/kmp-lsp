@@ -18,6 +18,7 @@
 //! (`index_sources_jars`, `index_compiled_jars_phase`); the backend's
 //! watcher (`backend::dependency_watcher`) re-syncs when build files change.
 
+pub(crate) mod decompile;
 pub(crate) mod gradle;
 pub(crate) mod maven;
 
@@ -31,11 +32,11 @@ use sha2::{Digest, Sha256};
 
 /// Bumped whenever the way dependencies are resolved changes, so manifests
 /// written by an older kmp-lsp are re-synced instead of trusted.
-const MANIFEST_FORMAT: u32 = 1;
+const MANIFEST_FORMAT: u32 = 2;
 
 /// A build-tool run that takes longer than this is killed; the sync counts
 /// as failed and is retried only after the build files change.
-const SYNC_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+pub(super) const SYNC_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 /// How long a manifest with failed sources downloads is trusted before the
 /// sync runs again.
@@ -153,13 +154,13 @@ fn wrapper(root: &Path, name: &str) -> Option<PathBuf> {
 /// Where a build tool is installed when it isn't on the language server's
 /// `PATH` — an editor launched from a desktop/Dock often doesn't get the
 /// `PATH` a shell profile (`.zshrc`, SDKMAN, Homebrew) sets up.
-struct InstallLocations {
+pub(super) struct InstallLocations {
     /// Environment variables naming the tool's home (`$VAR/bin`).
-    home_variables: &'static [&'static str],
+    pub(super) home_variables: &'static [&'static str],
     /// The tool's SDKMAN candidate name (`~/.sdkman/candidates/<name>/current/bin`).
-    sdkman_candidate: &'static str,
+    pub(super) sdkman_candidate: &'static str,
     /// Tool-specific install directories.
-    directories: &'static [&'static str],
+    pub(super) directories: &'static [&'static str],
 }
 
 const MAVEN_INSTALL: InstallLocations = InstallLocations {
@@ -184,7 +185,7 @@ const COMMON_BIN_DIRECTORIES: &[&str] = &[
 ];
 
 /// `PATH` first, then the tool's usual install locations.
-fn search_dirs(install: &InstallLocations) -> Vec<PathBuf> {
+pub(super) fn search_dirs(install: &InstallLocations) -> Vec<PathBuf> {
     let mut directories: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|path| std::env::split_paths(&path).collect())
         .unwrap_or_default();
@@ -220,7 +221,7 @@ pub(crate) struct LoginShellEnvironment {
 
 /// Asked once (only when needed); empty on Windows, without `$SHELL`, or
 /// when the shell doesn't answer in time.
-fn login_shell_environment() -> &'static LoginShellEnvironment {
+pub(super) fn login_shell_environment() -> &'static LoginShellEnvironment {
     static LOGIN_SHELL: std::sync::OnceLock<LoginShellEnvironment> = std::sync::OnceLock::new();
     LOGIN_SHELL.get_or_init(|| {
         let environment = query_login_shell().unwrap_or_default();
@@ -233,7 +234,7 @@ fn login_shell_environment() -> &'static LoginShellEnvironment {
     })
 }
 
-fn login_shell_path() -> &'static [PathBuf] {
+pub(super) fn login_shell_path() -> &'static [PathBuf] {
     &login_shell_environment().path
 }
 
@@ -324,7 +325,7 @@ fn apply_build_tool_environment(command: &mut Command, launcher: &Path) {
 
 /// The first executable called `name` (`name.cmd`/`.bat`/`.exe` on
 /// Windows) in `directories`.
-fn installed_tool(name: &str, directories: &[PathBuf]) -> Option<PathBuf> {
+pub(super) fn installed_tool(name: &str, directories: &[PathBuf]) -> Option<PathBuf> {
     let file_names: Vec<String> = if cfg!(windows) {
         ["cmd", "bat", "exe"]
             .iter()
@@ -357,7 +358,7 @@ fn is_executable(path: &Path) -> bool {
 
 /// A command running `launcher`. A Unix wrapper script runs through `sh`, so
 /// a checkout that lost the executable bit still works.
-fn launch(launcher: &Path) -> Command {
+pub(super) fn launch(launcher: &Path) -> Command {
     let is_wrapper_script = !cfg!(windows) && launcher.is_file();
     let mut command = if is_wrapper_script {
         let mut command = Command::new("sh");
@@ -378,6 +379,10 @@ pub(crate) struct ResolvedDependency {
     pub(crate) coordinate: String,
     pub(crate) jar: Option<PathBuf>,
     pub(crate) sources: Option<PathBuf>,
+    /// The library publishes no sources jar: its classes decompiled into a
+    /// cached sources jar (see [`decompile`]).
+    #[serde(default)]
+    pub(crate) decompiled: Option<PathBuf>,
 }
 
 /// A build tool's answer: the dependencies, and whether some sources jar
@@ -386,6 +391,8 @@ pub(crate) struct ResolvedDependency {
 pub(crate) struct Resolved {
     pub(crate) dependencies: Vec<ResolvedDependency>,
     pub(crate) incomplete_sources: bool,
+    /// The decompiler jar, when the build tool resolved it in the same run.
+    pub(crate) decompiler: Option<PathBuf>,
 }
 
 /// What the last successful sync resolved, and for which build files.
@@ -421,7 +428,11 @@ impl DependencyManifest {
         self.dependencies
             .iter()
             .filter_map(|dependency| {
-                let sources = dependency.sources.clone().filter(|path| path.is_file())?;
+                let sources = dependency
+                    .sources
+                    .clone()
+                    .filter(|path| path.is_file())
+                    .or_else(|| dependency.decompiled.clone().filter(|path| path.is_file()))?;
                 let mut parts = dependency.coordinate.split(':');
                 let group = parts.next()?.to_owned();
                 let artifact = parts.next()?.to_owned();
@@ -450,6 +461,27 @@ fn existing(paths: impl Iterator<Item = PathBuf>) -> Vec<PathBuf> {
     found
 }
 
+/// How a sync treats libraries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SyncOptions {
+    /// Decompile libraries that publish no sources jar
+    /// (`indexingOptions.decompileLibraries`).
+    pub(crate) decompile: bool,
+}
+
+impl Default for SyncOptions {
+    fn default() -> Self {
+        SyncOptions { decompile: true }
+    }
+}
+
+/// [`build_fingerprint`] plus the options that change what a sync produces,
+/// so toggling one re-syncs.
+pub(crate) fn sync_fingerprint(root: &Path, options: SyncOptions) -> Option<String> {
+    let files = build_fingerprint(root)?;
+    Some(format!("{files}:decompile={}", options.decompile))
+}
+
 /// What one [`sync`] call did.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum SyncOutcome {
@@ -458,7 +490,11 @@ pub(crate) enum SyncOutcome {
     /// The saved manifest already matches the build files.
     UpToDate,
     /// The build tool ran; a new manifest is saved.
-    Synced { dependencies: usize, sources: usize },
+    Synced {
+        dependencies: usize,
+        sources: usize,
+        decompiled: usize,
+    },
     /// The build tool failed or couldn't be started; the message says why.
     Failed(String),
 }
@@ -591,11 +627,11 @@ fn unix_now() -> u64 {
 /// Run the build tool when the saved manifest doesn't match the build files
 /// (or `force` is set), and save the new manifest. Blocking — call from a
 /// blocking task.
-pub(crate) fn sync(root: &Path, force: bool) -> SyncOutcome {
+pub(crate) fn sync(root: &Path, force: bool, options: SyncOptions) -> SyncOutcome {
     let Some(tool) = BuildTool::detect(root) else {
         return SyncOutcome::NoBuildTool;
     };
-    let Some(fingerprint) = build_fingerprint(root) else {
+    let Some(fingerprint) = sync_fingerprint(root, options) else {
         return SyncOutcome::NoBuildTool;
     };
     if !force && manifest_matches(root, &fingerprint) {
@@ -609,7 +645,12 @@ pub(crate) fn sync(root: &Path, force: bool) -> SyncOutcome {
     let output_file = manifest_path(root).with_extension("output");
     let _ = std::fs::remove_file(&output_file);
     let resolved = match &tool {
-        BuildTool::Gradle { launcher } => gradle::resolve(root, launcher, &work_dir, &output_file),
+        BuildTool::Gradle { launcher } => {
+            // Resolve the decompiler in the same run, unless it's cached.
+            let decompiler = (options.decompile && decompile::cached_decompiler().is_none())
+                .then_some(decompile::DECOMPILER_COORDINATE);
+            gradle::resolve(root, launcher, &work_dir, &output_file, decompiler)
+        }
         BuildTool::Maven { launcher } => maven::resolve(root, launcher, &output_file),
     };
     let resolved = resolved.map_err(|failure| match failure {
@@ -622,10 +663,13 @@ pub(crate) fn sync(root: &Path, force: bool) -> SyncOutcome {
         BuildToolFailure::Failed(message) => message,
     });
     let _ = std::fs::remove_file(&output_file);
-    let resolved = match resolved {
+    let mut resolved = match resolved {
         Ok(resolved) => resolved,
         Err(message) => return SyncOutcome::Failed(message),
     };
+    if options.decompile {
+        decompile_libraries_without_sources(root, &tool, &mut resolved);
+    }
     let manifest = DependencyManifest {
         format: MANIFEST_FORMAT,
         fingerprint,
@@ -640,7 +684,51 @@ pub(crate) fn sync(root: &Path, force: bool) -> SyncOutcome {
     SyncOutcome::Synced {
         dependencies: manifest.dependencies.len(),
         sources: manifest.sources_jars().len(),
+        decompiled: manifest
+            .dependencies
+            .iter()
+            .filter(|dependency| dependency.decompiled.is_some())
+            .count(),
     }
+}
+
+/// Decompile the dependencies that have no sources jar (see [`decompile`]).
+/// Any missing piece — no such dependency, no decompiler, no `java` — is
+/// logged and leaves those libraries with their signature stubs.
+fn decompile_libraries_without_sources(root: &Path, tool: &BuildTool, resolved: &mut Resolved) {
+    let any_without_sources = resolved
+        .dependencies
+        .iter()
+        .any(|dependency| dependency.sources.is_none() && dependency.jar.is_some());
+    if !any_without_sources {
+        return;
+    }
+    let decompiler = decompile::cached_decompiler()
+        .or_else(|| {
+            resolved
+                .decompiler
+                .as_deref()
+                .and_then(decompile::remember_decompiler)
+        })
+        .map(Ok)
+        .unwrap_or_else(|| match tool {
+            BuildTool::Maven { launcher } => decompile::fetch_decompiler_with_maven(root, launcher),
+            BuildTool::Gradle { .. } => Err(
+                "Gradle couldn't resolve the decompiler from the project's repositories".to_owned(),
+            ),
+        });
+    let decompiler = match decompiler {
+        Ok(decompiler) => decompiler,
+        Err(message) => {
+            log::warn!("dependency sync: not decompiling libraries without sources: {message}");
+            return;
+        }
+    };
+    let Some(java) = decompile::java_executable() else {
+        log::warn!("dependency sync: not decompiling libraries without sources: no `java` found");
+        return;
+    };
+    decompile::decompile_missing_sources(&mut resolved.dependencies, &java, &decompiler);
 }
 
 /// Run `command` to completion within [`SYNC_TIMEOUT`]. On failure, the
@@ -656,13 +744,31 @@ pub(crate) enum BuildToolFailure {
     Failed(String),
 }
 
+impl BuildToolFailure {
+    pub(crate) fn message(self) -> String {
+        match self {
+            BuildToolFailure::NotFound(program) => format!("`{program}` not found"),
+            BuildToolFailure::Failed(message) => message,
+        }
+    }
+}
+
 impl From<String> for BuildToolFailure {
     fn from(message: String) -> Self {
         BuildToolFailure::Failed(message)
     }
 }
 
-fn run_build_tool(mut command: Command, description: &str) -> Result<(), BuildToolFailure> {
+fn run_build_tool(command: Command, description: &str) -> Result<(), BuildToolFailure> {
+    run_tool(command, description, SYNC_TIMEOUT)
+}
+
+/// Run `command` to completion within `timeout`, capturing what it prints.
+fn run_tool(
+    mut command: Command,
+    description: &str,
+    timeout: Duration,
+) -> Result<(), BuildToolFailure> {
     // Both streams: Maven reports its `[ERROR]`s on stdout, Gradle and the
     // launcher scripts ("JAVA_HOME is not set") on stderr.
     command
@@ -679,7 +785,7 @@ fn run_build_tool(mut command: Command, description: &str) -> Result<(), BuildTo
     })?;
     let stdout_reader = read_to_end_in_background(child.stdout.take());
     let stderr_reader = read_to_end_in_background(child.stderr.take());
-    let deadline = Instant::now() + SYNC_TIMEOUT;
+    let deadline = Instant::now() + timeout;
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
@@ -687,7 +793,7 @@ fn run_build_tool(mut command: Command, description: &str) -> Result<(), BuildTo
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(BuildToolFailure::Failed(format!(
-                    "{description} timed out after {SYNC_TIMEOUT:?}"
+                    "{description} timed out after {timeout:?}"
                 )));
             }
             Ok(None) => std::thread::sleep(Duration::from_millis(200)),

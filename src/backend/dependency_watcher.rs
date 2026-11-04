@@ -20,7 +20,7 @@ use tokio::sync::{mpsc, Notify};
 use tower_lsp::lsp_types::{MessageType, NumberOrString};
 use tower_lsp::Client;
 
-use crate::dependency_sync::{SyncMode, SyncOutcome};
+use crate::dependency_sync::{SyncMode, SyncOptions, SyncOutcome};
 use crate::indexer::ProgressReporter;
 use crate::workspace::Event;
 
@@ -57,6 +57,7 @@ impl DependencySyncTrigger {
 pub(super) fn spawn_dependency_sync(
     root: PathBuf,
     mode: SyncMode,
+    options: SyncOptions,
     trigger: Arc<DependencySyncTrigger>,
     event_tx: mpsc::Sender<Event>,
     client: Client,
@@ -76,7 +77,7 @@ pub(super) fn spawn_dependency_sync(
             let (fingerprint, sources_retry_due) = {
                 let root = root.clone();
                 tokio::task::spawn_blocking(move || {
-                    let fingerprint = crate::dependency_sync::build_fingerprint(&root);
+                    let fingerprint = crate::dependency_sync::sync_fingerprint(&root, options);
                     let retry_due = fingerprint.as_deref().is_some_and(|fingerprint| {
                         crate::dependency_sync::sources_retry_due(&root, fingerprint)
                     });
@@ -91,7 +92,7 @@ pub(super) fn spawn_dependency_sync(
                 handled_fingerprint = fingerprint;
                 next_sources_retry =
                     tokio::time::Instant::now() + crate::dependency_sync::RETRY_BACK_OFF;
-                let keep_running = sync_once(&root, force, &event_tx, &client).await;
+                let keep_running = sync_once(&root, force, options, &event_tx, &client).await;
                 if !keep_running {
                     return;
                 }
@@ -110,13 +111,14 @@ pub(super) fn spawn_dependency_sync(
 async fn sync_once(
     root: &std::path::Path,
     force: bool,
+    options: SyncOptions,
     event_tx: &mpsc::Sender<Event>,
     client: &Client,
 ) -> bool {
     let up_to_date = {
         let root = root.to_path_buf();
         tokio::task::spawn_blocking(move || {
-            crate::dependency_sync::build_fingerprint(&root).is_some_and(|fingerprint| {
+            crate::dependency_sync::sync_fingerprint(&root, options).is_some_and(|fingerprint| {
                 crate::dependency_sync::manifest_matches(&root, &fingerprint)
             })
         })
@@ -134,7 +136,7 @@ async fn sync_once(
         .await;
     let outcome = {
         let root = root.to_path_buf();
-        tokio::task::spawn_blocking(move || crate::dependency_sync::sync(&root, force))
+        tokio::task::spawn_blocking(move || crate::dependency_sync::sync(&root, force, options))
             .await
             .unwrap_or_else(|error| SyncOutcome::Failed(format!("sync task panicked: {error}")))
     };
@@ -142,7 +144,10 @@ async fn sync_once(
         SyncOutcome::Synced {
             dependencies,
             sources,
-        } => format!("{dependencies} dependencies, {sources} with sources"),
+            decompiled,
+        } => {
+            format!("{dependencies} dependencies, {sources} with sources ({decompiled} decompiled)")
+        }
         SyncOutcome::UpToDate => "dependencies up to date".to_owned(),
         SyncOutcome::NoBuildTool => "no Gradle or Maven build".to_owned(),
         SyncOutcome::Failed(_) => "dependency sync failed".to_owned(),

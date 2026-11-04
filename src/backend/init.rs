@@ -153,8 +153,9 @@ impl Backend {
         (explicit_source_paths, ignore_patterns, jar_paths)
     }
 
-    /// `indexingOptions.dependencySync` (`"auto"`/`"off"`) and
-    /// `indexingOptions.referencesIncludeLibraries` (bool).
+    /// `indexingOptions.dependencySync` (`"auto"`/`"off"`),
+    /// `indexingOptions.decompileLibraries` and
+    /// `indexingOptions.referencesIncludeLibraries` (bools).
     fn apply_dependency_options(&self, initialization_options: Option<&serde_json::Value>) {
         let indexing_options =
             initialization_options.and_then(|options| options.get("indexingOptions"));
@@ -173,6 +174,13 @@ impl Backend {
                     "dependencySync: unknown value {value:?} (expected \"auto\" or \"off\")"
                 ),
             }
+        }
+        let decompile = indexing_options
+            .and_then(|options| options.get("decompileLibraries"))
+            .and_then(serde_json::Value::as_bool);
+        if let Some(decompile) = decompile {
+            self.decompile_libraries
+                .store(decompile, std::sync::atomic::Ordering::Relaxed);
         }
         let include_libraries = indexing_options
             .and_then(|options| options.get("referencesIncludeLibraries"))

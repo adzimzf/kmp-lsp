@@ -300,6 +300,16 @@ Like jdtls (Buildship/m2e) and IntelliJ, kmp-lsp asks the project's own build to
 |---|---|---|
 | `dependencySync` | `"auto"` / `"off"` | `"auto"` |
 | `referencesIncludeLibraries` | `true` / `false` | `true` |
+| `decompileLibraries` | `true` / `false` | `true` |
+
+### Libraries without sources: decompiled
+
+A dependency that publishes no `-sources.jar` (typical for internal company artifacts) is decompiled after the sync with [Vineflower](https://github.com/Vineflower/vineflower) — the maintained fork of IntelliJ's Fernflower decompiler — so navigation lands on real code: Kotlin classes come back as Kotlin, Java classes as Java (method bodies included, without comments or original local names).
+
+- The decompiler (`org.vineflower:vineflower:1.11.1`) is fetched **through your build tool** — Gradle resolves it in the sync's init script from the project's repositories, Maven runs `dependency:copy` — so company mirrors and credentials apply. It is cached under `~/.cache/kmp-lsp/decompiler/`.
+- It runs on your `java` (`$JAVA_HOME`, your login shell's `JAVA_HOME`, or `java` on `PATH`), up to 4 libraries at a time, 5 minutes and 64 MB per jar at most, 100 jars per sync.
+- Results are cached per jar version under `~/.cache/kmp-lsp/decompiled/` and mounted like a sources jar; go-to-definition, hover and find-references work on them. A library that can't be decompiled falls back to a stub of its signatures.
+- `decompileLibraries: false` turns it off.
 
 ## References into library sources
 
