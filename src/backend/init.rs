@@ -182,6 +182,17 @@ impl Backend {
             self.decompile_libraries
                 .store(decompile, std::sync::atomic::Ordering::Relaxed);
         }
+        let library_sources = indexing_options
+            .and_then(|options| options.get("librarySources"))
+            .and_then(serde_json::Value::as_str);
+        if let Some(value) = library_sources {
+            match crate::indexer::library_sources::LibrarySourcesMode::parse(value) {
+                Some(mode) => self.indexer.library_sources.set_mode(mode),
+                None => log::warn!(
+                    "librarySources: unknown value {value:?} (expected \"onDemand\" or \"eager\")"
+                ),
+            }
+        }
         let include_libraries = indexing_options
             .and_then(|options| options.get("referencesIncludeLibraries"))
             .and_then(serde_json::Value::as_bool);

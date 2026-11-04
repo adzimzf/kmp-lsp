@@ -178,6 +178,7 @@ impl ReferenceTarget {
     /// copies. Only files that can see the declaration are searched, and
     /// only verified occurrences are returned.
     pub(crate) fn library_references(&self, indexer: &Indexer) -> Vec<Location> {
+        self.load_libraries_that_may_use_it(indexer);
         // Collected before verifying: resolution reads `files` again, and
         // must not run while this iteration holds its shard guards.
         let mut candidates: Vec<Location> = Vec::new();
@@ -210,6 +211,48 @@ impl ReferenceTarget {
             .into_iter()
             .filter(|location| self.is_reached_from(indexer, location))
             .collect()
+    }
+}
+
+impl ReferenceTarget {
+    /// Libraries are loaded on demand (see
+    /// [`crate::indexer::library_sources`]): load the ones whose text
+    /// mentions a spelling and something every user of the declaration has
+    /// to mention too — its package's last segment (in an import or the
+    /// package line) or its class.
+    fn load_libraries_that_may_use_it(&self, indexer: &Indexer) {
+        let spellings: Vec<&str> = self
+            .spellings
+            .iter()
+            .map(|spelling| spelling.name.as_str())
+            .collect();
+        let unscoped =
+            self.scopes.is_empty() || self.scopes.iter().any(|scope| scope.package.is_none());
+        let mut context: Vec<&str> = Vec::new();
+        if !unscoped {
+            for scope in &self.scopes {
+                if let Some(segment) = scope
+                    .package
+                    .as_deref()
+                    .and_then(|package| package.rsplit('.').next())
+                {
+                    context.push(segment);
+                }
+                if let Some(class) = scope
+                    .container
+                    .as_deref()
+                    .and_then(|container| container.rsplit('.').next())
+                {
+                    context.push(class);
+                }
+            }
+        }
+        let loaded = crate::indexer::library_sources::load_libraries_mentioning(
+            indexer, &spellings, &context,
+        );
+        if loaded > 0 {
+            log::debug!("references: loaded {loaded} libraries that mention {spellings:?}");
+        }
     }
 }
 

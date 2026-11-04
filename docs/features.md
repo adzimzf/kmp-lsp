@@ -301,6 +301,24 @@ Like jdtls (Buildship/m2e) and IntelliJ, kmp-lsp asks the project's own build to
 | `dependencySync` | `"auto"` / `"off"` | `"auto"` |
 | `referencesIncludeLibraries` | `true` / `false` | `true` |
 | `decompileLibraries` | `true` / `false` | `true` |
+| `librarySources` | `"onDemand"` / `"eager"` | `"onDemand"` |
+
+### Library sources load on demand
+
+Library sources are **not** all kept in memory. Each sources jar (downloaded or decompiled) is parsed once into two cache files under `~/.cache/kmp-lsp/library-sources-…/`: a small **index** (the names it declares, plus a hash of every identifier it mentions) and the full **parse**. Only the index stays in memory. A library is loaded from its parse cache the first time one of its names is used: an import in a file you open, go-to-definition, hover, completion on one of its types, or a find-references that may reach it.
+
+| Library | First startup (parse once) | Later startups | First use (from cache) |
+|---|---|---|---|
+| gson 2.11.0 | 53 ms | 0.4 ms | 6 ms |
+| okio-jvm 3.9.0 | 240 ms | 0.4 ms | 8 ms |
+| kotlin-stdlib 1.9.21 | 3.3 s | 1.6 ms | 55 ms |
+
+(Release build, 4 cores.)
+
+- **Completion keeps working.** Names and auto-import FQNs come from the index, so a library's classes and top-level functions are offered before it's loaded. Members after a dot load the library first, which takes the "first use" time above, once.
+- **Find-references** loads the libraries whose text mentions the name being searched and its class or package, up to 64 per request, then searches them as before.
+- **Memory** grows with the libraries you use, not with every dependency.
+- `librarySources: "eager"` restores loading everything at startup.
 
 ### Libraries without sources: decompiled
 

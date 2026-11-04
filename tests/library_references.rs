@@ -29,6 +29,8 @@ const LIBRARY_READY_TIMEOUT: Duration = Duration::from_secs(60);
 struct LibraryWorkspace {
     _dir: tempfile::TempDir,
     root: PathBuf,
+    /// The server's `XDG_CACHE_HOME`.
+    cache_home: PathBuf,
     client: LspClient,
 }
 
@@ -54,6 +56,7 @@ impl LibraryWorkspace {
         LibraryWorkspace {
             _dir: dir,
             root,
+            cache_home: base.join("xdg-cache"),
             client,
         }
     }
@@ -80,6 +83,59 @@ impl LibraryWorkspace {
         }
         let response = self.client.request(method, params);
         locations(&response["result"])
+    }
+
+    /// Labels offered by completion at `at`, re-asked until `accept` passes.
+    fn poll_completion(
+        &mut self,
+        uri: &str,
+        at: (u64, u64),
+        accept: impl Fn(&[String]) -> bool,
+    ) -> Vec<String> {
+        let deadline = Instant::now() + LIBRARY_READY_TIMEOUT;
+        loop {
+            let response = self.client.request(
+                "textDocument/completion",
+                json!({
+                    "textDocument": {"uri": uri},
+                    "position": {"line": at.0, "character": at.1},
+                }),
+            );
+            let result = &response["result"];
+            let items = result
+                .as_array()
+                .or_else(|| result["items"].as_array())
+                .cloned()
+                .unwrap_or_default();
+            let labels: Vec<String> = items
+                .iter()
+                .filter_map(|item| item["label"].as_str().map(str::to_owned))
+                .collect();
+            if accept(&labels) || Instant::now() > deadline {
+                return labels;
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+    }
+
+    /// Files in the server's cache directory whose path contains `needle`.
+    fn cache_files_containing(&self, needle: &str) -> Vec<PathBuf> {
+        fn walk(directory: &std::path::Path, found: &mut Vec<PathBuf>) {
+            for entry in std::fs::read_dir(directory).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, found);
+                } else {
+                    found.push(path);
+                }
+            }
+        }
+        let mut found = Vec::new();
+        walk(&self.cache_home, &mut found);
+        found
+            .into_iter()
+            .filter(|path| path.to_string_lossy().contains(needle))
+            .collect()
     }
 
     /// Re-ask `method` until `accept` passes — the library is mounted
@@ -276,5 +332,100 @@ fn library_references_can_be_turned_off() {
         hits_in(&found, "Slugger.kt").is_empty()
             && hits_in(&found, "LegacyFormatter.java").is_empty(),
         "library usages must be left out when turned off: {found:?}"
+    );
+}
+
+/// Library sources load on demand by default: only names are known up front,
+/// and a library is read from its own cache file when first used.
+#[test]
+fn library_sources_load_on_demand_from_a_per_library_cache() {
+    let mut workspace = LibraryWorkspace::start(Value::Null);
+    let (app_uri, app_text) = workspace.open(APP_KT);
+    let at = spot(&app_text, "Normalizer.normalize(title)", "normalize");
+
+    let definition = workspace.poll_locations("textDocument/definition", &app_uri, at, |found| {
+        found
+            .iter()
+            .any(|(uri, _)| file_name(uri) == "Normalizer.kt")
+    });
+    assert!(
+        definition
+            .iter()
+            .any(|(uri, _)| file_name(uri) == "Normalizer.kt"),
+        "definition must reach the library: {definition:?}"
+    );
+
+    let cached = workspace.cache_files_containing("textkit-1.0.0-sources");
+    let has = |extension: &str| {
+        cached.iter().any(|path| {
+            path.to_string_lossy().contains("library-sources")
+                && path.extension().is_some_and(|e| e == extension)
+        })
+    };
+    assert!(
+        has("index") && has("parse"),
+        "per-library cache files: {cached:?}"
+    );
+    assert!(
+        workspace.cache_files_containing("sources-jar-").is_empty(),
+        "the eager all-libraries cache is not written"
+    );
+}
+
+/// Completion offers a library's names before the library is loaded, and its
+/// members once a file uses it.
+#[test]
+fn completion_works_for_libraries_loaded_on_demand() {
+    let mut workspace = LibraryWorkspace::start(Value::Null);
+    let relative_path = "src/main/kotlin/com/acme/app/Draft.kt";
+    let uri = file_uri(&workspace.root, relative_path);
+    let bare = "package com.acme.app\n\nfun draft() {\n    Whitesp\n}\n";
+    workspace.client.open_file(&uri, "kotlin", bare);
+
+    let labels = workspace.poll_completion(&uri, (3, 11), |labels| {
+        labels.iter().any(|label| label == "Whitespace")
+    });
+    assert!(
+        labels.iter().any(|label| label == "Whitespace"),
+        "a library class is offered by name: {labels:?}"
+    );
+
+    let dotted =
+        "package com.acme.app\n\nimport com.acme.textkit.Whitespace\n\nfun draft() {\n    Whitespace.\n}\n";
+    workspace.client.change_file(&uri, 2, dotted);
+    let labels = workspace.poll_completion(&uri, (5, 15), |labels| {
+        labels.iter().any(|label| label == "normalize")
+    });
+    assert!(
+        labels.iter().any(|label| label == "normalize"),
+        "members of a library type: {labels:?}"
+    );
+}
+
+/// `librarySources: "eager"` keeps loading every library at startup.
+#[test]
+fn library_sources_can_be_loaded_eagerly() {
+    let mut workspace =
+        LibraryWorkspace::start(json!({"indexingOptions": {"librarySources": "eager"}}));
+    let (app_uri, app_text) = workspace.open(APP_KT);
+    let at = spot(&app_text, "Normalizer.normalize(title)", "normalize");
+
+    let found = workspace.poll_locations(
+        "textDocument/references",
+        &app_uri,
+        at,
+        includes_library_usages,
+    );
+
+    assert_library_usages(&found);
+    assert!(
+        !workspace.cache_files_containing("sources-jar-").is_empty(),
+        "eager mode uses the all-libraries cache"
+    );
+    assert!(
+        workspace
+            .cache_files_containing("library-sources")
+            .is_empty(),
+        "and never the per-library one"
     );
 }

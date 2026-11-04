@@ -296,7 +296,7 @@ pub(crate) fn wait_for_jvm_sources_gate(
 }
 
 /// Scan for sources JARs only.
-fn scan_gradle_sources_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
+pub(crate) fn scan_gradle_sources_jars(gradle_home: Option<&Path>) -> Vec<PathBuf> {
     scan_gradle_jars_split(gradle_home).1
 }
 
@@ -379,7 +379,7 @@ pub(crate) fn index_sources_jars(
 
 /// The cache scan's sources jars, with every artifact the project's own
 /// dependency list names swapped for the version the project resolved.
-fn sources_jars_to_mount(
+pub(crate) fn sources_jars_to_mount(
     scanned: Vec<PathBuf>,
     project: Option<&crate::dependency_sync::DependencyManifest>,
 ) -> Vec<PathBuf> {
@@ -689,7 +689,7 @@ pub(crate) fn apply_sources_contributions(
 
 /// Extract `.kt` / `.java` entries from a sources-JAR.
 /// Returns Vec of (synthetic_uri, content) pairs.
-fn extract_sources_jar_entries(jar_path: &Path) -> Result<Vec<(Url, String)>, String> {
+pub(crate) fn extract_sources_jar_entries(jar_path: &Path) -> Result<Vec<(Url, String)>, String> {
     let file = std::fs::File::open(jar_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("zip open failed: {e}"))?;
 
@@ -1253,6 +1253,9 @@ pub(crate) fn materialize_jar_on_demand(
     if indexer.materialization_failed.contains(&jar_id) {
         return false;
     }
+    if indexer.library_sources.manages(jar_id) {
+        return super::library_sources::load(indexer, jar_id);
+    }
     let Some(path_str) = indexer.jar_table.path(jar_id) else {
         indexer.materialization_failed.insert(jar_id);
         return false;
@@ -1424,6 +1427,21 @@ fn promote_candidates_bounded(
             continue;
         }
         if indexer.materialization_failed.contains(&jar_id) {
+            continue;
+        }
+        // A library sources jar loads in-process, without the sidecar: free
+        // when its parse is cached (the common case — `library_sources::mount`
+        // caches every jar at startup), one budget unit when it must be parsed.
+        if indexer.library_sources.manages(jar_id) {
+            if !indexer.library_sources.is_cached(jar_id) {
+                if *budget == 0 {
+                    continue;
+                }
+                *budget -= 1;
+            }
+            if super::library_sources::load(indexer, jar_id) {
+                any_materialized = true;
+            }
             continue;
         }
         // Probed BEFORE taking the sidecar lock (and released before
