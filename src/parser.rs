@@ -7,22 +7,22 @@ use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::indexer::NodeExt;
 use crate::queries::{
-    self, KIND_ANNOTATION_TYPE_DECL, KIND_BINDING_PATTERN_KIND, KIND_CALLABLE_REF, KIND_CALL_EXPR,
-    KIND_CALL_SUFFIX, KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ,
-    KIND_COMPUTED_PROPERTY, KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT,
-    KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_EXTENSION_KW, KIND_FIELD_DECL,
-    KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUNCTION_TYPE, KIND_FUN_BODY, KIND_FUN_DECL,
-    KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL,
-    KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
-    KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL, KIND_LAMBDA_LIT, KIND_LPAREN,
-    KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR,
-    KIND_NULLABLE_TYPE, KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER,
-    KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL,
-    KIND_PROTOCOL_FUNC_DECL, KIND_RECEIVER_TYPE, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
-    KIND_SECONDARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS,
-    KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS,
-    KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS,
-    SWIFT_DEFINITIONS,
+    self, JAVA_INFERRED_LOCAL_TYPE, KIND_ANNOTATION_TYPE_DECL, KIND_BINDING_PATTERN_KIND,
+    KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX, KIND_CLASS_BODY, KIND_CLASS_DECL,
+    KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_COMPUTED_PROPERTY, KIND_CTOR_DECL,
+    KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES,
+    KIND_EXTENSION_KW, KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUNCTION_TYPE,
+    KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS,
+    KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
+    KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL, KIND_JAVA_ENHANCED_FOR,
+    KIND_JAVA_LOCAL_VAR_DECL, KIND_LAMBDA_LIT, KIND_LPAREN, KIND_METHOD_DECL, KIND_MODIFIERS,
+    KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL,
+    KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR,
+    KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_PROTOCOL_FUNC_DECL,
+    KIND_RECEIVER_TYPE, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
+    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
+    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
+    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -210,6 +210,7 @@ pub(crate) fn parse_java(content: &str) -> FileData {
         while let Some(node) = queue.pop() {
             data.extract_java(&node, bytes);
             data.extract_supers_java(&node, bytes);
+            data.extract_java_type_annotations(&node, bytes);
             let mut cur = node.walk();
             for child in node.children(&mut cur) {
                 queue.push(child);
@@ -2102,36 +2103,42 @@ pub(crate) fn visibility_at_line(lines: &[String], line_no: usize) -> Visibility
 /// first real code line. Matches `@Deprecated`, `@Deprecated(...)`, and
 /// package-qualified forms like `@kotlin.Deprecated` / `@java.lang.Deprecated`.
 pub(crate) fn deprecated_at_line(lines: &[String], line_no: usize) -> bool {
-    if lines.get(line_no).is_some_and(|l| line_has_deprecated(l)) {
-        return true;
+    annotation_lines_at(lines, line_no)
+        .into_iter()
+        .any(line_has_deprecated)
+}
+
+/// The lines that can carry annotations for the declaration at `line_no`:
+/// the declaration's own line (`@Deprecated fun foo()`) followed by every
+/// annotation-only line directly above it, nearest first.
+///
+/// Scans upward over contiguous annotation/comment/blank lines; stops at the
+/// first real code line, and at an annotation line that is itself a whole
+/// declaration (`@JvmName("x") fun other()`) — that annotation belongs to a
+/// *previous* symbol, not ours.
+pub(crate) fn annotation_lines_at(lines: &[String], line_no: usize) -> Vec<&str> {
+    let mut annotation_lines = Vec::new();
+    if let Some(own_line) = lines.get(line_no) {
+        annotation_lines.push(own_line.as_str());
     }
-    let mut i = line_no;
-    while i > 0 {
-        i -= 1;
-        let trimmed = lines[i].trim();
-        if trimmed.is_empty()
+    let mut index = line_no.min(lines.len());
+    while index > 0 {
+        index -= 1;
+        let trimmed = lines[index].trim();
+        let is_blank_or_comment = trimmed.is_empty()
             || trimmed.starts_with("//")
             || trimmed.starts_with('*')
-            || trimmed.starts_with("/*")
-        {
-            continue; // skip blank / comment lines between annotation and decl
+            || trimmed.starts_with("/*");
+        if is_blank_or_comment {
+            continue;
         }
-        if trimmed.starts_with('@') {
-            // A line that is itself a declaration (annotation + declaration on one
-            // line, e.g. `@Deprecated fun old() {}`) belongs to a *previous*
-            // symbol — its annotation is not ours. Stop the upward scan so we
-            // don't attribute it to the current declaration.
-            if line_is_declaration(trimmed) {
-                break;
-            }
-            if line_has_deprecated(trimmed) {
-                return true;
-            }
-            continue; // annotation-only line — keep scanning up
+        let is_annotation_only = trimmed.starts_with('@') && !line_is_declaration(trimmed);
+        if !is_annotation_only {
+            break;
         }
-        break; // first real code line above → stop
+        annotation_lines.push(trimmed);
     }
-    false
+    annotation_lines
 }
 
 fn line_has_deprecated(line: &str) -> bool {
@@ -2670,7 +2677,10 @@ impl crate::types::FileData {
                 }
             }
             KIND_CLASS_DECL => self.push_named(node, bytes, SymbolKind::CLASS),
-            KIND_RECORD_DECL => self.push_named(node, bytes, SymbolKind::STRUCT),
+            KIND_RECORD_DECL => {
+                self.push_named(node, bytes, SymbolKind::STRUCT);
+                self.push_record_components(node, bytes);
+            }
             KIND_INTERFACE_DECL => self.push_named(node, bytes, SymbolKind::INTERFACE),
             KIND_ANNOTATION_TYPE_DECL => self.push_named(node, bytes, SymbolKind::INTERFACE),
             KIND_ENUM_DECL => self.push_named(node, bytes, SymbolKind::ENUM),
@@ -2712,6 +2722,72 @@ impl crate::types::FileData {
                 trailing_lambda: false,
                 deprecated,
             });
+        }
+    }
+
+    /// A record's components (`record Point(int x, int y)`) are its fields,
+    /// each with a public accessor of the same name: Java calls `point.x()`,
+    /// Kotlin reads `point.x`. Indexed as public fields of the record.
+    fn push_record_components(&mut self, record: &Node, bytes: &[u8]) {
+        let Some(parameters) = record.child_by_field_name("parameters") else {
+            return;
+        };
+        let detail = extract_detail_from_node(*record, bytes, &self.lines);
+        for component in parameters.children_of_kind(KIND_FORMAL_PARAM) {
+            let Some(name_node) = component.child_by_field_name("name") else {
+                continue;
+            };
+            let Some(name) = name_node.utf8_text_owned(bytes) else {
+                continue;
+            };
+            self.symbols.push(SymbolEntry {
+                name,
+                kind: SymbolKind::FIELD,
+                visibility: Visibility::Public,
+                range: ts_to_lsp(component.range()),
+                selection_range: ts_to_lsp(name_node.range()),
+                detail: detail.clone(),
+                container: None,
+                params: String::new(),
+                param_counts: (0, 0),
+                cold: None,
+                trailing_lambda: false,
+                deprecated: false,
+            });
+        }
+    }
+
+    /// Declared types of Java parameters, locals, fields and enhanced-`for`
+    /// variables, as `(line, name, type)` — the same `type_annotations`
+    /// Kotlin's `val x: T` fills, so `user.getName()` can type `user` from
+    /// `User user`. A `var` local has no written type and is skipped.
+    fn extract_java_type_annotations(&mut self, node: &Node, bytes: &[u8]) {
+        let kind = node.kind();
+        let typed_names: Vec<Node> = if kind == KIND_FORMAL_PARAM || kind == KIND_JAVA_ENHANCED_FOR
+        {
+            node.child_by_field_name("name").into_iter().collect()
+        } else if kind == KIND_JAVA_LOCAL_VAR_DECL || kind == KIND_FIELD_DECL {
+            node.children_of_kind(KIND_VAR_DECLARATOR)
+                .into_iter()
+                .filter_map(|declarator| declarator.child_by_field_name("name"))
+                .collect()
+        } else {
+            return;
+        };
+        let Some(type_text) = node
+            .child_by_field_name("type")
+            .and_then(|type_node| type_node.utf8_text_owned(bytes))
+        else {
+            return;
+        };
+        if type_text == JAVA_INFERRED_LOCAL_TYPE {
+            return;
+        }
+        for name_node in typed_names {
+            if let Some(name) = name_node.utf8_text_owned(bytes) {
+                let line = name_node.start_position().row as u32;
+                self.type_annotations.push((line, name, type_text.clone()));
+            }
         }
     }
 

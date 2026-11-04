@@ -86,6 +86,7 @@ pub(crate) mod jar;
 pub(crate) mod jar_cache;
 pub(crate) mod jar_manifest_cache;
 pub(crate) mod jar_phase;
+pub(crate) mod library_sources;
 pub(crate) mod sources_jar_cache;
 
 #[cfg(test)]
@@ -295,6 +296,12 @@ pub(crate) struct Indexer {
     /// These are treated as library sources: available for hover/definition/autocomplete
     /// but excluded from findReferences and rename.
     pub(crate) library_uris: DashSet<String>,
+    /// Whether find-references also searches mounted library sources
+    /// (`indexingOptions.referencesIncludeLibraries`, on by default).
+    pub(crate) references_include_libraries: std::sync::atomic::AtomicBool,
+    /// Library sources jars known by name and loaded on first use
+    /// (`indexingOptions.librarySources`, see [`library_sources`]).
+    pub(crate) library_sources: library_sources::LibrarySources,
     /// Extracted-on-disk JAR source `file://` URI string → its original
     /// `jar:…!/Foo.kt` sources URI. Populated when go-to-definition extracts a
     /// `*-sources.jar` entry to disk. Lets features map an opened extracted file
@@ -1068,6 +1075,8 @@ impl Indexer {
             workspace_source_roots: RwLock::new(Vec::new()),
             module_dependencies: RwLock::new(HashMap::new()),
             library_uris: DashSet::new(),
+            references_include_libraries: std::sync::atomic::AtomicBool::new(true),
+            library_sources: library_sources::LibrarySources::default(),
             extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
             live_trees: DashMap::new(),
@@ -1366,6 +1375,12 @@ impl Indexer {
     ///
     /// Prefer this over `self.definitions.get(name)` anywhere JAR symbols should be visible.
     pub(crate) fn lookup_definitions(&self, name: &str) -> Vec<tower_lsp::lsp_types::Location> {
+        // Promote-before-read (zero budget): consumers include per-document
+        // scans (semantic tokens, references) and the keystroke-path
+        // resolution tails — no blocking sidecar IPC here. Runs before the
+        // `definitions` read too: a library sources jar loads into it.
+        let mut cache_backed_only = 0usize;
+        crate::indexer::jar::ensure_jar_definitions_for(self, name, &mut cache_backed_only);
         // Reconstitute each interned `SymbolLoc` into a `Location` at this LSP boundary.
         let mut locs: Vec<tower_lsp::lsp_types::Location> = self
             .definitions
@@ -1376,11 +1391,6 @@ impl Indexer {
                     .collect()
             })
             .unwrap_or_default();
-        // Promote-before-read (zero budget): consumers include per-document
-        // scans (semantic tokens, references) and the keystroke-path
-        // resolution tails — no blocking sidecar IPC here.
-        let mut cache_backed_only = 0usize;
-        crate::indexer::jar::ensure_jar_definitions_for(self, name, &mut cache_backed_only);
         if let Some(jar_locs) = self.jar_definitions.get(name) {
             locs.extend(jar_locs.iter().cloned());
         }
@@ -1503,6 +1513,11 @@ impl Indexer {
     /// If `uri` is an extracted JAR-source `file://`, return its original
     /// `jar:…!/Foo.kt` sources URI (which is the one indexed with the real package
     /// and symbols). Returns `None` for any other URI.
+    pub(crate) fn references_include_libraries(&self) -> bool {
+        self.references_include_libraries
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub(crate) fn original_jar_source_uri(&self, uri: &Url) -> Option<Url> {
         let jar = self.extracted_jar_sources.get(uri.as_str())?;
         Url::parse(jar.value()).ok()

@@ -1151,6 +1151,7 @@ fn index_sources_jars_end_to_end_with_real_jar() {
         &indexer,
         Some(tmpdir.path()),
         Some(cache_dir.path()),
+        None,
     );
     assert!(total > 0, "end-to-end index should parse the JAR");
 
@@ -1858,6 +1859,7 @@ fn index_sources_jars_writes_parse_cache() {
         &indexer,
         Some(gradle_dir.path()),
         Some(cache_dir.path()),
+        None,
     );
     assert!(total > 0, "first run should parse and index");
 
@@ -1933,6 +1935,7 @@ fn index_sources_jars_serves_fresh_entry_from_cache_without_extraction() {
         &indexer,
         Some(gradle_dir.path()),
         Some(cache_dir.path()),
+        None,
     );
 
     assert!(total > 0, "cache hit should contribute symbols");
@@ -1993,6 +1996,7 @@ fn index_sources_jars_stale_entry_reparses_and_updates_cache() {
         &indexer,
         Some(gradle_dir.path()),
         Some(cache_dir.path()),
+        None,
     );
 
     assert!(
@@ -2050,6 +2054,7 @@ fn index_sources_jars_prunes_deleted_jar_entries() {
         &indexer,
         Some(gradle_dir.path()),
         Some(cache_dir.path()),
+        None,
     );
 
     let reloaded =

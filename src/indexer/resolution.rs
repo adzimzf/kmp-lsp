@@ -659,6 +659,9 @@ fn build_enclosing_class_subst_impl<I: IndexRead>(
 // but this enables unit tests to use a TestIndex stub.
 impl IndexRead for super::Indexer {
     fn get_definitions(&self, name: &str) -> Option<Vec<Location>> {
+        // Promote first: a library sources jar loads into `definitions`.
+        let mut unbudgeted = usize::MAX;
+        crate::indexer::jar::ensure_jar_definitions_for(self, name, &mut unbudgeted);
         // Reconstitute each interned `SymbolLoc` into a `Location` at this boundary.
         let mut locs: Vec<Location> = self
             .definitions
@@ -670,8 +673,6 @@ impl IndexRead for super::Indexer {
                     .collect()
             })
             .unwrap_or_default();
-        let mut unbudgeted = usize::MAX;
-        crate::indexer::jar::ensure_jar_definitions_for(self, name, &mut unbudgeted);
         if let Some(jar_locs) = self.jar_definitions.get(name) {
             locs.extend(jar_locs.iter().cloned());
         }

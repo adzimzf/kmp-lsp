@@ -1,0 +1,135 @@
+// kmp-lsp dependency sync — Gradle init script.
+//
+// Registers `kmpLspDependencies` on the root project. It resolves every
+// project's compile/runtime classpaths (lenient: an unresolvable dependency is
+// skipped, never fails the run), then asks Gradle for each external module's
+// sources JAR, which downloads it into the Gradle cache like an IDE's
+// "Download Sources". One JSON object per dependency is written to the file
+// named by the `kmpLsp.output` system property:
+//
+//   {"coordinate":"group:name:version","jar":"/abs/x.jar","sources":"/abs/x-sources.jar"|null}
+//
+// followed by one {"incompleteSources":true} line when some sources jar
+// failed to download for a reason other than "not published" (network,
+// rate limiting, auth), so the caller knows to retry later, and — when the
+// `kmpLsp.decompiler` property names a coordinate and some dependency has no
+// sources jar — one {"decompiler":"/abs/decompiler.jar"} line: the
+// decompiler resolved through the project's own repositories (mirrors,
+// credentials and all). A decompiler that can't be resolved is only logged.
+//
+// Groovy DSL and only long-stable public APIs, so it runs on Gradle 6.x–8.x.
+
+import org.gradle.api.artifacts.component.ModuleComponentIdentifier
+import org.gradle.api.artifacts.result.ResolvedArtifactResult
+import org.gradle.api.artifacts.result.UnresolvedArtifactResult
+import org.gradle.api.attributes.Attribute
+import org.gradle.jvm.JvmLibrary
+import org.gradle.language.base.artifact.SourcesArtifact
+
+def kmpLspIsClasspath = { String name ->
+    def lower = name.toLowerCase()
+    lower.endsWith("compileclasspath") || lower.endsWith("runtimeclasspath")
+}
+
+// Android classpaths offer several artifact variants (aar, classes jar, …);
+// asking for `artifactType=jar` picks the compiled classes. Plain JVM
+// classpaths satisfy it as-is. Falls back to the default variant.
+def kmpLspArtifacts = { configuration ->
+    def artifactType = Attribute.of("artifactType", String)
+    try {
+        return configuration.incoming.artifactView { view ->
+            view.lenient(true)
+            view.attributes { it.attribute(artifactType, "jar") }
+        }.artifacts.artifacts
+    } catch (Exception ignored) {
+        try {
+            return configuration.incoming.artifactView { it.lenient(true) }.artifacts.artifacts
+        } catch (Exception alsoIgnored) {
+            return []
+        }
+    }
+}
+
+rootProject {
+    tasks.register("kmpLspDependencies") { task ->
+        task.doLast {
+            def outputPath = System.getProperty("kmpLsp.output")
+            if (outputPath == null) {
+                throw new GradleException("kmpLsp.output system property is required")
+            }
+            def byCoordinate = new LinkedHashMap<String, Map>()
+            rootProject.allprojects.each { project ->
+                project.configurations.findAll { it.canBeResolved && kmpLspIsClasspath(it.name) }.each { configuration ->
+                    kmpLspArtifacts(configuration).each { artifact ->
+                        def id = artifact.id.componentIdentifier
+                        if (id instanceof ModuleComponentIdentifier) {
+                            def coordinate = "${id.group}:${id.module}:${id.version}".toString()
+                            if (!byCoordinate.containsKey(coordinate)) {
+                                byCoordinate[coordinate] = [id: id, jar: artifact.file.absolutePath]
+                            }
+                        }
+                    }
+                }
+            }
+
+            def sourcesByCoordinate = [:]
+            def incompleteSources = false
+            def ids = byCoordinate.values().collect { it.id }
+            if (!ids.isEmpty()) {
+                def result = rootProject.dependencies.createArtifactResolutionQuery()
+                    .forComponents(ids)
+                    .withArtifacts(JvmLibrary, SourcesArtifact)
+                    .execute()
+                result.resolvedComponents.each { component ->
+                    def id = component.id
+                    if (id instanceof ModuleComponentIdentifier) {
+                        def coordinate = "${id.group}:${id.module}:${id.version}".toString()
+                        component.getArtifacts(SourcesArtifact).each { sources ->
+                            if (sources instanceof ResolvedArtifactResult) {
+                                sourcesByCoordinate[coordinate] = sources.file.absolutePath
+                            } else if (sources instanceof UnresolvedArtifactResult) {
+                                // A library that publishes no sources jar is normal;
+                                // anything else (network, rate limit, auth) is transient.
+                                def notPublished = sources.failure.getClass().simpleName == "ArtifactNotFoundException"
+                                if (!notPublished) {
+                                    incompleteSources = true
+                                }
+                                rootProject.logger.info("kmp-lsp: no sources for ${coordinate}: ${sources.failure.message}")
+                            }
+                        }
+                    }
+                }
+            }
+
+            def decompilerCoordinate = System.getProperty("kmpLsp.decompiler")
+            def anyWithoutSources = byCoordinate.keySet().any { !sourcesByCoordinate.containsKey(it) }
+            def decompilerPath = null
+            if (decompilerCoordinate != null && anyWithoutSources) {
+                try {
+                    def detached = rootProject.configurations.detachedConfiguration(
+                        rootProject.dependencies.create(decompilerCoordinate))
+                    detached.transitive = false
+                    decompilerPath = detached.singleFile.absolutePath
+                } catch (Exception failure) {
+                    rootProject.logger.warn("kmp-lsp: cannot resolve the decompiler ${decompilerCoordinate}: ${failure.message}")
+                }
+            }
+
+            new File(outputPath).withWriter("UTF-8") { writer ->
+                byCoordinate.each { coordinate, entry ->
+                    writer.println(groovy.json.JsonOutput.toJson([
+                        coordinate: coordinate,
+                        jar       : entry.jar,
+                        sources   : sourcesByCoordinate[coordinate],
+                    ]))
+                }
+                if (incompleteSources) {
+                    writer.println(groovy.json.JsonOutput.toJson([incompleteSources: true]))
+                }
+                if (decompilerPath != null) {
+                    writer.println(groovy.json.JsonOutput.toJson([decompiler: decompilerPath]))
+                }
+            }
+        }
+    }
+}

@@ -148,7 +148,59 @@ impl Backend {
             log::info!("jarPaths: {:?}", jar_paths);
         }
 
+        self.apply_dependency_options(initialization_options);
+
         (explicit_source_paths, ignore_patterns, jar_paths)
+    }
+
+    /// `indexingOptions.dependencySync` (`"auto"`/`"off"`),
+    /// `indexingOptions.decompileLibraries` and
+    /// `indexingOptions.referencesIncludeLibraries` (bools).
+    fn apply_dependency_options(&self, initialization_options: Option<&serde_json::Value>) {
+        let indexing_options =
+            initialization_options.and_then(|options| options.get("indexingOptions"));
+        let sync_mode = indexing_options
+            .and_then(|options| options.get("dependencySync"))
+            .and_then(serde_json::Value::as_str);
+        if let Some(value) = sync_mode {
+            match crate::dependency_sync::SyncMode::parse(value) {
+                Some(mode) => {
+                    *self
+                        .dependency_sync_mode
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = mode;
+                }
+                None => log::warn!(
+                    "dependencySync: unknown value {value:?} (expected \"auto\" or \"off\")"
+                ),
+            }
+        }
+        let decompile = indexing_options
+            .and_then(|options| options.get("decompileLibraries"))
+            .and_then(serde_json::Value::as_bool);
+        if let Some(decompile) = decompile {
+            self.decompile_libraries
+                .store(decompile, std::sync::atomic::Ordering::Relaxed);
+        }
+        let library_sources = indexing_options
+            .and_then(|options| options.get("librarySources"))
+            .and_then(serde_json::Value::as_str);
+        if let Some(value) = library_sources {
+            match crate::indexer::library_sources::LibrarySourcesMode::parse(value) {
+                Some(mode) => self.indexer.library_sources.set_mode(mode),
+                None => log::warn!(
+                    "librarySources: unknown value {value:?} (expected \"onDemand\" or \"eager\")"
+                ),
+            }
+        }
+        let include_libraries = indexing_options
+            .and_then(|options| options.get("referencesIncludeLibraries"))
+            .and_then(serde_json::Value::as_bool);
+        if let Some(include_libraries) = include_libraries {
+            self.indexer
+                .references_include_libraries
+                .store(include_libraries, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 
     fn collect_indexing_option_strings(

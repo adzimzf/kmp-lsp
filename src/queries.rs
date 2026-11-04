@@ -378,6 +378,12 @@ pub(crate) const KIND_SCOPED_TYPE_IDENT: &str = "scoped_type_identifier";
 pub(crate) const KIND_VAR_DECLARATOR: &str = "variable_declarator";
 pub(crate) const KIND_ENUM_JAVA_DECL: &str = "enum_declaration";
 pub(crate) const KIND_FORMAL_PARAM: &str = "formal_parameter";
+/// Kotlin assignment target: `account.balance` in `account.balance = 1`.
+pub(crate) const KIND_DIRECTLY_ASSIGNABLE_EXPR: &str = "directly_assignable_expression";
+pub(crate) const KIND_JAVA_LOCAL_VAR_DECL: &str = "local_variable_declaration";
+pub(crate) const KIND_JAVA_ENHANCED_FOR: &str = "enhanced_for_statement";
+/// Java 10+ local type inference keyword — not a real type name.
+pub(crate) const JAVA_INFERRED_LOCAL_TYPE: &str = "var";
 pub(crate) const KIND_SPREAD_PARAM: &str = "spread_parameter";
 pub(crate) const KIND_MARKER_ANNOTATION: &str = "marker_annotation";
 // Java modifier keywords appear as their own leaf node kinds in the Java grammar.
