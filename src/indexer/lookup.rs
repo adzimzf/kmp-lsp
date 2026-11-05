@@ -14,7 +14,7 @@
 use tower_lsp::lsp_types::*;
 
 use super::infer::lambda::SCOPE_FUNCTIONS;
-use super::{Indexer, ResolvedType};
+use super::{CallShape, Indexer, ResolvedType};
 use crate::resolver::{resolve_symbol_in_type_scope, split_package_prefix, ResolveIo, TypeScope};
 use crate::types::SymbolEntry;
 use crate::StrExt;
@@ -205,14 +205,33 @@ impl Indexer {
     /// `Flow.collect` — so it, not `receiver`, is the identity a call site
     /// shares with every other caller of the same member. `None` when the
     /// member is not in the index. Never spawns `rg`/`fd`.
+    ///
+    /// A call's `shape` picks the overload it can reach: `continuation.resume(body)`
+    /// on a `CancellableContinuation` is the stdlib `Continuation<T>.resume(value)`
+    /// extension, not the two-parameter member `resume(value, onCancellation)`.
     pub(crate) fn member_declaring_type(
         &self,
         name: &str,
         receiver: &ResolvedType,
+        shape: Option<CallShape>,
         from_uri: &Url,
     ) -> Option<String> {
-        let (owner, location) = self
-            .find_member_of_type_index_only(name, receiver, from_uri)
+        let candidates = self.find_member_of_type_index_only(name, receiver, from_uri);
+        // An arity no candidate accepts says more about the index than the
+        // call: keep every candidate rather than none.
+        let candidates = match shape {
+            Some(shape) => {
+                let reachable =
+                    super::shape_filter_locations(self, shape, candidates.clone()).resolved();
+                if reachable.is_empty() {
+                    candidates
+                } else {
+                    reachable
+                }
+            }
+            None => candidates,
+        };
+        let (owner, location) = candidates
             .into_iter()
             .find_map(|location| Some((self.member_owner_at(name, &location)?, location)))?;
         match owner {

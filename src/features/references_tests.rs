@@ -3112,3 +3112,119 @@ async fn find_references_on_call_sharing_a_line_with_a_same_named_local_searches
 
     assert_refs_contain(&locations, &["Other.kt"]);
 }
+
+/// `continuation.resume(1)` on a `CancellableContinuation` calls the stdlib
+/// extension `Continuation<T>.resume(value)`, not the two-parameter member
+/// `CancellableContinuation.resume(value, onCancellation)`. The query's
+/// declaring type must come from the overload the call's shape reaches
+/// (`Continuation`), or the caller through a plain `Continuation` is
+/// rejected as an unrelated type.
+#[tokio::test]
+async fn find_references_identifies_a_call_by_the_overload_its_arguments_reach() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let symbol = |name: &str, kind: &str, container: &str, detail: &str, pkg: &str| {
+        crate::sidecar::SidecarSymbol {
+            name: name.into(),
+            kind: kind.into(),
+            container: container.into(),
+            detail: detail.into(),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: pkg.into(),
+            top_level: container.is_empty(),
+            supers: vec![],
+        }
+    };
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/kotlin-stdlib.jar"),
+        &[
+            symbol(
+                "Continuation",
+                "interface",
+                "",
+                "interface Continuation<T>",
+                "kotlin.coroutines",
+            ),
+            crate::sidecar::SidecarSymbol {
+                extension_receiver_type: "Continuation<T>".into(),
+                type_params: vec!["T".into()],
+                ..symbol(
+                    "resume",
+                    "fun",
+                    "ContinuationKt",
+                    "fun <T> Continuation<T>.resume(value: T)",
+                    "kotlin.coroutines",
+                )
+            },
+        ],
+    );
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/kotlinx-coroutines-core.jar"),
+        &[
+            crate::sidecar::SidecarSymbol {
+                supers: vec!["kotlin.coroutines.Continuation".into()],
+                ..symbol(
+                    "CancellableContinuation",
+                    "interface",
+                    "",
+                    "interface CancellableContinuation<T>",
+                    "kotlinx.coroutines",
+                )
+            },
+            symbol(
+                "resume",
+                "fun",
+                "CancellableContinuation",
+                "fun resume(value: T, onCancellation: ((Throwable) -> Unit)?)",
+                "kotlinx.coroutines",
+            ),
+        ],
+    );
+    let cancellable_src = "package app\n\
+                           import kotlin.coroutines.resume\n\
+                           import kotlinx.coroutines.CancellableContinuation\n\
+                           fun a(continuation: CancellableContinuation<Int>) {\n\
+                           \x20   continuation.resume(1)\n\
+                           }\n";
+    let plain_src = "package app.plain\n\
+                     import kotlin.coroutines.Continuation\n\
+                     import kotlin.coroutines.resume\n\
+                     fun b(continuation: Continuation<Int>) {\n\
+                     \x20   continuation.resume(2)\n\
+                     }\n";
+    let (_path, cancellable_uri) = write(root, "Cancellable.kt", cancellable_src);
+    let (_path, plain_uri) = write(root, "Plain.kt", plain_src);
+    idx.index_content(&cancellable_uri, cancellable_src);
+    idx.index_content(&plain_uri, plain_src);
+    idx.store_live_tree(&cancellable_uri, cancellable_src);
+    let call_column = cancellable_src
+        .lines()
+        .nth(4)
+        .unwrap()
+        .find("resume")
+        .unwrap() as u32;
+
+    let locations = find_references_with_qualifier(
+        "resume",
+        None,
+        &cancellable_uri,
+        Position::new(4, call_column),
+        false,
+        &idx,
+    )
+    .await;
+    let call_sites: Vec<_> = locations
+        .into_iter()
+        .filter(|location| location.range.start.line == 4)
+        .collect();
+
+    assert_eq!(hit_files(&call_sites), ["Cancellable.kt", "Plain.kt"]);
+}

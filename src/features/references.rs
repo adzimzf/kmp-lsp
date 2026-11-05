@@ -279,10 +279,11 @@ pub(crate) async fn verified_references_for(
             // be `Flow` or every `Flow`/`StateFlow` caller is rejected.
             SymbolRole::Reference {
                 receiver_type: Some(receiver_type),
+                shape,
                 ..
             } => (
                 index
-                    .member_declaring_type(&symbol.name, receiver_type, uri)
+                    .member_declaring_type(&symbol.name, receiver_type, *shape, uri)
                     .or_else(|| Some(receiver_type.type_path())),
                 None,
             ),
