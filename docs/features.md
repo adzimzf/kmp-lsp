@@ -72,7 +72,7 @@ If source roots are missing, the command suggests `extract-sources` as a next st
 kmp-lsp refs <name> [--no-deps] [--exclude-imports] [-C <n>] [--json] [--root <dir>]
 kmp-lsp hover <file> <line> <col> [--no-deps] [--json] [--root <dir>]
 ```
-In index mode, `find`, `refs` and `hover` also index the workspace's compiled dependency JARs (Gradle cache + Android SDK), like the LSP does, so library types, members and hierarchies resolve. `--no-deps` skips them for a faster, workspace-only index. `diagnose` always loads them.
+In index mode, `find`, `refs` and `hover` also load the project's dependencies like the LSP does: compiled JARs (Gradle cache, Android SDK, dependency-sync jars, configured `jarPaths`; read by the `kmp-jar-indexer` sidecar) and library sources jars (no sidecar needed), so library types, members and hierarchies resolve. `--no-deps` skips them for a faster, workspace-only index. `diagnose` always loads them.
 
 ```
 kmp-lsp complete <file> <line> [--dot] [--eol] [--no-stdlib] [--json] [--root <dir>]

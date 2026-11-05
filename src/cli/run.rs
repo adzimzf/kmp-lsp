@@ -487,19 +487,17 @@ async fn run_index(root: &Path, verbose: bool) {
     }
 }
 
-/// Extends a Gradle-cache JAR scan with the Android SDK's compiled
-/// `android.jar`, for CLI paths (`find`, `diagnose`) that call
-/// `scan_gradle_jars` directly and therefore bypass `ScanHandler`'s own
-/// wiring of `detect_android_sdk_jar_path`. Reuses
-/// `compiled_jar_paths_with_android_sdk` rather than duplicating the
-/// detection logic — passes `true` for its JVM-source gate unconditionally
-/// since the CLI's own Gradle-cache scan already runs unconditionally here
-/// (no JVM-source gate at these call sites to mirror).
+/// Every compiled JAR the project depends on, from a Gradle-cache scan:
+/// the same list the LSP's background JAR phase builds
+/// (`project_compiled_jar_paths`: Android SDK + `R.jar`s, dependency-sync
+/// jars, configured `jarPaths`). Passes `true` for its JVM-source gate: the
+/// CLI's own Gradle-cache scan already runs unconditionally.
 fn compiled_jar_paths_for_cli(root: &Path, gradle_paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    crate::workspace::scan_handler::compiled_jar_paths_with_android_sdk(
+    crate::workspace::scan_handler::project_compiled_jar_paths(
         Some(root.to_path_buf()),
         true,
         gradle_paths,
+        &[],
     )
 }
 
@@ -514,35 +512,69 @@ struct IndexedCommand<'a> {
     dependencies: Dependencies,
 }
 
-/// Indexes the workspace's compiled dependency JARs (Gradle cache + Android
-/// SDK jar) into `index`, as the LSP does in the background, and leaves
-/// `jar_phase` in a terminal state either way. Without the JARs, library
-/// supertypes, members and receivers don't resolve, and features that wait on
-/// a loading `jar_phase` (call-arg / nullable-dot diagnostics) stay silent.
+/// What [`load_dependencies`] read into the index.
+#[derive(Default)]
+struct LoadedDependencies {
+    compiled_jars: usize,
+    compiled_symbols: usize,
+    library_source_names: usize,
+}
+
+/// Loads the project's dependencies into `index`, as the LSP does in the
+/// background: compiled JARs (read by the `kmp-jar-indexer` sidecar) and
+/// library sources JARs (parsed here, sidecar or not). Without them, library
+/// supertypes, members and receivers don't resolve. Leaves `jar_phase`
+/// terminal either way, so features that wait on a loading phase (hover's
+/// "still indexing" hint, call-arg / nullable-dot diagnostics) don't.
 fn load_dependencies(index: &Indexer, root: &Path, dependencies: Dependencies, verbose: bool) {
-    let jars = match dependencies {
-        Dependencies::Load => {
-            compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None))
-        }
-        Dependencies::Skip => Vec::new(),
+    let loaded = match dependencies {
+        Dependencies::Load => load_dependency_jars(index, root),
+        Dependencies::Skip => LoadedDependencies::default(),
     };
-    let Ok(mut sidecar_guard) = index.jar_sidecar.lock() else {
-        return;
-    };
-    let total = if jars.is_empty() {
-        0
-    } else {
-        crate::indexer::jar::clear_jar_maps(index);
-        crate::indexer::jar::index_jars(index, &jars, &mut sidecar_guard)
-    };
-    if let Ok(mut phase) = index.jar_phase.lock() {
-        *phase = crate::indexer::jar_phase::JarPhase::Ready { count: total };
-    }
+    settle_jar_phase(index, loaded.compiled_symbols);
     if verbose {
         eprintln!(
-            "Indexed {total} dependency symbols from {} JAR(s)",
-            jars.len()
+            "Indexed {} dependency symbols from {} JAR(s), {} names from library sources",
+            loaded.compiled_symbols, loaded.compiled_jars, loaded.library_source_names
         );
+    }
+}
+
+fn load_dependency_jars(index: &Indexer, root: &Path) -> LoadedDependencies {
+    let jars = compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None));
+    let compiled_symbols = index_compiled_jars(index, &jars);
+    let library_source_names = crate::workspace::scan_handler::index_library_sources(index);
+    LoadedDependencies {
+        compiled_jars: jars.len(),
+        compiled_symbols,
+        library_source_names,
+    }
+}
+
+/// Reads `jars` through the sidecar. Zero symbols when it isn't installed.
+fn index_compiled_jars(index: &Indexer, jars: &[PathBuf]) -> usize {
+    if jars.is_empty() {
+        return 0;
+    }
+    let mut sidecar = index
+        .jar_sidecar
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::indexer::jar::clear_jar_maps(index);
+    crate::indexer::jar::index_jars(index, jars, &mut sidecar)
+}
+
+/// A CLI run loads JARs once, up front, so a phase still waiting for them
+/// (`Pending`: the sidecar is installed) is done. `Unavailable` (no sidecar)
+/// stays: compiled JARs were never read.
+fn settle_jar_phase(index: &Indexer, compiled_symbols: usize) {
+    let Ok(mut phase) = index.jar_phase.lock() else {
+        return;
+    };
+    if phase.is_loading() {
+        *phase = crate::indexer::jar_phase::JarPhase::Ready {
+            count: compiled_symbols,
+        };
     }
 }
 
