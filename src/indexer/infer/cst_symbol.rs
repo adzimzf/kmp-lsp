@@ -279,6 +279,15 @@ pub(crate) fn classify_symbol_at(
     let doc = resolution.doc();
     let node = super::cst_lambda::cursor_node_at(doc, pos)?;
 
+    if super::java_cst::is_java_file(uri) {
+        return super::java_cst::classify_java_identifier(
+            node,
+            &doc.bytes,
+            indexer,
+            uri,
+            |type_path, scope| names_a_known_type(indexer, type_path, scope),
+        );
+    }
     if !matches!(node.kind(), KIND_SIMPLE_IDENT | KIND_TYPE_IDENT) {
         return None;
     }
@@ -436,6 +445,9 @@ pub(crate) fn is_local_declaration_at(indexer: &Indexer, uri: &Url, pos: CursorP
     let Some(node) = super::cst_lambda::cursor_node_at(&doc, pos) else {
         return false;
     };
+    if super::java_cst::is_java_file(uri) {
+        return super::java_cst::is_java_local_declaration(node);
+    }
     let mut ancestor = node.parent();
     while let Some(scope) = ancestor {
         match scope.kind() {
@@ -461,10 +473,13 @@ pub(crate) fn is_local_value_reference(indexer: &Indexer, uri: &Url, pos: Cursor
     let Some(node) = super::cst_lambda::cursor_node_at(&doc, pos) else {
         return false;
     };
-    if !matches!(node.kind(), KIND_SIMPLE_IDENT) {
-        return false;
-    }
-    if matches!(local_binding_at(node, &doc.bytes), LocalBinding::NotLocal) {
+    let reads_a_local = if super::java_cst::is_java_file(uri) {
+        super::java_cst::is_java_local_value_reference(node, &doc.bytes)
+    } else {
+        node.kind() == KIND_SIMPLE_IDENT
+            && !matches!(local_binding_at(node, &doc.bytes), LocalBinding::NotLocal)
+    };
+    if !reads_a_local {
         return false;
     }
     let Some(name) = node.utf8_text_owned(&doc.bytes) else {
@@ -491,6 +506,9 @@ pub(crate) fn implicit_receiver_of(
 ) -> Option<ResolvedType> {
     let doc = indexer.live_doc_or_parse(uri)?;
     let node = super::cst_lambda::cursor_node_at(&doc, pos)?;
+    if super::java_cst::is_java_file(uri) {
+        return java_implicit_receiver_of(indexer, uri, node, &doc.bytes);
+    }
     if !matches!(node.kind(), KIND_SIMPLE_IDENT) {
         return None;
     }
@@ -509,6 +527,28 @@ pub(crate) fn implicit_receiver_of(
     receivers.extend(extension_receiver.map(|receiver| receiver.written));
     receivers.extend(indexer.enclosing_class_at(uri, pos.line as u32));
     receivers
+        .into_iter()
+        .map(|receiver| ResolvedType::from_inferred(receiver, uri.clone()))
+        .find(|receiver| {
+            !indexer
+                .find_member_of_type_index_only(&name, receiver, uri)
+                .is_empty()
+        })
+}
+
+/// [`implicit_receiver_of`] for a bare Java name: the innermost enclosing
+/// class that has a member of that name.
+fn java_implicit_receiver_of(
+    indexer: &Indexer,
+    uri: &Url,
+    node: Node<'_>,
+    bytes: &[u8],
+) -> Option<ResolvedType> {
+    if node.kind() != KIND_IDENTIFIER {
+        return None;
+    }
+    let name = node.utf8_text_owned(bytes)?;
+    super::java_cst::enclosing_java_class_names(node, bytes)
         .into_iter()
         .map(|receiver| ResolvedType::from_inferred(receiver, uri.clone()))
         .find(|receiver| {

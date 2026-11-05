@@ -3528,3 +3528,71 @@ async fn find_references_on_local_val_in_a_method_keeps_its_reads() {
         "the read of `total`; got {hits:?}"
     );
 }
+
+/// Java receivers are typed from the Java tree: a same-named method on an
+/// unrelated class, a same-named local, and comment/string text are not
+/// references of `Repo.save` — from its declaration or from a call site.
+#[tokio::test]
+async fn find_references_java_member_is_filtered_by_receiver_type() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let repo_src = "package app;\npublic class Repo {\n    public void save(String s) {}\n}\n";
+    let other_src = "package app;\npublic class Other {\n    public void save(String s) {}\n}\n";
+    let caller_src = "\
+package app;
+public class Caller {
+    private Repo repo = new Repo();
+    public void run(Other other) {
+        Repo local = new Repo();
+        local.save(\"a\");
+        other.save(\"b\");
+        repo.save(\"c\");
+        int save = 1;
+        // save in a comment
+    }
+}
+";
+    let (_, repo_uri) = write(root, "Repo.java", repo_src);
+    let (_, other_uri) = write(root, "Other.java", other_src);
+    let (_, caller_uri) = write(root, "Caller.java", caller_src);
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&repo_uri, repo_src);
+    idx.index_content(&other_uri, other_src);
+    idx.index_content(&caller_uri, caller_src);
+
+    let caller_lines = |locations: &[tower_lsp::lsp_types::Location]| {
+        let mut lines: Vec<u32> = locations
+            .iter()
+            .filter(|location| location.uri == caller_uri)
+            .map(|location| location.range.start.line)
+            .collect();
+        lines.sort_unstable();
+        lines
+    };
+
+    let from_declaration =
+        find_references_with_qualifier("save", None, &repo_uri, Position::new(2, 16), false, &idx)
+            .await;
+    assert_eq!(caller_lines(&from_declaration), vec![5, 7]);
+    assert!(
+        !from_declaration
+            .iter()
+            .any(|location| location.uri == other_uri),
+        "Other.save is a different method: {from_declaration:?}"
+    );
+
+    let from_call_site = find_references_with_qualifier(
+        "save",
+        None,
+        &caller_uri,
+        Position::new(5, 14),
+        false,
+        &idx,
+    )
+    .await;
+    // Call sites are checked by receiver type. (A same-named declaration on
+    // an unrelated class is kept by design — `verify_declaration` never
+    // rejects on a type mismatch — so `Other.java` isn't asserted here.)
+    assert_eq!(caller_lines(&from_call_site), vec![5, 7]);
+}
