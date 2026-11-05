@@ -10,7 +10,7 @@ use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
 use crate::indexer::{
     call_shape_of, classify_cursor, cursor_node_at, is_call_callee, Indexer, NavigationSource,
-    SymbolRole,
+    SymbolAtCursor, SymbolRole,
 };
 use crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
 use crate::rg::RgSearchRequest;
@@ -172,8 +172,16 @@ pub(crate) async fn verified_references_for(
     Option<String>,
 ) {
     let line = position.line;
+    let cursor_symbol = classify_cursor(index, uri, position);
+    let cursor_site = match &cursor_symbol {
+        Some(SymbolAtCursor {
+            role: SymbolRole::Reference { .. },
+            ..
+        }) => CursorSite::Reference,
+        _ => CursorSite::Unclassified,
+    };
     let (parent_class, declared_pkg) =
-        resolve_scope_with_qualifier(index, uri, line, name, qualifier);
+        resolve_scope_with_qualifier(index, uri, line, cursor_site, name, qualifier);
 
     // A lowercase usage of a JAR/library symbol now also produces a `declared_pkg`
     // (the JAR symbol's package), but the request site is a *usage*, not the symbol's
@@ -243,8 +251,6 @@ pub(crate) async fn verified_references_for(
             &mut locations,
         );
     }
-
-    let cursor_symbol = classify_cursor(index, uri, position);
 
     // A same-named, wrong-arity call elsewhere in the file is a name
     // collision, not a genuine reference to *this* declaration — without this,
@@ -426,6 +432,7 @@ pub(crate) fn resolve_scope_with_qualifier(
     index: &(impl SymbolIndex + ScopeQuery),
     uri: &Url,
     line: u32,
+    cursor_site: CursorSite,
     name: &str,
     qualifier: Option<&str>,
 ) -> (Option<String>, Option<String>) {
@@ -469,12 +476,7 @@ pub(crate) fn resolve_scope_with_qualifier(
     // importing `IGoldConversionRepository`).  Top-level functions (no enclosing class)
     // fall back to package-scoped discovery as before.
     if !name.starts_with_uppercase() {
-        let on_decl = index.is_declared_in(uri, name)
-            && index
-                .definition_locations(name)
-                .iter()
-                .any(|l| l.uri == *uri && l.range.start.line == line);
-        if on_decl {
+        if is_on_declaration(index, uri, line, cursor_site, name) {
             let enclosing_class = index.enclosing_class_at(uri, line);
             return (enclosing_class, index.package_of(uri));
         }
@@ -516,12 +518,7 @@ pub(crate) fn resolve_scope_with_qualifier(
         return (Some(q.to_string()), parent_pkg);
     }
 
-    let on_decl = index.is_declared_in(uri, name)
-        && index
-            .definition_locations(name)
-            .iter()
-            .any(|l| l.uri == *uri && l.range.start.line == line);
-    if on_decl {
+    if is_on_declaration(index, uri, line, cursor_site, name) {
         let parent = index.enclosing_class_at(uri, line);
         let pkg = index.package_of(uri);
         return (parent, pkg);
@@ -533,6 +530,35 @@ pub(crate) fn resolve_scope_with_qualifier(
     let parent = index.declared_parent_class_of(name, uri);
     let pkg = index.declared_package_of(name, uri);
     (parent, pkg)
+}
+
+/// What the CST shows under the find-references cursor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CursorSite {
+    /// A use of the name, not its declaration — even when the same line
+    /// also declares it (`val string = body.string()`).
+    Reference,
+    /// A declaration, or a position the CST could not classify.
+    Unclassified,
+}
+
+/// Whether the cursor is on `name`'s declaration in `uri`: a declaration of
+/// it on `line`, unless the CST shows the cursor on a reference.
+fn is_on_declaration(
+    index: &(impl SymbolIndex + ScopeQuery),
+    uri: &Url,
+    line: u32,
+    cursor_site: CursorSite,
+    name: &str,
+) -> bool {
+    if cursor_site == CursorSite::Reference {
+        return false;
+    }
+    index.is_declared_in(uri, name)
+        && index
+            .definition_locations(name)
+            .iter()
+            .any(|location| location.uri == *uri && location.range.start.line == line)
 }
 
 fn declaration_files_for(

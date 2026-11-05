@@ -1,4 +1,4 @@
-use crate::features::references::resolve_scope_with_qualifier;
+use crate::features::references::{resolve_scope_with_qualifier, CursorSite};
 
 // ── resolve_scope_with_qualifier ──────────────────────────────────────────
 
@@ -18,7 +18,14 @@ fn scope_lowercase_decl_gets_package_scope() {
     let uri = tower_lsp::lsp_types::Url::parse("file:///t.kt").unwrap();
     let src = "package demo\nclass Foo { val descriptiveNumber: String = \"\" }";
     let indexer = make_indexer_with(src, &uri);
-    let (parent, pkg) = resolve_scope_with_qualifier(&indexer, &uri, 1, "descriptiveNumber", None);
+    let (parent, pkg) = resolve_scope_with_qualifier(
+        &indexer,
+        &uri,
+        1,
+        CursorSite::Unclassified,
+        "descriptiveNumber",
+        None,
+    );
     assert_eq!(parent, None, "lowercase member must not get a parent_class");
     assert_eq!(
         pkg.as_deref(),
@@ -34,7 +41,8 @@ fn scope_uppercase_on_declaration_uses_enclosing_class() {
     let src = "package demo\nclass Outer {\n    class Inner\n}";
     let indexer = make_indexer_with(src, &uri);
     // `Inner` is declared on line 2 inside `Outer`
-    let (parent, pkg) = resolve_scope_with_qualifier(&indexer, &uri, 2, "Inner", None);
+    let (parent, pkg) =
+        resolve_scope_with_qualifier(&indexer, &uri, 2, CursorSite::Unclassified, "Inner", None);
     assert_eq!(
         parent.as_deref(),
         Some("Outer"),

@@ -3059,3 +3059,56 @@ async fn find_references_on_soft_keyword_jar_member_from_subtype_receiver_keeps_
         "the StateFlow.value callers and nothing else"
     );
 }
+
+/// The cursor's line also DECLARES the name (`val string = body.string()`):
+/// the cursor is on the `.string()` call, not on the local, so the search must
+/// not be scoped to the local's package. Before, the line-only "on the
+/// declaration" check matched the local and the caller in another package
+/// was never searched.
+#[tokio::test]
+async fn find_references_on_call_sharing_a_line_with_a_same_named_local_searches_everywhere() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let body_src = "package okio.like\nclass ResponseBody {\n    fun string(): String = \"\"\n}\n";
+    let reader_src = "package app.reader\n\
+                      import okio.like.ResponseBody\n\
+                      class FromString {\n\
+                      \x20   fun read(body: ResponseBody): String {\n\
+                      \x20       val string = body.string()\n\
+                      \x20       return string\n\
+                      \x20   }\n\
+                      }\n";
+    let other_src = "package app.other\n\
+                     import okio.like.ResponseBody\n\
+                     fun other(body: ResponseBody): String = body.string()\n";
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    let mut reader_uri = None;
+    for (file, source) in [
+        ("ResponseBody.kt", body_src),
+        ("Reader.kt", reader_src),
+        ("Other.kt", other_src),
+    ] {
+        let (_path, uri) = write(root, file, source);
+        idx.index_content(&uri, source);
+        if file == "Reader.kt" {
+            idx.store_live_tree(&uri, source);
+            reader_uri = Some(uri);
+        }
+    }
+    let reader_uri = reader_uri.unwrap();
+    let call_line = reader_src.lines().nth(4).unwrap();
+    let call_column = call_line.find(".string").unwrap() as u32 + 1;
+
+    let locations = find_references_with_qualifier(
+        "string",
+        None,
+        &reader_uri,
+        Position::new(4, call_column),
+        false,
+        &idx,
+    )
+    .await;
+
+    assert_refs_contain(&locations, &["Other.kt"]);
+}
