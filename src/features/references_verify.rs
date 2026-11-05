@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use tower_lsp::lsp_types::Location;
 
 use crate::indexer::{
-    CallShape, Indexer, InferDeps, NavigationSource, OccurrenceSite, ResolvedType, SymbolRole,
+    CallShape, ClassifiedOccurrence, Indexer, InferDeps, NavigationSource, OccurrenceDetail,
+    OccurrenceScope, OccurrenceSite, ResolvedType, SymbolRole,
 };
 use crate::resolver::{ReceiverType, ReceiverTypeAgreement, Resolver};
 
@@ -61,10 +62,26 @@ pub(crate) fn verify_candidates(
         rejected: Vec::new(),
         proven_overrides: Vec::new(),
     };
+    let mut classified = verifier.classify(&candidates).into_iter();
     for candidate in candidates {
-        verifier.verify(candidate, &mut verified);
+        let Some(occurrence) = classified.next() else {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            continue;
+        };
+        verifier.verify(candidate, occurrence, &mut verified);
     }
     verified
+}
+
+/// What [`CandidateVerifier::classify`] found out about one candidate before
+/// any verification ran.
+struct PreparedCandidate {
+    /// Whether its file was already in memory; classifying it otherwise
+    /// read it from disk, which the IO budget pays for.
+    file_already_indexed: bool,
+    /// `None` when the IO budget can't have reached it: verification keeps
+    /// it unverified without classifying it.
+    occurrence: Option<ClassifiedOccurrence>,
 }
 
 /// What the query's own cursor resolved to. Absent when the cursor's
@@ -93,24 +110,69 @@ struct CandidateVerifier<'a> {
 }
 
 impl CandidateVerifier<'_> {
-    fn verify(&mut self, candidate: Location, verified: &mut VerifiedReferences) {
+    /// Classify, up front and in parallel over files, every candidate
+    /// [`Self::verify`] may reach: all those in files already in memory, and
+    /// as many of the rest as the IO budget can pay for.
+    fn classify(&self, candidates: &[Location]) -> Vec<PreparedCandidate> {
+        let file_already_indexed: Vec<bool> = candidates
+            .iter()
+            .map(|candidate| {
+                self.indexer.files.contains_key(candidate.uri.as_str())
+                    || self.indexer.live_lines.contains_key(candidate.uri.as_str())
+            })
+            .collect();
+        let mut unindexed_affordable = self.io_budget;
+        let reachable: Vec<bool> = file_already_indexed
+            .iter()
+            .map(|&indexed| {
+                if indexed {
+                    return true;
+                }
+                let affordable = unindexed_affordable > 0;
+                unindexed_affordable = unindexed_affordable.saturating_sub(1);
+                affordable
+            })
+            .collect();
+        let to_classify: Vec<&Location> = candidates
+            .iter()
+            .zip(&reachable)
+            .filter(|(_, &reachable)| reachable)
+            .map(|(candidate, _)| candidate)
+            .collect();
+        let detail = if self.query.is_some() {
+            OccurrenceDetail::WithScope
+        } else {
+            OccurrenceDetail::SiteOnly
+        };
+        let mut classified =
+            crate::indexer::classify_occurrences(self.indexer, &to_classify, detail).into_iter();
+        file_already_indexed
+            .into_iter()
+            .zip(reachable)
+            .map(|(file_already_indexed, reachable)| PreparedCandidate {
+                file_already_indexed,
+                occurrence: if reachable { classified.next() } else { None },
+            })
+            .collect()
+    }
+
+    fn verify(
+        &mut self,
+        candidate: Location,
+        prepared: PreparedCandidate,
+        verified: &mut VerifiedReferences,
+    ) {
         if self.io_budget == 0 {
             verified.kept.push(NavigationSource::NameScan(candidate));
             return;
         }
-        let file_already_indexed = self.indexer.files.contains_key(candidate.uri.as_str())
-            || self.indexer.live_lines.contains_key(candidate.uri.as_str());
-        if !file_already_indexed {
+        if !prepared.file_already_indexed {
             self.io_budget -= 1;
         }
-        let site = crate::indexer::classify_occurrence_at(
-            self.indexer,
-            &candidate.uri,
-            crate::types::CursorPos {
-                line: candidate.range.start.line as usize,
-                utf16_col: candidate.range.start.character as usize,
-            },
-        );
+        let Some(ClassifiedOccurrence { site, scope }) = prepared.occurrence else {
+            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
+        };
         let symbol = match site {
             OccurrenceSite::Symbol(symbol) => symbol,
             // Comment text, string text and accessor keywords spell the name
@@ -142,26 +204,15 @@ impl CandidateVerifier<'_> {
                 ..
             } => self.verify_member_reference(candidate, receiver_type, *shape, verified),
             SymbolRole::Declaration { indexed: false } => verified.rejected.push(candidate),
-            SymbolRole::Declaration { indexed: true } => {
-                let is_local = crate::indexer::is_local_declaration_at(
-                    self.indexer,
-                    &candidate.uri,
-                    crate::types::CursorPos {
-                        line: candidate.range.start.line as usize,
-                        utf16_col: candidate.range.start.character as usize,
-                    },
-                );
-                if is_local {
-                    verified.rejected.push(candidate);
-                } else {
-                    self.verify_declaration(candidate, verified);
-                }
-            }
+            SymbolRole::Declaration { indexed: true } => match scope {
+                OccurrenceScope::Local => verified.rejected.push(candidate),
+                _ => self.verify_declaration(candidate, verified),
+            },
             SymbolRole::Reference {
                 receiver_type: None,
                 shape,
                 ..
-            } => self.verify_bare_reference(candidate, *shape, verified),
+            } => self.verify_bare_reference(candidate, *shape, scope, verified),
             SymbolRole::ImportSegment => verified.kept.push(NavigationSource::NameScan(candidate)),
         }
     }
@@ -175,19 +226,17 @@ impl CandidateVerifier<'_> {
         &mut self,
         candidate: Location,
         shape: Option<CallShape>,
+        scope: OccurrenceScope,
         verified: &mut VerifiedReferences,
     ) {
-        let position = crate::types::CursorPos {
-            line: candidate.range.start.line as usize,
-            utf16_col: candidate.range.start.character as usize,
-        };
-        if crate::indexer::is_local_value_reference(self.indexer, &candidate.uri, position) {
-            verified.rejected.push(candidate);
-            return;
-        }
-        match crate::indexer::implicit_receiver_of(self.indexer, &candidate.uri, position) {
-            Some(receiver) => self.verify_member_reference(candidate, &receiver, shape, verified),
-            None => verified.kept.push(NavigationSource::NameScan(candidate)),
+        match scope {
+            OccurrenceScope::Local => verified.rejected.push(candidate),
+            OccurrenceScope::ImplicitReceiver(receiver) => {
+                self.verify_member_reference(candidate, &receiver, shape, verified)
+            }
+            OccurrenceScope::NotLocal | OccurrenceScope::Unchecked => {
+                verified.kept.push(NavigationSource::NameScan(candidate))
+            }
         }
     }
 

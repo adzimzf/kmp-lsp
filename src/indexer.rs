@@ -56,6 +56,7 @@ pub(crate) use self::infer::{
         lambda_param_position_on_line, line_has_lambda_param, ThisContext,
     },
     lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS, SCOPE_FUNCTIONS},
+    occurrences::{classify_occurrences, ClassifiedOccurrence, OccurrenceDetail, OccurrenceScope},
     sig::{
         candidate_applies_to_call, collect_all_fun_params_texts, collect_params_from_line,
         collect_signature, declaration_signature, find_fun_params_text_fast,

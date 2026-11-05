@@ -58,6 +58,7 @@
 //! - `lambda_resolution`  — `LambdaParamResolution` typed intermediate (Phase 2)
 //! - `expr_type`   — expression-node type inference (backs `CstQuery::expr_type`)
 //! - `java_cst`    — Java identifier classification, local bindings and expression types
+//! - `occurrences` — batch classification of find-references hits, one parse per file
 //! - `speculative`  — marker-insertion speculative reparse for dot-completion receivers
 
 pub(super) mod args;
@@ -71,6 +72,7 @@ pub(super) mod it_this;
 pub(super) mod java_cst;
 pub(super) mod lambda;
 pub(super) mod lambda_resolution;
+pub(super) mod occurrences;
 pub(super) mod sig;
 pub(super) mod speculative;
 pub(super) mod type_subst;

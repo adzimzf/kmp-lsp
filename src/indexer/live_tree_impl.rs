@@ -21,21 +21,17 @@ impl Indexer {
     /// for the most recently used files. A poisoned lock only loses the
     /// memo, never the answer.
     fn parse_unopened(&self, uri: &Url, lines: &Arc<Vec<String>>) -> Option<Arc<LiveDoc>> {
+        if let Some(doc) = self.remembered_unopened_parse(uri, lines) {
+            return Some(doc);
+        }
+        // Parsed without the memo's lock held: find-references classifies
+        // the files of one request on several threads at once.
+        let lang = lang_for_path(uri.path())?;
+        let doc = Arc::new(parse_live(&lines.join("\n"), lang)?);
         let mut parses = self
             .unopened_parses
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let remembered_at = parses
-            .iter()
-            .position(|parse| Arc::ptr_eq(&parse.parsed_from, lines) && parse.uri == uri.as_str());
-        if let Some(position) = remembered_at {
-            let parse = parses.remove(position);
-            let doc = Arc::clone(&parse.doc);
-            parses.push(parse);
-            return Some(doc);
-        }
-        let lang = lang_for_path(uri.path())?;
-        let doc = Arc::new(parse_live(&lines.join("\n"), lang)?);
         parses.retain(|parse| parse.uri != uri.as_str());
         if parses.len() >= UNOPENED_PARSE_CAPACITY {
             parses.remove(0);
@@ -45,6 +41,26 @@ impl Indexer {
             parsed_from: Arc::clone(lines),
             doc: Arc::clone(&doc),
         });
+        Some(doc)
+    }
+
+    /// The memoized tree of this version of `uri`'s lines, marked most
+    /// recently used.
+    fn remembered_unopened_parse(
+        &self,
+        uri: &Url,
+        lines: &Arc<Vec<String>>,
+    ) -> Option<Arc<LiveDoc>> {
+        let mut parses = self
+            .unopened_parses
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let remembered_at = parses.iter().position(|parse| {
+            Arc::ptr_eq(&parse.parsed_from, lines) && parse.uri == uri.as_str()
+        })?;
+        let parse = parses.remove(remembered_at);
+        let doc = Arc::clone(&parse.doc);
+        parses.push(parse);
         Some(doc)
     }
 
