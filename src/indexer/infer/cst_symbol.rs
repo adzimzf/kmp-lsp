@@ -453,6 +453,48 @@ pub(crate) fn is_local_value_reference(indexer: &Indexer, uri: &Url, pos: Cursor
     !enclosing_class_declares_it
 }
 
+/// The implicit receiver a bare `name` at `pos` reaches it through, when one
+/// of the receivers in scope has a member (or extension) of that name.
+///
+/// Receivers are tried in Kotlin's order, nearest first: lambda receivers
+/// (`with(x) { name }`), then the enclosing extension's receiver
+/// (`fun Call<T>.await() { enqueue(..) }`), then the enclosing class. `None`
+/// when no receiver in scope has `name` — it is then a top-level or
+/// imported declaration, or the index cannot tell.
+pub(crate) fn implicit_receiver_of(
+    indexer: &Indexer,
+    uri: &Url,
+    pos: CursorPos,
+) -> Option<ResolvedType> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let node = super::cst_lambda::cursor_node_at(&doc, pos)?;
+    if !matches!(node.kind(), KIND_SIMPLE_IDENT) {
+        return None;
+    }
+    let name = node.utf8_text_owned(&doc.bytes)?;
+    let mut receivers = CstQuery::new(node, &doc, indexer, uri).all_this_receivers();
+    let position = Position::new(pos.line as u32, pos.utf16_col as u32);
+    let extension_receiver = crate::parser::enclosing_extension_receiver_at(
+        doc.tree.root_node(),
+        &doc.bytes,
+        tower_lsp::lsp_types::Range {
+            start: position,
+            end: position,
+        },
+    )
+    .filter(|receiver| !receiver.is_type_parameter);
+    receivers.extend(extension_receiver.map(|receiver| receiver.written));
+    receivers.extend(indexer.enclosing_class_at(uri, pos.line as u32));
+    receivers
+        .into_iter()
+        .map(|receiver| ResolvedType::from_inferred(receiver, uri.clone()))
+        .find(|receiver| {
+            !indexer
+                .find_member_of_type_index_only(&name, receiver, uri)
+                .is_empty()
+        })
+}
+
 fn not_code_kind(node: Node<'_>, bytes: &[u8], pos: CursorPos) -> Option<NotCodeKind> {
     use crate::queries::{
         KIND_BLOCK_COMMENT, KIND_COMMENT, KIND_GETTER, KIND_GETTER_SPECIFIER, KIND_LINE_COMMENT,

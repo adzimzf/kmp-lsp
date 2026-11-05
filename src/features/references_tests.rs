@@ -3329,3 +3329,78 @@ async fn find_references_on_parameter_keeps_its_reads() {
         "the parameter's read; got {hits:?}"
     );
 }
+
+/// A bare call is checked through the implicit receiver it reaches, nearest
+/// first: inside `fun Call.await()` a bare `enqueue { }` is `Call.enqueue` and
+/// is dropped from the references of `Server.enqueue`, while a bare call
+/// inside `with(server) { }` (lambda receiver) and one inside `Server` itself
+/// (`this`) are kept.
+#[tokio::test]
+async fn find_references_checks_bare_calls_through_their_implicit_receiver() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let call_src = "package lib\ninterface Call {\n    fun enqueue(callback: () -> Unit)\n}\n";
+    let server_src = "package lib\n\
+                      class Server {\n\
+                      \x20   fun enqueue(response: Int) {}\n\
+                      \x20   fun again() {\n\
+                      \x20       enqueue(3)\n\
+                      \x20   }\n\
+                      }\n";
+    let await_src = "package app\n\
+                     import lib.Call\n\
+                     fun Call.await() {\n\
+                     \x20   enqueue { }\n\
+                     }\n";
+    let queue_src = "package app\n\
+                     import lib.Server\n\
+                     fun push(server: Server) = with(server) {\n\
+                     \x20   enqueue(1)\n\
+                     }\n";
+    let use_src = "package app\n\
+                   import lib.Server\n\
+                   fun use(server: Server) {\n\
+                   \x20   server.enqueue(2)\n\
+                   }\n";
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    let mut use_uri = None;
+    for (file, source) in [
+        ("Call.kt", call_src),
+        ("Server.kt", server_src),
+        ("Await.kt", await_src),
+        ("Queue.kt", queue_src),
+        ("Use.kt", use_src),
+    ] {
+        let (_path, uri) = write(root, file, source);
+        idx.index_content(&uri, source);
+        if file == "Use.kt" {
+            idx.store_live_tree(&uri, source);
+            use_uri = Some(uri);
+        }
+    }
+    let use_uri = use_uri.unwrap();
+    let call_column = use_src.lines().nth(3).unwrap().find("enqueue").unwrap() as u32;
+
+    let locations = find_references_with_qualifier(
+        "enqueue",
+        None,
+        &use_uri,
+        Position::new(3, call_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits = hit_lines(&locations);
+
+    for expected in [("Use.kt", 3), ("Queue.kt", 3), ("Server.kt", 4)] {
+        assert!(
+            hits.contains(&(expected.0.to_owned(), expected.1)),
+            "{expected:?} is Server.enqueue; got {hits:?}"
+        );
+    }
+    assert!(
+        !hits.contains(&("Await.kt".to_owned(), 3)),
+        "bare enqueue in Call.await() is Call.enqueue; got {hits:?}"
+    );
+}

@@ -147,28 +147,35 @@ impl CandidateVerifier<'_> {
             }
             SymbolRole::Reference {
                 receiver_type: None,
+                shape,
                 ..
-            } => self.verify_bare_reference(candidate, verified),
+            } => self.verify_bare_reference(candidate, *shape, verified),
             SymbolRole::ImportSegment => verified.kept.push(NavigationSource::NameScan(candidate)),
         }
     }
 
-    /// A bare name (`value`, `enqueue(..)`) with no receiver type: rejected
-    /// when it reads a local value, kept otherwise — it may be the member
-    /// through an implicit receiver.
-    fn verify_bare_reference(&self, candidate: Location, verified: &mut VerifiedReferences) {
-        let reads_local_value = crate::indexer::is_local_value_reference(
-            self.indexer,
-            &candidate.uri,
-            crate::types::CursorPos {
-                line: candidate.range.start.line as usize,
-                utf16_col: candidate.range.start.character as usize,
-            },
-        );
-        if reads_local_value {
+    /// A bare name (`value`, `enqueue(..)`) with no written receiver:
+    /// rejected when it reads a local value; checked like an explicit
+    /// receiver when an implicit receiver in scope has the member; kept
+    /// otherwise (a top-level or imported declaration the index can't tell
+    /// apart).
+    fn verify_bare_reference(
+        &mut self,
+        candidate: Location,
+        shape: Option<CallShape>,
+        verified: &mut VerifiedReferences,
+    ) {
+        let position = crate::types::CursorPos {
+            line: candidate.range.start.line as usize,
+            utf16_col: candidate.range.start.character as usize,
+        };
+        if crate::indexer::is_local_value_reference(self.indexer, &candidate.uri, position) {
             verified.rejected.push(candidate);
-        } else {
-            verified.kept.push(NavigationSource::NameScan(candidate));
+            return;
+        }
+        match crate::indexer::implicit_receiver_of(self.indexer, &candidate.uri, position) {
+            Some(receiver) => self.verify_member_reference(candidate, &receiver, shape, verified),
+            None => verified.kept.push(NavigationSource::NameScan(candidate)),
         }
     }
 
