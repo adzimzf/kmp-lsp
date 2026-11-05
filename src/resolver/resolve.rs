@@ -8,7 +8,9 @@
 //! 3. **Same package**      — all symbols in files that share the same `package` declaration
 //!    are visible without imports in Kotlin.
 //! 4. **Star imports**      — `import com.example.*`  checks indexed files in that package,
-//!    then falls back to an `rg` search scoped to the package dir.
+//!    then falls back to an `rg` search scoped to the package dir. Then the
+//!    language's implicit imports (Kotlin's default imports, Java's `java.lang`),
+//!    when their sources are indexed.
 //! 5. **Extension functions** — `fun Receiver.name(...)` is stored as a top-level symbol
 //!    named `name`; steps 1–4 already pick these up. No special
 //!    handling needed beyond noting that receiver type is ignored.
@@ -33,7 +35,8 @@ use super::find::{find_local_declaration, find_name_in_uri, find_name_scoped_to_
 use super::imports::resolve_via_imports;
 use super::package::import_package_absent_from_source_roots;
 use super::package_scope::{
-    find_in_star_imports, resolve_same_package, resolve_star_imports, star_import_packages,
+    find_in_implicit_imports, find_in_star_imports, resolve_same_package, resolve_star_imports,
+    star_import_packages,
 };
 use super::platform_types::resolve_kotlin_builtin_type_platform_equivalent;
 use super::qualified::{
@@ -388,6 +391,11 @@ fn resolve_chain(
         if let Some(loc) = find_in_star_imports(indexer, name, &star_pkgs) {
             return vec![loc];
         }
+    }
+
+    // 4.2 ── implicit imports (Kotlin default imports, Java's `java.lang`) ─────
+    if let Some(location) = find_in_implicit_imports(indexer, name, from_uri) {
+        return vec![location];
     }
 
     // 4.5 ── superclass / interface hierarchy ─────────────────────────────────

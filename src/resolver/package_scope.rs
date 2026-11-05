@@ -22,6 +22,44 @@ pub(super) fn find_in_star_imports(
     None
 }
 
+/// Step 4.2 — the packages every file sees without an import: Kotlin's
+/// default imports (`kotlin.*`, `java.lang`, …) in a Kotlin file, `java.lang`
+/// in a Java one. Only top-level declarations are visible this way (a bare
+/// `append()` is never `StringBuilder.append`), and only once their sources
+/// are indexed (the JDK's, see `crate::indexer::jdk_sources`). Explicit star
+/// imports come first: they shadow these.
+pub(super) fn find_in_implicit_imports(
+    indexer: &Indexer,
+    name: &str,
+    uri: &Url,
+) -> Option<Location> {
+    let packages = implicit_import_packages(uri);
+    if packages.is_empty() {
+        return None;
+    }
+    // Promote-before-read (zero budget): a library known only by name is
+    // loaded when its parse is cached; no blocking sidecar IPC on this path.
+    let mut cache_backed_only = 0usize;
+    crate::indexer::jar::ensure_jar_definitions_for(indexer, name, &mut cache_backed_only);
+    packages.iter().find_map(|package| {
+        let symbol_location = *indexer.qualified.get(&format!("{package}.{name}"))?;
+        indexer.file_table.location(symbol_location)
+    })
+}
+
+/// The packages a file written in `uri`'s language imports implicitly.
+fn implicit_import_packages(uri: &Url) -> &'static [&'static str] {
+    let path = uri.path();
+    let is_kotlin = path.ends_with(".kt") || path.ends_with(".kts");
+    if is_kotlin {
+        return super::imports::KOTLIN_DEFAULT_IMPORT_PACKAGES;
+    }
+    if path.ends_with(".java") {
+        return &["java.lang"];
+    }
+    &[]
+}
+
 /// Step 3 — same-package visibility (no import needed in Kotlin).
 ///
 /// Finds all indexed files sharing the same `package` declaration as `from_uri`

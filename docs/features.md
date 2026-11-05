@@ -308,6 +308,7 @@ Like jdtls (Buildship/m2e) and IntelliJ, kmp-lsp asks the project's own build to
 | `referencesIncludeLibraries` | `true` / `false` | `true` |
 | `decompileLibraries` | `true` / `false` | `true` |
 | `librarySources` | `"onDemand"` / `"eager"` | `"onDemand"` |
+| `jdkHome` | path to a JDK | found in the environment (see [JDK sources](#jdk-sources)) |
 
 ### Library sources load on demand
 
@@ -325,6 +326,21 @@ Library sources are **not** all kept in memory. Each sources jar (downloaded or 
 - **Find-references** loads the libraries whose text mentions the name being searched and its class or package, up to 64 per request, then searches them as before.
 - **Memory** grows with the libraries you use, not with every dependency.
 - `librarySources: "eager"` restores loading everything at startup.
+
+### JDK sources
+
+The JDK's own classes (`ArrayList`, `StringBuilder`, `java.time.Instant`, …) are indexed from the project's JDK sources (`lib/src.zip`), like a library sources jar: receivers typed with a JDK class resolve, go-to-definition opens the JDK source, and find-references on `list.add(…)` no longer returns an unrelated `Bag.add`. Kotlin's default imports (`java.lang.*` included) and Java's `java.lang` are honored, so `StringBuilder` needs no import.
+
+Nothing is hard-coded — the first JDK that ships its sources is used:
+
+1. `indexingOptions.jdkHome`, then `"jdkHome"` in `workspace.json` (`<WORKSPACE>` and relative paths supported);
+2. `$JAVA_HOME` (the editor's, then your login shell's), then the `java` on the `PATH` (the editor's, then the login shell's), then on macOS `/usr/libexec/java_home`.
+
+If none has its sources, the JDK isn't indexed and nothing else changes. A JRE has none, and Debian/Ubuntu ship them separately: `apt install openjdk-21-source` (match your JDK's version). `KMP_LSP_JDK_SOURCES=off` turns the lookup off.
+
+- **Public API only.** `java/` and `javax/` packages of `java.base`, `java.logging`, `java.net.http`, `java.prefs`, `java.sql` and `java.xml` — about 1,850 files. AWT/Swing (`java.desktop`) and internal packages (`sun.*`, `jdk.internal.*`) are left out.
+- **Loaded on demand**, like library sources: JDK 21 takes 1.8 s to parse once, 9 ms on later startups and 0.24 s on first use (release build, 4 cores).
+- **Not searched for usages.** Find-references on a JDK member returns your project's calls, not the JDK's own internal ones.
 
 ### Libraries without sources: decompiled
 

@@ -35,7 +35,7 @@ const MAX_JAR_BYTES: u64 = 64 * 1024 * 1024;
 /// Libraries decompiled at the same time.
 const PARALLEL_DECOMPILES: usize = 4;
 
-const JAVA_INSTALL: InstallLocations = InstallLocations {
+pub(crate) const JAVA_INSTALL: InstallLocations = InstallLocations {
     home_variables: &["JAVA_HOME"],
     sdkman_candidate: "java",
     directories: &["/usr/lib/jvm/default-java/bin"],

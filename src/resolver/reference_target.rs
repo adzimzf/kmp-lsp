@@ -193,6 +193,9 @@ impl ReferenceTarget {
             if file.source_set != SourceSet::Library {
                 continue;
             }
+            if crate::indexer::jdk_sources::is_jdk_sources_uri(entry.key()) {
+                continue;
+            }
             let Ok(uri) = Url::parse(entry.key()) else {
                 continue;
             };

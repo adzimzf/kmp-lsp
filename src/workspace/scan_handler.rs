@@ -588,7 +588,8 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
 }
 
 /// Mount library sources JARs: the Gradle cache plus the project's own
-/// resolved dependencies from the last dependency sync, if any.
+/// resolved dependencies from the last dependency sync, if any, plus the
+/// project's JDK sources (see [`crate::indexer::jdk_sources`]).
 /// In the default on-demand mode only their names are loaded now (see
 /// [`crate::indexer::library_sources`]).
 pub(crate) fn index_library_sources(indexer: &Indexer) -> usize {
@@ -597,15 +598,18 @@ pub(crate) fn index_library_sources(indexer: &Indexer) -> usize {
         .workspace_root
         .get()
         .and_then(|root| crate::dependency_sync::load_manifest(&root));
+    let mut jars = crate::indexer::jar::sources_jars_to_mount(
+        crate::indexer::jar::scan_gradle_sources_jars(None),
+        project.as_ref(),
+    );
+    if let Some(jdk) = crate::indexer::jdk_sources::jdk_sources_for(indexer) {
+        jars.push(jdk.archive);
+    }
     match indexer.library_sources.mode() {
         LibrarySourcesMode::Eager => {
-            crate::indexer::jar::index_sources_jars(indexer, None, None, project.as_ref())
+            crate::indexer::jar::index_sources_jar_paths(indexer, &jars, None)
         }
         LibrarySourcesMode::OnDemand => {
-            let jars = crate::indexer::jar::sources_jars_to_mount(
-                crate::indexer::jar::scan_gradle_sources_jars(None),
-                project.as_ref(),
-            );
             crate::indexer::library_sources::mount(indexer, &jars, None)
         }
     }

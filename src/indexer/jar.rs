@@ -338,6 +338,7 @@ fn collect_all_jars(dir: &Path, out: &mut Vec<PathBuf>) {
 /// [`crate::dependency_sync`]), when a sync has run: its sources jars are
 /// mounted too (a Maven project's live in `~/.m2`, not the Gradle cache),
 /// and for an artifact it names, its version replaces the newest cached one.
+#[cfg(test)]
 pub(crate) fn index_sources_jars(
     indexer: &crate::indexer::Indexer,
     gradle_home: Option<&Path>,
@@ -345,6 +346,16 @@ pub(crate) fn index_sources_jars(
     project: Option<&crate::dependency_sync::DependencyManifest>,
 ) -> usize {
     let sources = sources_jars_to_mount(scan_gradle_sources_jars(gradle_home), project);
+    index_sources_jar_paths(indexer, &sources, cache_dir)
+}
+
+/// [`index_sources_jars`] for an explicit list of sources jars (the Gradle
+/// cache's plus the JDK's `src.zip`, see `scan_handler::index_library_sources`).
+pub(crate) fn index_sources_jar_paths(
+    indexer: &crate::indexer::Indexer,
+    sources: &[PathBuf],
+    cache_dir: Option<&Path>,
+) -> usize {
     if sources.is_empty() {
         log::debug!("jar: no sources JARs found in Gradle cache");
         return 0;
@@ -353,7 +364,7 @@ pub(crate) fn index_sources_jars(
     let mut cache = super::sources_jar_cache::load_sources_jar_cache(cache_dir);
     let pruned = super::sources_jar_cache::prune_deleted_jars(&mut cache);
 
-    let (cache_hits, mut contributions, missed) = partition_sources_jars(&cache, &sources);
+    let (cache_hits, mut contributions, missed) = partition_sources_jars(&cache, sources);
     let cache_dirty = pruned || !missed.is_empty();
 
     contributions.extend(parse_missed_sources_jars(&mut cache, missed));
@@ -694,6 +705,7 @@ pub(crate) fn extract_sources_jar_entries(jar_path: &Path) -> Result<Vec<(Url, S
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("zip open failed: {e}"))?;
 
     let jar_uri_str = format!("jar:file://{}", jar_path.display());
+    let is_jdk_archive = super::jdk_sources::is_jdk_sources_archive(jar_path);
     let mut entries = Vec::new();
 
     for i in 0..archive.len() {
@@ -708,6 +720,9 @@ pub(crate) fn extract_sources_jar_entries(jar_path: &Path) -> Result<Vec<(Url, S
         let is_kotlin = name.ends_with(".kt");
         let is_java = name.ends_with(".java");
         if !is_kotlin && !is_java {
+            continue;
+        }
+        if is_jdk_archive && !super::jdk_sources::is_indexed_jdk_entry(&name) {
             continue;
         }
 

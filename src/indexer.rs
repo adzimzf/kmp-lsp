@@ -88,6 +88,7 @@ pub(crate) mod jar;
 pub(crate) mod jar_cache;
 pub(crate) mod jar_manifest_cache;
 pub(crate) mod jar_phase;
+pub(crate) mod jdk_sources;
 pub(crate) mod library_sources;
 pub(crate) mod sources_jar_cache;
 
@@ -97,6 +98,9 @@ mod jar_manifest_cache_tests;
 #[cfg(test)]
 #[path = "indexer/jar_tests.rs"]
 mod jar_tests;
+#[cfg(test)]
+#[path = "indexer/jdk_sources_tests.rs"]
+mod jdk_sources_tests;
 #[cfg(test)]
 #[path = "indexer/memory_probe_tests.rs"]
 mod memory_probe_tests;
@@ -301,6 +305,9 @@ pub(crate) struct Indexer {
     /// Whether find-references also searches mounted library sources
     /// (`indexingOptions.referencesIncludeLibraries`, on by default).
     pub(crate) references_include_libraries: std::sync::atomic::AtomicBool,
+    /// `indexingOptions.jdkHome`: the JDK whose sources are indexed, ahead of
+    /// `workspace.json`'s `jdkHome` and the environment (see [`jdk_sources`]).
+    pub(crate) configured_jdk_home: std::sync::RwLock<Option<PathBuf>>,
     /// Library sources jars known by name and loaded on first use
     /// (`indexingOptions.librarySources`, see [`library_sources`]).
     pub(crate) library_sources: library_sources::LibrarySources,
@@ -1078,6 +1085,7 @@ impl Indexer {
             module_dependencies: RwLock::new(HashMap::new()),
             library_uris: DashSet::new(),
             references_include_libraries: std::sync::atomic::AtomicBool::new(true),
+            configured_jdk_home: std::sync::RwLock::new(None),
             library_sources: library_sources::LibrarySources::default(),
             extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),

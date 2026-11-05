@@ -23,6 +23,7 @@ fn run_in_textkit_workspace(args: &[&str]) -> Output {
 
     let run = |args: &[&str]| {
         Command::new(BIN)
+            .env("KMP_LSP_JDK_SOURCES", "off")
             .args(args)
             .arg("--root")
             .arg(&root)

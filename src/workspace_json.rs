@@ -43,6 +43,11 @@ struct WorkspaceData {
     /// Supports `<WORKSPACE>`; relative paths resolve against the workspace root.
     #[serde(default, rename = "jarPaths")]
     jar_paths: Option<Vec<String>>,
+    /// The JDK whose sources (`lib/src.zip`) are indexed, overriding the one
+    /// found in the environment. Supports `<WORKSPACE>`; a relative path
+    /// resolves against the workspace root.
+    #[serde(default, rename = "jdkHome")]
+    jdk_home: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -294,6 +299,24 @@ pub(crate) fn load_configured_jar_paths(workspace_root: &Path) -> Vec<PathBuf> {
     }
 }
 
+/// `workspace.json`'s `jdkHome`, resolved to an absolute path.
+pub(crate) fn load_configured_jdk_home(workspace_root: &Path) -> Option<PathBuf> {
+    let configured = parse_workspace_data(workspace_root)?.jdk_home?;
+    Some(resolve_workspace_path(&configured, workspace_root))
+}
+
+/// `spec` with `<WORKSPACE>` substituted; relative paths resolve against the
+/// workspace root.
+pub(crate) fn resolve_workspace_path(spec: &str, workspace_root: &Path) -> PathBuf {
+    let resolved =
+        PathBuf::from(spec.replace(WORKSPACE_PLACEHOLDER, &workspace_root.to_string_lossy()));
+    if resolved.is_absolute() {
+        resolved
+    } else {
+        workspace_root.join(resolved)
+    }
+}
+
 /// Reads and parses `<workspace_root>/workspace.json` into the full
 /// `WorkspaceData` structure. Returns `None` (with a log warning, except for
 /// the common "no file present" case) on any I/O or parse failure — never
@@ -452,18 +475,9 @@ fn module_gradle_dependencies(
 ///
 /// Shared by `workspace.json`'s `jarPaths` and the LSP `indexingOptions.jarPaths`.
 pub(crate) fn resolve_jar_path_specs(specs: &[String], workspace_root: &Path) -> Vec<PathBuf> {
-    let workspace_str = workspace_root.to_string_lossy();
     let mut out: Vec<PathBuf> = Vec::new();
     for spec in specs {
-        let resolved = spec.replace(WORKSPACE_PLACEHOLDER, &workspace_str);
-        let path = {
-            let resolved_path = PathBuf::from(&resolved);
-            if resolved_path.is_absolute() {
-                resolved_path
-            } else {
-                workspace_root.join(resolved_path)
-            }
-        };
+        let path = resolve_workspace_path(spec, workspace_root);
         if path.is_dir() {
             collect_compiled_jars(&path, &mut out);
         } else if path.is_file() && is_compiled_jar(&path) && !out.contains(&path) {

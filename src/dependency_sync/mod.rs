@@ -154,13 +154,13 @@ fn wrapper(root: &Path, name: &str) -> Option<PathBuf> {
 /// Where a build tool is installed when it isn't on the language server's
 /// `PATH` — an editor launched from a desktop/Dock often doesn't get the
 /// `PATH` a shell profile (`.zshrc`, SDKMAN, Homebrew) sets up.
-pub(super) struct InstallLocations {
+pub(crate) struct InstallLocations {
     /// Environment variables naming the tool's home (`$VAR/bin`).
-    pub(super) home_variables: &'static [&'static str],
+    pub(crate) home_variables: &'static [&'static str],
     /// The tool's SDKMAN candidate name (`~/.sdkman/candidates/<name>/current/bin`).
-    pub(super) sdkman_candidate: &'static str,
+    pub(crate) sdkman_candidate: &'static str,
     /// Tool-specific install directories.
-    pub(super) directories: &'static [&'static str],
+    pub(crate) directories: &'static [&'static str],
 }
 
 const MAVEN_INSTALL: InstallLocations = InstallLocations {
@@ -185,7 +185,7 @@ const COMMON_BIN_DIRECTORIES: &[&str] = &[
 ];
 
 /// `PATH` first, then the tool's usual install locations.
-pub(super) fn search_dirs(install: &InstallLocations) -> Vec<PathBuf> {
+pub(crate) fn search_dirs(install: &InstallLocations) -> Vec<PathBuf> {
     let mut directories: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|path| std::env::split_paths(&path).collect())
         .unwrap_or_default();
@@ -221,7 +221,7 @@ pub(crate) struct LoginShellEnvironment {
 
 /// Asked once (only when needed); empty on Windows, without `$SHELL`, or
 /// when the shell doesn't answer in time.
-pub(super) fn login_shell_environment() -> &'static LoginShellEnvironment {
+pub(crate) fn login_shell_environment() -> &'static LoginShellEnvironment {
     static LOGIN_SHELL: std::sync::OnceLock<LoginShellEnvironment> = std::sync::OnceLock::new();
     LOGIN_SHELL.get_or_init(|| {
         let environment = query_login_shell().unwrap_or_default();
@@ -234,7 +234,7 @@ pub(super) fn login_shell_environment() -> &'static LoginShellEnvironment {
     })
 }
 
-pub(super) fn login_shell_path() -> &'static [PathBuf] {
+pub(crate) fn login_shell_path() -> &'static [PathBuf] {
     &login_shell_environment().path
 }
 
@@ -325,7 +325,7 @@ fn apply_build_tool_environment(command: &mut Command, launcher: &Path) {
 
 /// The first executable called `name` (`name.cmd`/`.bat`/`.exe` on
 /// Windows) in `directories`.
-pub(super) fn installed_tool(name: &str, directories: &[PathBuf]) -> Option<PathBuf> {
+pub(crate) fn installed_tool(name: &str, directories: &[PathBuf]) -> Option<PathBuf> {
     let file_names: Vec<String> = if cfg!(windows) {
         ["cmd", "bat", "exe"]
             .iter()

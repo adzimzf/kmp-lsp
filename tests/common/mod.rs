@@ -90,7 +90,11 @@ impl LspClient {
             // redundant, CPU-contended JAR-manifest pass, timing these tests
             // out on CI runners that ship a pre-installed SDK.
             .env_remove("ANDROID_HOME")
-            .env_remove("ANDROID_SDK_ROOT");
+            .env_remove("ANDROID_SDK_ROOT")
+            // Same for the host's JDK sources: parsing a real `src.zip`
+            // into every test's empty cache costs seconds per process. A
+            // test that wants a JDK passes `KMP_LSP_JDK_SOURCES` itself.
+            .env("KMP_LSP_JDK_SOURCES", "off");
         for (name, value) in &environment.variables {
             command.env(name, value);
         }

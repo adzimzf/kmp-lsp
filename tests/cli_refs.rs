@@ -184,6 +184,7 @@ fn smart_refs_stderr(extra_args: &[&str]) -> String {
 
     // `--smart` needs a pre-built index.
     let index_status = Command::new(BIN)
+        .env("KMP_LSP_JDK_SOURCES", "off")
         .args(["index", "--root"])
         .arg(&root)
         .env("HOME", dir.path())
@@ -193,6 +194,7 @@ fn smart_refs_stderr(extra_args: &[&str]) -> String {
     assert!(index_status.success(), "kmp-lsp index failed");
 
     let output = Command::new(BIN)
+        .env("KMP_LSP_JDK_SOURCES", "off")
         .args(["refs", "Foo", "--smart", "-v"])
         .args(extra_args)
         .arg("--root")
