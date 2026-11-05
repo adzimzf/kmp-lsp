@@ -302,7 +302,7 @@ impl Indexer {
 
     /// Whether the type `type_name` declared in `uri` declares a member
     /// `member` itself (not an extension).
-    fn declares_member(&self, uri: &str, type_name: &str, member: &str) -> bool {
+    pub(crate) fn declares_member(&self, uri: &str, type_name: &str, member: &str) -> bool {
         let Some(file_data) = self.files.get(uri).or_else(|| self.jar_files.get(uri)) else {
             return false;
         };

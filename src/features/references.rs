@@ -267,9 +267,12 @@ pub(crate) async fn verified_references_for(
         }
     }
 
+    // A local or parameter (an unindexed declaration) has no declaring
+    // type: it gets no identity, so verification treats every query that has
+    // one as a member and may reject candidates that read a local value.
     let (query_declaring_type, query_declaring_type_uri) = match &cursor_symbol {
         Some(symbol) => match &symbol.role {
-            SymbolRole::Declaration { .. } => (
+            SymbolRole::Declaration { indexed: true } => (
                 index.enclosing_class_at(uri, line),
                 Some(uri.as_str().to_owned()),
             ),

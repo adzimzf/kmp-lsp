@@ -3228,3 +3228,104 @@ async fn find_references_identifies_a_call_by_the_overload_its_arguments_reach()
 
     assert_eq!(hit_files(&call_sites), ["Cancellable.kt", "Plain.kt"]);
 }
+
+/// Workspace for the local-value tests: `Box.value` is a member, read through
+/// a receiver (`box.value`) and bare inside `Box` itself; `convert` has an
+/// unrelated parameter named `value` and reads it.
+fn local_value_workspace(root: &std::path::Path) -> (Arc<Indexer>, Url, Url) {
+    let box_src = "package app\n\
+                   class Box {\n\
+                   \x20   val value: Int = 0\n\
+                   \x20   fun twice(): Int = value * 2\n\
+                   }\n";
+    let use_src = "package app.use\n\
+                   import app.Box\n\
+                   fun read(box: Box): Int = box.value\n\
+                   fun convert(value: Int): Int {\n\
+                   \x20   return value + 1\n\
+                   }\n";
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    let (_path, box_uri) = write(root, "Box.kt", box_src);
+    let (_path, use_uri) = write(root, "Use.kt", use_src);
+    idx.index_content(&box_uri, box_src);
+    idx.index_content(&use_uri, use_src);
+    idx.store_live_tree(&use_uri, use_src);
+    (idx, box_uri, use_uri)
+}
+
+fn hit_lines(locations: &[tower_lsp::lsp_types::Location]) -> Vec<(String, u32)> {
+    let mut hits: Vec<(String, u32)> = locations
+        .iter()
+        .map(|location| {
+            let file = location.uri.path().rsplit('/').next().unwrap().to_owned();
+            (file, location.range.start.line)
+        })
+        .collect();
+    hits.sort();
+    hits.dedup();
+    hits
+}
+
+/// Find-references on the member `box.value` drops a same-named parameter
+/// declaration and the read of that parameter — neither can be the member —
+/// and keeps the bare `value` read inside `Box`, which is the member through
+/// the implicit `this`.
+#[tokio::test]
+async fn find_references_on_member_drops_same_named_parameters_and_their_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let (idx, _box_uri, use_uri) = local_value_workspace(dir.path());
+    let read_column = "fun read(box: Box): Int = box.".len() as u32;
+
+    let locations = find_references_with_qualifier(
+        "value",
+        None,
+        &use_uri,
+        Position::new(2, read_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits = hit_lines(&locations);
+
+    assert!(
+        hits.contains(&("Use.kt".to_owned(), 2)),
+        "box.value; got {hits:?}"
+    );
+    assert!(
+        hits.contains(&("Box.kt".to_owned(), 3)),
+        "bare member read in Box; got {hits:?}"
+    );
+    for line in [3, 4] {
+        assert!(
+            !hits.contains(&("Use.kt".to_owned(), line)),
+            "parameter `value` (Use.kt:{line}) is not the member; got {hits:?}"
+        );
+    }
+}
+
+/// The other direction: find-references on the parameter itself still finds
+/// its read — a local query has no member identity, so nothing is rejected
+/// for being local.
+#[tokio::test]
+async fn find_references_on_parameter_keeps_its_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let (idx, _box_uri, use_uri) = local_value_workspace(dir.path());
+    let parameter_column = "fun convert(".len() as u32;
+
+    let locations = find_references_with_qualifier(
+        "value",
+        None,
+        &use_uri,
+        Position::new(3, parameter_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits = hit_lines(&locations);
+
+    assert!(
+        hits.contains(&("Use.kt".to_owned(), 4)),
+        "the parameter's read; got {hits:?}"
+    );
+}

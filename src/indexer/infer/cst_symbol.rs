@@ -424,6 +424,35 @@ pub(crate) fn classify_occurrence_at(
     }
 }
 
+/// Whether the bare identifier at `pos` reads a local value — a local
+/// variable, a parameter, a lambda parameter — rather than a member.
+///
+/// A primary-constructor `val`/`var` is visible as a binding from member
+/// bodies but is a member property, so a name the enclosing class itself
+/// declares as a member is never reported as local. False when the file does
+/// not parse or `pos` is not an identifier.
+pub(crate) fn is_local_value_reference(indexer: &Indexer, uri: &Url, pos: CursorPos) -> bool {
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return false;
+    };
+    let Some(node) = super::cst_lambda::cursor_node_at(&doc, pos) else {
+        return false;
+    };
+    if !matches!(node.kind(), KIND_SIMPLE_IDENT) {
+        return false;
+    }
+    if matches!(local_binding_at(node, &doc.bytes), LocalBinding::NotLocal) {
+        return false;
+    }
+    let Some(name) = node.utf8_text_owned(&doc.bytes) else {
+        return false;
+    };
+    let enclosing_class_declares_it = indexer
+        .enclosing_class_at(uri, pos.line as u32)
+        .is_some_and(|class_name| indexer.declares_member(uri.as_str(), &class_name, &name));
+    !enclosing_class_declares_it
+}
+
 fn not_code_kind(node: Node<'_>, bytes: &[u8], pos: CursorPos) -> Option<NotCodeKind> {
     use crate::queries::{
         KIND_BLOCK_COMMENT, KIND_COMMENT, KIND_GETTER, KIND_GETTER_SPECIFIER, KIND_LINE_COMMENT,

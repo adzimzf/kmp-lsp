@@ -133,14 +133,42 @@ impl CandidateVerifier<'_> {
             verified.kept.push(NavigationSource::NameScan(candidate));
             return;
         }
+        // The query has an identity, so it is a member (see
+        // `verified_references_for`): a local can never be one.
         match &symbol.role {
             SymbolRole::Reference {
                 receiver_type: Some(receiver_type),
                 shape,
                 ..
             } => self.verify_member_reference(candidate, receiver_type, *shape, verified),
-            SymbolRole::Declaration { .. } => self.verify_declaration(candidate, verified),
-            _ => verified.kept.push(NavigationSource::NameScan(candidate)),
+            SymbolRole::Declaration { indexed: false } => verified.rejected.push(candidate),
+            SymbolRole::Declaration { indexed: true } => {
+                self.verify_declaration(candidate, verified)
+            }
+            SymbolRole::Reference {
+                receiver_type: None,
+                ..
+            } => self.verify_bare_reference(candidate, verified),
+            SymbolRole::ImportSegment => verified.kept.push(NavigationSource::NameScan(candidate)),
+        }
+    }
+
+    /// A bare name (`value`, `enqueue(..)`) with no receiver type: rejected
+    /// when it reads a local value, kept otherwise — it may be the member
+    /// through an implicit receiver.
+    fn verify_bare_reference(&self, candidate: Location, verified: &mut VerifiedReferences) {
+        let reads_local_value = crate::indexer::is_local_value_reference(
+            self.indexer,
+            &candidate.uri,
+            crate::types::CursorPos {
+                line: candidate.range.start.line as usize,
+                utf16_col: candidate.range.start.character as usize,
+            },
+        );
+        if reads_local_value {
+            verified.rejected.push(candidate);
+        } else {
+            verified.kept.push(NavigationSource::NameScan(candidate));
         }
     }
 
