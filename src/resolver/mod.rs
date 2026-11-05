@@ -40,7 +40,9 @@ pub(crate) use extension::{
     resolve_implicit_receiver_callee, resolve_receiver_callee_in_type_scope, ExtensionDeclaration,
 };
 pub(crate) use hierarchy::ReceiverTypeAgreement;
-pub(crate) use hierarchy::{walk_hierarchy, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK};
+pub(crate) use hierarchy::{
+    walk_hierarchy, walk_hierarchy_breadth_first, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+};
 pub(crate) use import_edit::{already_imported, import_insertion_line, make_import_edit};
 pub(crate) use infer::{
     infer_receiver_type, infer_receiver_type_at, infer_variable_type_from_cst,

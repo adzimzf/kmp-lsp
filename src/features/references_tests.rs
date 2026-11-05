@@ -2872,9 +2872,17 @@ async fn find_references_on_soft_keyword_member_drops_unrelated_and_non_code_mat
     }
 }
 
-/// A jar `kotlinx.coroutines.flow` hierarchy: `MutableStateFlow : StateFlow :
-/// SharedFlow : Flow`, with `collect` declared on `Flow` and `value` on
-/// `StateFlow`.
+/// The jars a real Gradle cache holds for a coroutines user, as the sidecar
+/// reports them:
+///
+/// - `kotlinx.coroutines.flow`: `MutableStateFlow : StateFlow, MutableSharedFlow`,
+///   `StateFlow : SharedFlow`, `MutableSharedFlow : SharedFlow`,
+///   `SharedFlow : Flow`, with supertypes fully qualified. `collect` is declared on
+///   `Flow` and overridden on `SharedFlow`; `value` is declared on `StateFlow`
+///   and overridden on `MutableStateFlow`. The factory function
+///   `fun MutableStateFlow(value)` comes before the interface of the same name.
+/// - `org.intellij.lang.annotations` (kotlin-stdlib's annotations dependency):
+///   an unrelated `Flow`, so the simple name `Flow` is ambiguous.
 fn populate_flow_hierarchy_jar(idx: &Indexer) {
     let symbol = |name: &str, kind: &str, container: &str, detail: &str, supers: &[&str]| {
         crate::sidecar::SidecarSymbol {
@@ -2891,45 +2899,65 @@ fn populate_flow_hierarchy_jar(idx: &Indexer) {
             top_level: container.is_empty(),
             supers: supers
                 .iter()
-                .map(|super_type| (*super_type).to_owned())
+                .map(|super_type| format!("kotlinx.coroutines.flow.{super_type}"))
                 .collect(),
         }
     };
+    let collect_detail = "suspend fun collect(collector: FlowCollector<T>)";
     crate::indexer::jar::populate_from_symbols(
         idx,
         std::path::Path::new("/fake/kotlinx-coroutines-core.jar"),
         &[
+            symbol(
+                "MutableStateFlow",
+                "fun",
+                "",
+                "fun <T> MutableStateFlow(value: T): MutableStateFlow<T>",
+                &[],
+            ),
             symbol("Flow", "interface", "", "interface Flow<T>", &[]),
             symbol(
                 "SharedFlow",
                 "interface",
                 "",
                 "interface SharedFlow<T>",
-                &["kotlinx.coroutines.flow.Flow"],
+                &["Flow"],
             ),
             symbol(
                 "StateFlow",
                 "interface",
                 "",
                 "interface StateFlow<T>",
-                &["kotlinx.coroutines.flow.SharedFlow"],
+                &["SharedFlow"],
+            ),
+            symbol(
+                "MutableSharedFlow",
+                "interface",
+                "",
+                "interface MutableSharedFlow<T>",
+                &["SharedFlow"],
             ),
             symbol(
                 "MutableStateFlow",
                 "interface",
                 "",
                 "interface MutableStateFlow<T>",
-                &["kotlinx.coroutines.flow.StateFlow"],
+                &["StateFlow", "MutableSharedFlow"],
             ),
-            symbol(
-                "collect",
-                "fun",
-                "Flow",
-                "suspend fun collect(collector: FlowCollector<T>)",
-                &[],
-            ),
+            symbol("collect", "fun", "Flow", collect_detail, &[]),
+            symbol("collect", "fun", "SharedFlow", collect_detail, &[]),
             symbol("value", "val", "StateFlow", "val value: T", &[]),
+            symbol("value", "var", "MutableStateFlow", "var value: T", &[]),
         ],
+    );
+    crate::indexer::jar::populate_from_symbols(
+        idx,
+        std::path::Path::new("/fake/annotations-13.0.jar"),
+        &[crate::sidecar::SidecarSymbol {
+            pkg: "org.intellij.lang.annotations".into(),
+            supers: vec![],
+            ..symbol("Flow", "class", "", "annotation class Flow", &[])
+        }],
     );
 }
 
@@ -2998,10 +3026,12 @@ async fn references_to_flow_member_from_subtype_call(member: &str, access: &str)
     hit_files(&call_sites)
 }
 
-/// The query identity of a member call is the type DECLARING the member, not
-/// the cursor's receiver type: from `mutableStateFlow.collect {}` every
-/// caller of `Flow.collect` — through `StateFlow`, `SharedFlow` or `Flow`
-/// itself — is a reference, while `Bus.collect` is not.
+/// The query identity of a member call is the BASE declaration of the member,
+/// not the cursor's receiver type: from `mutableStateFlow.collect {}` (which
+/// reaches the `SharedFlow.collect` override) every caller of `Flow.collect`
+/// — through `StateFlow`, `SharedFlow` or `Flow` itself — is a reference,
+/// even though the simple name `Flow` is ambiguous across the jars, while
+/// `Bus.collect` is not.
 #[tokio::test]
 async fn find_references_on_jar_member_from_subtype_receiver_keeps_supertype_callers() {
     let files = references_to_flow_member_from_subtype_call("collect", "collect {}").await;
@@ -3013,10 +3043,11 @@ async fn find_references_on_jar_member_from_subtype_receiver_keeps_supertype_cal
     );
 }
 
-/// Same for a soft-keyword member: `value` is declared on `StateFlow`, so
-/// from a `MutableStateFlow` call site the `StateFlow` caller is kept, and
-/// the `Bus.value` read is still rejected. (`SharedFlow`/`Flow` have no
-/// `value`; their reads are unrelated, so they are rejected too.)
+/// Same for a soft-keyword member: `MutableStateFlow.value` overrides
+/// `StateFlow.value`, so from a `MutableStateFlow` call site the `StateFlow`
+/// caller is kept, and the `Bus.value` read is still rejected.
+/// (`SharedFlow`/`Flow` have no `value`; their reads are unrelated, so they
+/// are rejected too.)
 #[tokio::test]
 async fn find_references_on_soft_keyword_jar_member_from_subtype_receiver_keeps_supertype_callers()
 {

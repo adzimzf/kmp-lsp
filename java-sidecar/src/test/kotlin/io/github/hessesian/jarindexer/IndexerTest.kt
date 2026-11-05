@@ -663,4 +663,35 @@ class IndexerTest {
                 "got: ${constants.map { "${it.name}:${it.kind}" }}",
         )
     }
+
+    @Test
+    @DisplayName("Kotlin class super types are emitted fully qualified")
+    fun kotlinSuperTypesAreFullyQualified() {
+        // A simple `Flow` is ambiguous across a real Gradle cache (e.g.
+        // `org.intellij.lang.annotations.Flow`, or coroutines in two versions),
+        // and the Rust hierarchy walk stops at an ambiguous name — so
+        // `MutableStateFlow` was never proven to be a `Flow`.
+        val jarPath = System.getProperty("coroutines.jar")
+        assertNotNull(jarPath, "coroutines.jar system property must be set by the build")
+        val symbols = indexJarFile(jarPath!!)
+        fun supersOf(name: String) = symbols
+            .first { it.name == name && it.pkg == "kotlinx.coroutines.flow" && it.kind == "interface" }
+            .supers
+
+        assertEquals(listOf("kotlinx.coroutines.flow.Flow"), supersOf("SharedFlow"))
+        assertEquals(
+            setOf("kotlinx.coroutines.flow.StateFlow", "kotlinx.coroutines.flow.MutableSharedFlow"),
+            supersOf("MutableStateFlow").toSet(),
+        )
+        val cancellable = symbols.first { it.name == "CancellableContinuation" && it.pkg == "kotlinx.coroutines" }
+        assertEquals(listOf("kotlin.coroutines.Continuation"), cancellable.supers)
+    }
+
+    @Test
+    @DisplayName("JVM and Kotlin metadata class names map to dotted qualified names")
+    fun classNamesMapToDottedQualifiedNames() {
+        assertEquals("com.example.Outer.Inner", qualifiedJvmClassName("com/example/Outer\$Inner"))
+        assertEquals("java.util.AbstractList", qualifiedJvmClassName("java/util/AbstractList"))
+        assertEquals("com.example.Outer.Inner", qualifiedKotlinClassName("com/example/Outer.Inner"))
+    }
 }
