@@ -267,10 +267,19 @@ pub(crate) async fn verified_references_for(
                 index.enclosing_class_at(uri, line),
                 Some(uri.as_str().to_owned()),
             ),
+            // The member's declaring type, not the cursor's receiver type:
+            // verification keeps candidates whose receiver is that type or a
+            // subtype, so from `mutableStateFlow.collect {}` the query must
+            // be `Flow` or every `Flow`/`StateFlow` caller is rejected.
             SymbolRole::Reference {
                 receiver_type: Some(receiver_type),
                 ..
-            } => (Some(receiver_type.type_path()), None),
+            } => (
+                index
+                    .member_declaring_type(&symbol.name, receiver_type, uri)
+                    .or_else(|| Some(receiver_type.type_path())),
+                None,
+            ),
             _ => (None, None),
         },
         None => (None, None),

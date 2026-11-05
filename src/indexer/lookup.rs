@@ -189,6 +189,49 @@ impl Indexer {
         crate::resolver::resolve_implicit_receiver_callee(self, receiver_base, name, uri, shape)
     }
 
+    /// The type that declares the member `name` reached through `receiver`:
+    /// the member's own class/interface, or an extension's receiver type.
+    ///
+    /// This is often a supertype of `receiver` — `flow.collect {}` on a
+    /// `MutableStateFlow` reaches `Flow.collect` — so it, not `receiver`, is
+    /// the identity a call site shares with every other caller of the same
+    /// member. `None` when the member is not in the index. Never spawns
+    /// `rg`/`fd`.
+    pub(crate) fn member_declaring_type(
+        &self,
+        name: &str,
+        receiver: &ResolvedType,
+        from_uri: &Url,
+    ) -> Option<String> {
+        self.find_member_of_type_index_only(name, receiver, from_uri)
+            .iter()
+            .find_map(|location| self.declaring_type_at(name, location))
+    }
+
+    /// The type owning the declaration of `name` at `location`, in a
+    /// workspace or JAR file.
+    ///
+    /// Matched by line and name, not the exact range: a JAR symbol's indexed
+    /// range starts at column 0 of its synthetic line, while a resolved
+    /// location points at the name inside the signature (`val value`).
+    fn declaring_type_at(&self, name: &str, location: &Location) -> Option<String> {
+        let file_data = self
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| self.jar_files.get(location.uri.as_str()))?;
+        let symbol = file_data.symbols.iter().find(|symbol| {
+            symbol.name == name && symbol.selection_range.start.line == location.range.start.line
+        })?;
+        let extension_receiver = symbol.extension_receiver_type();
+        if !extension_receiver.is_empty() {
+            return Some(extension_receiver.to_owned());
+        }
+        symbol
+            .container
+            .clone()
+            .or_else(|| self.enclosing_class_at(&location.uri, location.range.start.line))
+    }
+
     /// All symbols declared in the given file (for `documentSymbol`).
     pub(crate) fn file_symbols(&self, uri: &Url) -> Vec<SymbolEntry> {
         self.files

@@ -2871,3 +2871,160 @@ async fn find_references_on_soft_keyword_member_drops_unrelated_and_non_code_mat
         );
     }
 }
+
+/// A jar `kotlinx.coroutines.flow` hierarchy: `MutableStateFlow : StateFlow :
+/// SharedFlow : Flow`, with `collect` declared on `Flow` and `value` on
+/// `StateFlow`.
+fn populate_flow_hierarchy_jar(idx: &Indexer) {
+    let symbol = |name: &str, kind: &str, container: &str, detail: &str, supers: &[&str]| {
+        crate::sidecar::SidecarSymbol {
+            name: name.into(),
+            kind: kind.into(),
+            container: container.into(),
+            detail: detail.into(),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "kotlinx.coroutines.flow".into(),
+            top_level: container.is_empty(),
+            supers: supers
+                .iter()
+                .map(|super_type| (*super_type).to_owned())
+                .collect(),
+        }
+    };
+    crate::indexer::jar::populate_from_symbols(
+        idx,
+        std::path::Path::new("/fake/kotlinx-coroutines-core.jar"),
+        &[
+            symbol("Flow", "interface", "", "interface Flow<T>", &[]),
+            symbol(
+                "SharedFlow",
+                "interface",
+                "",
+                "interface SharedFlow<T>",
+                &["kotlinx.coroutines.flow.Flow"],
+            ),
+            symbol(
+                "StateFlow",
+                "interface",
+                "",
+                "interface StateFlow<T>",
+                &["kotlinx.coroutines.flow.SharedFlow"],
+            ),
+            symbol(
+                "MutableStateFlow",
+                "interface",
+                "",
+                "interface MutableStateFlow<T>",
+                &["kotlinx.coroutines.flow.StateFlow"],
+            ),
+            symbol(
+                "collect",
+                "fun",
+                "Flow",
+                "suspend fun collect(collector: FlowCollector<T>)",
+                &[],
+            ),
+            symbol("value", "val", "StateFlow", "val value: T", &[]),
+        ],
+    );
+}
+
+/// Find-references on `member` from `Mutable.kt`'s `MutableStateFlow` call
+/// site, with callers through every type in [`populate_flow_hierarchy_jar`]
+/// plus an unrelated workspace `Bus` declaring a same-named member. Returns
+/// the files of the non-declaration hits.
+async fn references_to_flow_member_from_subtype_call(member: &str, access: &str) -> Vec<String> {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let caller = |package: &str, type_name: &str| {
+        format!(
+            "package {package}\n\
+             import kotlinx.coroutines.flow.{type_name}\n\
+             fun use(flow: {type_name}<Int>) {{\n\
+             \x20   flow.{access}\n\
+             }}\n"
+        )
+    };
+    let mutable_src = caller("app.mutable", "MutableStateFlow");
+    let state_src = caller("app.state", "StateFlow");
+    let shared_src = caller("app.shared", "SharedFlow");
+    let flow_src = caller("app.flow", "Flow");
+    let bus_src = format!(
+        "package app.bus\n\
+         class Bus {{ fun collect(block: () -> Unit) {{}}; val value: Int = 0 }}\n\
+         fun use(bus: Bus) {{\n\
+         \x20   bus.{access}\n\
+         }}\n"
+    );
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    populate_flow_hierarchy_jar(&idx);
+    let mut mutable_uri = None;
+    for (file, source) in [
+        ("Mutable.kt", &mutable_src),
+        ("State.kt", &state_src),
+        ("Shared.kt", &shared_src),
+        ("Plain.kt", &flow_src),
+        ("Bus.kt", &bus_src),
+    ] {
+        let (_path, uri) = write(root, file, source);
+        idx.index_content(&uri, source);
+        if file == "Mutable.kt" {
+            idx.store_live_tree(&uri, source);
+            mutable_uri = Some(uri);
+        }
+    }
+    let mutable_uri = mutable_uri.unwrap();
+
+    let call_column = mutable_src.lines().nth(3).unwrap().find(member).unwrap() as u32;
+    let locations = find_references_with_qualifier(
+        member,
+        None,
+        &mutable_uri,
+        Position::new(3, call_column),
+        false,
+        &idx,
+    )
+    .await;
+    let call_sites: Vec<_> = locations
+        .into_iter()
+        .filter(|location| location.range.start.line == 3)
+        .collect();
+    hit_files(&call_sites)
+}
+
+/// The query identity of a member call is the type DECLARING the member, not
+/// the cursor's receiver type: from `mutableStateFlow.collect {}` every
+/// caller of `Flow.collect` — through `StateFlow`, `SharedFlow` or `Flow`
+/// itself — is a reference, while `Bus.collect` is not.
+#[tokio::test]
+async fn find_references_on_jar_member_from_subtype_receiver_keeps_supertype_callers() {
+    let files = references_to_flow_member_from_subtype_call("collect", "collect {}").await;
+
+    assert_eq!(
+        files,
+        ["Mutable.kt", "Plain.kt", "Shared.kt", "State.kt"],
+        "every Flow.collect caller and no Bus.collect caller"
+    );
+}
+
+/// Same for a soft-keyword member: `value` is declared on `StateFlow`, so
+/// from a `MutableStateFlow` call site the `StateFlow` caller is kept, and
+/// the `Bus.value` read is still rejected. (`SharedFlow`/`Flow` have no
+/// `value`; their reads are unrelated, so they are rejected too.)
+#[tokio::test]
+async fn find_references_on_soft_keyword_jar_member_from_subtype_receiver_keeps_supertype_callers()
+{
+    let files = references_to_flow_member_from_subtype_call("value", "value").await;
+
+    assert_eq!(
+        files,
+        ["Mutable.kt", "State.kt"],
+        "the StateFlow.value callers and nothing else"
+    );
+}
