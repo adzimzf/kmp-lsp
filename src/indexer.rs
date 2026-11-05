@@ -1588,6 +1588,8 @@ impl Indexer {
     pub(crate) fn note_jar_symbols_populated(&self) {
         self.bare_names_dirty.store(true, Ordering::Release);
         self.invalidate_completion_cache();
+        self.sig_cache.clear();
+        self.sig_fast_cache.clear();
     }
 
     /// Bust the completion cache so the next request recomputes with the latest
