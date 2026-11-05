@@ -143,7 +143,19 @@ impl CandidateVerifier<'_> {
             } => self.verify_member_reference(candidate, receiver_type, *shape, verified),
             SymbolRole::Declaration { indexed: false } => verified.rejected.push(candidate),
             SymbolRole::Declaration { indexed: true } => {
-                self.verify_declaration(candidate, verified)
+                let is_local = crate::indexer::is_local_declaration_at(
+                    self.indexer,
+                    &candidate.uri,
+                    crate::types::CursorPos {
+                        line: candidate.range.start.line as usize,
+                        utf16_col: candidate.range.start.character as usize,
+                    },
+                );
+                if is_local {
+                    verified.rejected.push(candidate);
+                } else {
+                    self.verify_declaration(candidate, verified);
+                }
             }
             SymbolRole::Reference {
                 receiver_type: None,

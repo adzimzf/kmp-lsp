@@ -267,12 +267,21 @@ pub(crate) async fn verified_references_for(
         }
     }
 
-    // A local or parameter (an unindexed declaration) has no declaring
-    // type: it gets no identity, so verification treats every query that has
-    // one as a member and may reject candidates that read a local value.
+    // A local or parameter has no declaring type: it gets no identity, so
+    // verification treats every query that has one as a member and may
+    // reject candidates that read a local value. A local `val` is indexed
+    // like a property, hence the explicit locality check.
+    let cursor_is_local_declaration = crate::indexer::is_local_declaration_at(
+        index,
+        uri,
+        CursorPos {
+            line: position.line as usize,
+            utf16_col: position.character as usize,
+        },
+    );
     let (query_declaring_type, query_declaring_type_uri) = match &cursor_symbol {
         Some(symbol) => match &symbol.role {
-            SymbolRole::Declaration { indexed: true } => (
+            SymbolRole::Declaration { indexed: true } if !cursor_is_local_declaration => (
                 index.enclosing_class_at(uri, line),
                 Some(uri.as_str().to_owned()),
             ),
@@ -891,62 +900,48 @@ fn add_current_file_locations(
     let Some(lines) = index.mem_lines_for(uri.as_str()) else {
         return;
     };
+    // Decided per occurrence, not per line: `val string = body.string()`
+    // declares the name and uses it, and dropping the declaration must keep
+    // the use beside it.
     for (line_idx, line) in lines.iter().enumerate() {
         let line_number = line_idx as u32;
-        if has_reference_line(locations, uri, line_number) {
-            continue;
-        }
-        // When owner_class is set the caller is using variable-name call syntax
-        // (e.g. `reducerFactory.create()`). The only legitimate hit in the declaring
-        // file is the declaration itself; all other create() calls here are to OTHER
-        // injected factory instances and must be excluded.
-        if owner_class.is_some() {
-            if include_decl && crate::rg::is_declaration_of(line, name) {
-                for loc in line_reference_locations(uri, name, line_number, line) {
-                    if !has_reference_start(locations, &loc) {
-                        locations.push(loc);
-                    }
+        for offset in word_byte_offsets(line, name) {
+            let location = reference_location(uri, name, line_number, line, offset);
+            if has_reference_start(locations, &location) {
+                continue;
+            }
+            let is_declaration = crate::rg::is_declaration_occurrence_at(line, offset as u32);
+            // When owner_class is set the caller is using variable-name call
+            // syntax (e.g. `reducerFactory.create()`). The only legitimate hit
+            // in the declaring file is the declaration itself; all other
+            // create() calls here are to OTHER injected factory instances.
+            if owner_class.is_some() {
+                if include_decl && is_declaration {
+                    locations.push(location);
                 }
-            }
-            continue;
-        }
-        // Check qualifier per-occurrence so that a line containing both a valid
-        // and an invalid qualified reference (e.g. `ReducerA.Factory, ReducerC.Factory`)
-        // keeps the valid hit instead of dropping the whole line.
-        for loc in line_reference_locations(uri, name, line_number, line) {
-            if has_reference_start(locations, &loc) {
                 continue;
             }
-            // Respect include_decl: if the caller asked to exclude the declaration,
-            // skip lines that declare this name (mirrors the rg path behaviour).
-            if !include_decl && crate::rg::is_declaration_of(line, name) {
+            // Respect include_decl: the declaration itself is skipped when the
+            // caller excludes it (mirrors the rg path behaviour).
+            if !include_decl && is_declaration {
                 continue;
             }
+            // Per-occurrence qualifier check, so a line holding both a valid
+            // and an invalid qualified reference (`ReducerA.Factory,
+            // ReducerC.Factory`) keeps the valid hit.
             if let Some(parent) = parent_class {
                 if crate::rg::has_wrong_qualifier_at_col(
                     line,
                     name,
                     parent,
-                    loc.range.start.character,
+                    location.range.start.character,
                 ) {
                     continue;
                 }
             }
-            locations.push(loc);
+            locations.push(location);
         }
     }
-}
-
-fn has_reference_line(locations: &[Location], uri: &Url, line_number: u32) -> bool {
-    locations
-        .iter()
-        .any(|loc| loc.uri == *uri && loc.range.start.line == line_number)
-}
-
-fn line_reference_locations(uri: &Url, name: &str, line_number: u32, line: &str) -> Vec<Location> {
-    word_byte_offsets(line, name)
-        .map(|offset| reference_location(uri, name, line_number, line, offset))
-        .collect()
 }
 
 fn reference_location(

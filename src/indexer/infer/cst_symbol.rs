@@ -16,13 +16,13 @@ use crate::queries::{
     KIND_ANONYMOUS_INITIALIZER, KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK,
     KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ,
     KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_CLASS_BODY, KIND_ENUM_ENTRY, KIND_EQ,
-    KIND_FINALLY_BLOCK, KIND_FOR_STMT, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER,
-    KIND_IMPORT_HEADER, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR,
-    KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PARAM_WITH_OPTIONAL_TYPE,
-    KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_SETTER, KIND_SIMPLE_IDENT,
-    KIND_STATEMENTS, KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_MODIFIERS,
-    KIND_TYPE_PARAM, KIND_TYPE_TEST, KIND_VAR_DECL, KIND_WHEN_CONDITION, KIND_WHEN_ENTRY,
-    KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    KIND_FINALLY_BLOCK, KIND_FOR_STMT, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS,
+    KIND_IDENTIFIER, KIND_IMPORT_HEADER, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_MULTI_VAR_DECL,
+    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER,
+    KIND_PARAM_WITH_OPTIONAL_TYPE, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE,
+    KIND_SETTER, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_TRY_EXPR,
+    KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_MODIFIERS, KIND_TYPE_PARAM, KIND_TYPE_TEST,
+    KIND_VAR_DECL, KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 use crate::resolver::api::Definitions;
 use crate::resolver::jvm_interop::{self, PropertyAccess};
@@ -422,6 +422,29 @@ pub(crate) fn classify_occurrence_at(
         Some(kind) => OccurrenceSite::NotCode(kind),
         None => OccurrenceSite::Unclassified,
     }
+}
+
+/// Whether the declaration whose name is at `pos` is local — declared in a
+/// function or lambda body (`val total = 1` in a method), not a member or a
+/// top-level declaration. A local `val` is indexed like a property, so the
+/// indexed flag alone cannot tell them apart. False when the file does not
+/// parse.
+pub(crate) fn is_local_declaration_at(indexer: &Indexer, uri: &Url, pos: CursorPos) -> bool {
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return false;
+    };
+    let Some(node) = super::cst_lambda::cursor_node_at(&doc, pos) else {
+        return false;
+    };
+    let mut ancestor = node.parent();
+    while let Some(scope) = ancestor {
+        match scope.kind() {
+            KIND_STATEMENTS | KIND_FUN_BODY => return true,
+            KIND_CLASS_BODY | KIND_ENUM_CLASS_BODY | KIND_SOURCE_FILE => return false,
+            _ => ancestor = scope.parent(),
+        }
+    }
+    false
 }
 
 /// Whether the bare identifier at `pos` reads a local value — a local

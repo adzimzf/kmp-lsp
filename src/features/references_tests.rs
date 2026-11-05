@@ -3404,3 +3404,127 @@ async fn find_references_checks_bare_calls_through_their_implicit_receiver() {
         "bare enqueue in Call.await() is Call.enqueue; got {hits:?}"
     );
 }
+
+/// A line that both declares the name and uses it (`val string =
+/// body.string()`) keeps the use: the declaration is dropped as one
+/// occurrence, not as the whole line — in another file (the `rg` path, which
+/// used to report only a line's first match) and in the query's own unsaved
+/// buffer (the current-file pass, which skipped any line declaring the name).
+#[tokio::test]
+async fn find_references_keeps_a_use_on_a_line_that_declares_the_same_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let body_src = "package okio.like\nclass ResponseBody {\n    fun string(): String = \"\"\n}\n";
+    let mixed_line = "    val string = body.string()";
+    let reader_src = format!(
+        "package app.reader\n\
+         import okio.like.ResponseBody\n\
+         fun read(body: ResponseBody): String {{\n\
+         {mixed_line}\n\
+         \x20   return string\n\
+         }}\n"
+    );
+    let other_src = format!(
+        "package app.other\n\
+         import okio.like.ResponseBody\n\
+         fun other(body: ResponseBody): String = body.string()\n\
+         fun again(body: ResponseBody): String {{\n\
+         {mixed_line}\n\
+         \x20   return string\n\
+         }}\n"
+    );
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    let mut other_uri = None;
+    // `Other.kt`'s `again` exists only in the editor buffer, not on disk, so
+    // only the current-file pass can find the call in it.
+    let other_saved_src = other_src.split("fun again").next().unwrap().to_owned();
+    for (file, saved_source, live_source) in [
+        ("ResponseBody.kt", body_src, body_src),
+        ("Reader.kt", reader_src.as_str(), reader_src.as_str()),
+        ("Other.kt", other_saved_src.as_str(), other_src.as_str()),
+    ] {
+        let (_path, uri) = write(root, file, saved_source);
+        idx.index_content(&uri, live_source);
+        if file == "Other.kt" {
+            idx.store_live_tree(&uri, live_source);
+            idx.set_live_lines(&uri, live_source);
+            other_uri = Some(uri);
+        }
+    }
+    let other_uri = other_uri.unwrap();
+    let query_column = "fun other(body: ResponseBody): String = body.".len() as u32;
+
+    let locations = find_references_with_qualifier(
+        "string",
+        None,
+        &other_uri,
+        Position::new(2, query_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits: Vec<(String, u32, u32)> = locations
+        .iter()
+        .map(|location| {
+            let file = location.uri.path().rsplit('/').next().unwrap().to_owned();
+            (
+                file,
+                location.range.start.line,
+                location.range.start.character,
+            )
+        })
+        .collect();
+
+    let call_column = mixed_line.find(".string").unwrap() as u32 + 1;
+    let local_column = mixed_line.find("string").unwrap() as u32;
+    for (file, line) in [("Reader.kt", 3), ("Other.kt", 4)] {
+        assert!(
+            hits.contains(&(file.to_owned(), line, call_column)),
+            "the .string() call on {file}:{line} is a reference; got {hits:?}"
+        );
+        assert!(
+            !hits.contains(&(file.to_owned(), line, local_column)),
+            "the local `string` on {file}:{line} is not; got {hits:?}"
+        );
+    }
+}
+
+/// Find-references on a local `val` declared inside a class method finds its
+/// reads. A local `val` is an indexed declaration like a class property, but
+/// it is local: it must get no member identity, or its own reads would be
+/// rejected as reads of a local value.
+#[tokio::test]
+async fn find_references_on_local_val_in_a_method_keeps_its_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let source = "package app\n\
+                  class Reader {\n\
+                  \x20   fun read(): Int {\n\
+                  \x20       val total = 1\n\
+                  \x20       return total + 1\n\
+                  \x20   }\n\
+                  }\n";
+    let (_path, uri) = write(root, "Reader.kt", source);
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&uri, source);
+    idx.store_live_tree(&uri, source);
+    let declaration_column = source.lines().nth(3).unwrap().find("total").unwrap() as u32;
+
+    let locations = find_references_with_qualifier(
+        "total",
+        None,
+        &uri,
+        Position::new(3, declaration_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits = hit_lines(&locations);
+
+    assert!(
+        hits.contains(&("Reader.kt".to_owned(), 4)),
+        "the read of `total`; got {hits:?}"
+    );
+}

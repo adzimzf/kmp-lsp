@@ -398,6 +398,9 @@ struct RgSearch<'a> {
     patterns: Vec<String>,
     word_regexp: bool,
     list_files: bool,
+    /// One result per match instead of per matching line — see
+    /// [`RgSearch::every_match`].
+    every_match: bool,
 }
 
 impl<'a> RgSearch<'a> {
@@ -408,6 +411,7 @@ impl<'a> RgSearch<'a> {
             patterns: Vec::new(),
             word_regexp: false,
             list_files: false,
+            every_match: false,
         }
     }
 
@@ -423,6 +427,7 @@ impl<'a> RgSearch<'a> {
             patterns: Vec::new(),
             word_regexp: false,
             list_files: false,
+            every_match: false,
         }
     }
 
@@ -433,6 +438,7 @@ impl<'a> RgSearch<'a> {
             patterns: Vec::new(),
             word_regexp: false,
             list_files: false,
+            every_match: false,
         }
     }
 
@@ -455,6 +461,16 @@ impl<'a> RgSearch<'a> {
         self
     }
 
+    /// Report every match on a line, each at its own column (`--vimgrep`),
+    /// instead of only the first. A line can hold the name twice —
+    /// `val string = body.string()` declares it and uses it — and a later
+    /// filter that rejects the first occurrence must not take the second
+    /// one with it.
+    fn every_match(mut self) -> Self {
+        self.every_match = true;
+        self
+    }
+
     fn list_files(mut self) -> Self {
         self.list_files = true;
         self
@@ -471,6 +487,9 @@ impl<'a> RgSearch<'a> {
                 "--line-number",
                 "--column",
             ]);
+            if self.every_match {
+                command.arg("--vimgrep");
+            }
         }
         if self.word_regexp {
             command.arg("--word-regexp");
@@ -777,6 +796,7 @@ fn run_rg_search(request: &RgSearchRequest<'_>, patterns: &[String]) -> Vec<Loca
         search = search.word_regexp();
     }
     search
+        .every_match()
         .locations_with_content()
         .into_iter()
         .filter_map(|(loc, content)| {
@@ -1254,13 +1274,15 @@ fn owner_scoped_reference_locations(
             let is_from_uri = loc.uri.as_str() == request.from_uri.as_str();
             if is_from_uri {
                 // In the declaring file, only the declaration itself is relevant.
-                return if request.include_decl && is_declaration_of(&content, request.name) {
+                return if request.include_decl
+                    && is_declaration_occurrence_at(&content, loc.range.start.character)
+                {
                     Some(loc)
                 } else {
                     None
                 };
             }
-            if is_declaration_of(&content, request.name) {
+            if is_declaration_occurrence_at(&content, loc.range.start.character) {
                 return None;
             }
             if !producer_discovered_files.contains(loc.uri.as_str())
@@ -1750,7 +1772,7 @@ fn field_scoped_reference_locations(
             // in other classes (multi-class file false positives).
             let is_from_uri = loc.uri.as_str() == request.from_uri.as_str();
             if is_from_uri {
-                if is_declaration_of(&content, request.name) {
+                if is_declaration_occurrence_at(&content, loc.range.start.character) {
                     // Keep the actual declaration; drop same-named decls in other classes.
                     let is_the_decl = request
                         .field_decl_line
@@ -1759,9 +1781,10 @@ fn field_scoped_reference_locations(
                 }
                 return Some(loc);
             }
-            // In other files: skip declaration-like lines for the same name to
-            // avoid picking up `val value: String` in some unrelated class.
-            if is_declaration_of(&content, request.name) {
+            // In other files: skip declarations of the same name to avoid
+            // picking up `val value: String` in some unrelated class — the
+            // occurrence, not the whole line, so a use beside it survives.
+            if is_declaration_occurrence_at(&content, loc.range.start.character) {
                 return None;
             }
             // Java-specific: filter out method/field declarations in unrelated
@@ -2198,6 +2221,7 @@ fn rg_word_in_files(safe_name: &str, files: &[String]) -> Vec<(Location, String)
     }
     RgSearch::files(files)
         .word_regexp()
+        .every_match()
         .with_pattern(safe_name.to_owned())
         .locations_with_content()
 }
@@ -2211,6 +2235,7 @@ fn rg_pattern_in_files(pattern: &str, files: &[String]) -> Vec<(Location, String
         return vec![];
     }
     RgSearch::files(files)
+        .every_match()
         .with_pattern(pattern.to_owned())
         .locations_with_content()
 }
