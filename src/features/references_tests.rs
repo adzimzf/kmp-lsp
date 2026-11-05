@@ -2795,3 +2795,804 @@ async fn enum_synthetic_members_do_not_poison_producer_discovery() {
 
     assert_refs_contain(&locs, &["Caller.kt"]);
 }
+
+/// Find-references on a member named `get` — a Kotlin soft keyword — keeps
+/// the real call and drops everything else `rg` matches: the same-named
+/// member on an unrelated receiver type, a property's `get()` accessor, a
+/// comment and string text.
+#[tokio::test]
+async fn find_references_on_soft_keyword_member_drops_unrelated_and_non_code_matches() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let box_src = "package app\nclass Box {\n    fun get(): Int = 1\n}\n";
+    let other_src = "package app\nclass Other {\n    fun get(): Int = 2\n    val size: Int\n        get() = 3\n}\n";
+    let use_src = "package app\n\
+                   // get the box\n\
+                   fun use(box: Box, other: Other): String {\n\
+                   \x20   box.get()\n\
+                   \x20   other.get()\n\
+                   \x20   return \"get\"\n\
+                   }\n";
+
+    let (_box_path, box_uri) = write(root, "Box.kt", box_src);
+    let (_other_path, other_uri) = write(root, "Other.kt", other_src);
+    let (_use_path, use_uri) = write(root, "Use.kt", use_src);
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&box_uri, box_src);
+    idx.index_content(&other_uri, other_src);
+    idx.index_content(&use_uri, use_src);
+    idx.store_live_tree(&use_uri, use_src);
+
+    let call_line = 3u32;
+    let call_column = use_src.lines().nth(3).unwrap().find("get").unwrap() as u32;
+    let locs = find_references_with_qualifier(
+        "get",
+        None,
+        &use_uri,
+        Position::new(call_line, call_column),
+        false,
+        &idx,
+    )
+    .await;
+
+    let mut hits: Vec<(String, u32)> = locs
+        .iter()
+        .map(|location| {
+            let file = location
+                .uri
+                .to_file_path()
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
+            (file, location.range.start.line)
+        })
+        .collect();
+    hits.sort();
+    hits.dedup();
+
+    assert!(
+        hits.contains(&("Use.kt".to_owned(), 3)),
+        "the box.get() call itself must be found; got {hits:?}"
+    );
+    for (file, line, what) in [
+        ("Use.kt", 1, "comment"),
+        ("Use.kt", 4, "other.get() on an unrelated type"),
+        ("Use.kt", 5, "string text"),
+        ("Other.kt", 4, "property getter keyword"),
+    ] {
+        assert!(
+            !hits.contains(&(file.to_owned(), line)),
+            "{what} ({file}:{line}) must not be a reference; got {hits:?}"
+        );
+    }
+}
+
+/// The jars a real Gradle cache holds for a coroutines user, as the sidecar
+/// reports them:
+///
+/// - `kotlinx.coroutines.flow`: `MutableStateFlow : StateFlow, MutableSharedFlow`,
+///   `StateFlow : SharedFlow`, `MutableSharedFlow : SharedFlow`,
+///   `SharedFlow : Flow`, with supertypes fully qualified. `collect` is declared on
+///   `Flow` and overridden on `SharedFlow`; `value` is declared on `StateFlow`
+///   and overridden on `MutableStateFlow`. The factory function
+///   `fun MutableStateFlow(value)` comes before the interface of the same name.
+/// - `org.intellij.lang.annotations` (kotlin-stdlib's annotations dependency):
+///   an unrelated `Flow`, so the simple name `Flow` is ambiguous.
+fn populate_flow_hierarchy_jar(idx: &Indexer) {
+    let symbol = |name: &str, kind: &str, container: &str, detail: &str, supers: &[&str]| {
+        crate::sidecar::SidecarSymbol {
+            name: name.into(),
+            kind: kind.into(),
+            container: container.into(),
+            detail: detail.into(),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: "kotlinx.coroutines.flow".into(),
+            top_level: container.is_empty(),
+            supers: supers
+                .iter()
+                .map(|super_type| format!("kotlinx.coroutines.flow.{super_type}"))
+                .collect(),
+        }
+    };
+    let collect_detail = "suspend fun collect(collector: FlowCollector<T>)";
+    crate::indexer::jar::populate_from_symbols(
+        idx,
+        std::path::Path::new("/fake/kotlinx-coroutines-core.jar"),
+        &[
+            symbol(
+                "MutableStateFlow",
+                "fun",
+                "",
+                "fun <T> MutableStateFlow(value: T): MutableStateFlow<T>",
+                &[],
+            ),
+            symbol("Flow", "interface", "", "interface Flow<T>", &[]),
+            symbol(
+                "SharedFlow",
+                "interface",
+                "",
+                "interface SharedFlow<T>",
+                &["Flow"],
+            ),
+            symbol(
+                "StateFlow",
+                "interface",
+                "",
+                "interface StateFlow<T>",
+                &["SharedFlow"],
+            ),
+            symbol(
+                "MutableSharedFlow",
+                "interface",
+                "",
+                "interface MutableSharedFlow<T>",
+                &["SharedFlow"],
+            ),
+            symbol(
+                "MutableStateFlow",
+                "interface",
+                "",
+                "interface MutableStateFlow<T>",
+                &["StateFlow", "MutableSharedFlow"],
+            ),
+            symbol("collect", "fun", "Flow", collect_detail, &[]),
+            symbol("collect", "fun", "SharedFlow", collect_detail, &[]),
+            symbol("value", "val", "StateFlow", "val value: T", &[]),
+            symbol("value", "var", "MutableStateFlow", "var value: T", &[]),
+        ],
+    );
+    crate::indexer::jar::populate_from_symbols(
+        idx,
+        std::path::Path::new("/fake/annotations-13.0.jar"),
+        &[crate::sidecar::SidecarSymbol {
+            pkg: "org.intellij.lang.annotations".into(),
+            supers: vec![],
+            ..symbol("Flow", "class", "", "annotation class Flow", &[])
+        }],
+    );
+}
+
+/// Find-references on `member` from `Mutable.kt`'s `MutableStateFlow` call
+/// site, with callers through every type in [`populate_flow_hierarchy_jar`]
+/// plus an unrelated workspace `Bus` declaring a same-named member. Returns
+/// the files of the non-declaration hits.
+async fn references_to_flow_member_from_subtype_call(member: &str, access: &str) -> Vec<String> {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let caller = |package: &str, type_name: &str| {
+        format!(
+            "package {package}\n\
+             import kotlinx.coroutines.flow.{type_name}\n\
+             fun use(flow: {type_name}<Int>) {{\n\
+             \x20   flow.{access}\n\
+             }}\n"
+        )
+    };
+    let mutable_src = caller("app.mutable", "MutableStateFlow");
+    let state_src = caller("app.state", "StateFlow");
+    let shared_src = caller("app.shared", "SharedFlow");
+    let flow_src = caller("app.flow", "Flow");
+    let bus_src = format!(
+        "package app.bus\n\
+         class Bus {{ fun collect(block: () -> Unit) {{}}; val value: Int = 0 }}\n\
+         fun use(bus: Bus) {{\n\
+         \x20   bus.{access}\n\
+         }}\n"
+    );
+
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    populate_flow_hierarchy_jar(&idx);
+    let mut mutable_uri = None;
+    for (file, source) in [
+        ("Mutable.kt", &mutable_src),
+        ("State.kt", &state_src),
+        ("Shared.kt", &shared_src),
+        ("Plain.kt", &flow_src),
+        ("Bus.kt", &bus_src),
+    ] {
+        let (_path, uri) = write(root, file, source);
+        idx.index_content(&uri, source);
+        if file == "Mutable.kt" {
+            idx.store_live_tree(&uri, source);
+            mutable_uri = Some(uri);
+        }
+    }
+    let mutable_uri = mutable_uri.unwrap();
+
+    let call_column = mutable_src.lines().nth(3).unwrap().find(member).unwrap() as u32;
+    let locations = find_references_with_qualifier(
+        member,
+        None,
+        &mutable_uri,
+        Position::new(3, call_column),
+        false,
+        &idx,
+    )
+    .await;
+    let call_sites: Vec<_> = locations
+        .into_iter()
+        .filter(|location| location.range.start.line == 3)
+        .collect();
+    hit_files(&call_sites)
+}
+
+/// The query identity of a member call is the BASE declaration of the member,
+/// not the cursor's receiver type: from `mutableStateFlow.collect {}` (which
+/// reaches the `SharedFlow.collect` override) every caller of `Flow.collect`
+/// — through `StateFlow`, `SharedFlow` or `Flow` itself — is a reference,
+/// even though the simple name `Flow` is ambiguous across the jars, while
+/// `Bus.collect` is not.
+#[tokio::test]
+async fn find_references_on_jar_member_from_subtype_receiver_keeps_supertype_callers() {
+    let files = references_to_flow_member_from_subtype_call("collect", "collect {}").await;
+
+    assert_eq!(
+        files,
+        ["Mutable.kt", "Plain.kt", "Shared.kt", "State.kt"],
+        "every Flow.collect caller and no Bus.collect caller"
+    );
+}
+
+/// Same for a soft-keyword member: `MutableStateFlow.value` overrides
+/// `StateFlow.value`, so from a `MutableStateFlow` call site the `StateFlow`
+/// caller is kept, and the `Bus.value` read is still rejected.
+/// (`SharedFlow`/`Flow` have no `value`; their reads are unrelated, so they
+/// are rejected too.)
+#[tokio::test]
+async fn find_references_on_soft_keyword_jar_member_from_subtype_receiver_keeps_supertype_callers()
+{
+    let files = references_to_flow_member_from_subtype_call("value", "value").await;
+
+    assert_eq!(
+        files,
+        ["Mutable.kt", "State.kt"],
+        "the StateFlow.value callers and nothing else"
+    );
+}
+
+/// The cursor's line also DECLARES the name (`val string = body.string()`):
+/// the cursor is on the `.string()` call, not on the local, so the search must
+/// not be scoped to the local's package. Before, the line-only "on the
+/// declaration" check matched the local and the caller in another package
+/// was never searched.
+#[tokio::test]
+async fn find_references_on_call_sharing_a_line_with_a_same_named_local_searches_everywhere() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let body_src = "package okio.like\nclass ResponseBody {\n    fun string(): String = \"\"\n}\n";
+    let reader_src = "package app.reader\n\
+                      import okio.like.ResponseBody\n\
+                      class FromString {\n\
+                      \x20   fun read(body: ResponseBody): String {\n\
+                      \x20       val string = body.string()\n\
+                      \x20       return string\n\
+                      \x20   }\n\
+                      }\n";
+    let other_src = "package app.other\n\
+                     import okio.like.ResponseBody\n\
+                     fun other(body: ResponseBody): String = body.string()\n";
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    let mut reader_uri = None;
+    for (file, source) in [
+        ("ResponseBody.kt", body_src),
+        ("Reader.kt", reader_src),
+        ("Other.kt", other_src),
+    ] {
+        let (_path, uri) = write(root, file, source);
+        idx.index_content(&uri, source);
+        if file == "Reader.kt" {
+            idx.store_live_tree(&uri, source);
+            reader_uri = Some(uri);
+        }
+    }
+    let reader_uri = reader_uri.unwrap();
+    let call_line = reader_src.lines().nth(4).unwrap();
+    let call_column = call_line.find(".string").unwrap() as u32 + 1;
+
+    let locations = find_references_with_qualifier(
+        "string",
+        None,
+        &reader_uri,
+        Position::new(4, call_column),
+        false,
+        &idx,
+    )
+    .await;
+
+    assert_refs_contain(&locations, &["Other.kt"]);
+}
+
+/// `continuation.resume(1)` on a `CancellableContinuation` calls the stdlib
+/// extension `Continuation<T>.resume(value)`, not the two-parameter member
+/// `CancellableContinuation.resume(value, onCancellation)`. The query's
+/// declaring type must come from the overload the call's shape reaches
+/// (`Continuation`), or the caller through a plain `Continuation` is
+/// rejected as an unrelated type.
+#[tokio::test]
+async fn find_references_identifies_a_call_by_the_overload_its_arguments_reach() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let symbol = |name: &str, kind: &str, container: &str, detail: &str, pkg: &str| {
+        crate::sidecar::SidecarSymbol {
+            name: name.into(),
+            kind: kind.into(),
+            container: container.into(),
+            detail: detail.into(),
+            doc: String::new(),
+            type_params: vec![],
+            extension_receiver_type: String::new(),
+            trailing_lambda: false,
+            deprecated: false,
+            pkg: pkg.into(),
+            top_level: container.is_empty(),
+            supers: vec![],
+        }
+    };
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/kotlin-stdlib.jar"),
+        &[
+            symbol(
+                "Continuation",
+                "interface",
+                "",
+                "interface Continuation<T>",
+                "kotlin.coroutines",
+            ),
+            crate::sidecar::SidecarSymbol {
+                extension_receiver_type: "Continuation<T>".into(),
+                type_params: vec!["T".into()],
+                ..symbol(
+                    "resume",
+                    "fun",
+                    "ContinuationKt",
+                    "fun <T> Continuation<T>.resume(value: T)",
+                    "kotlin.coroutines",
+                )
+            },
+        ],
+    );
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/kotlinx-coroutines-core.jar"),
+        &[
+            crate::sidecar::SidecarSymbol {
+                supers: vec!["kotlin.coroutines.Continuation".into()],
+                ..symbol(
+                    "CancellableContinuation",
+                    "interface",
+                    "",
+                    "interface CancellableContinuation<T>",
+                    "kotlinx.coroutines",
+                )
+            },
+            symbol(
+                "resume",
+                "fun",
+                "CancellableContinuation",
+                "fun resume(value: T, onCancellation: ((Throwable) -> Unit)?)",
+                "kotlinx.coroutines",
+            ),
+        ],
+    );
+    let cancellable_src = "package app\n\
+                           import kotlin.coroutines.resume\n\
+                           import kotlinx.coroutines.CancellableContinuation\n\
+                           fun a(continuation: CancellableContinuation<Int>) {\n\
+                           \x20   continuation.resume(1)\n\
+                           }\n";
+    let plain_src = "package app.plain\n\
+                     import kotlin.coroutines.Continuation\n\
+                     import kotlin.coroutines.resume\n\
+                     fun b(continuation: Continuation<Int>) {\n\
+                     \x20   continuation.resume(2)\n\
+                     }\n";
+    let (_path, cancellable_uri) = write(root, "Cancellable.kt", cancellable_src);
+    let (_path, plain_uri) = write(root, "Plain.kt", plain_src);
+    idx.index_content(&cancellable_uri, cancellable_src);
+    idx.index_content(&plain_uri, plain_src);
+    idx.store_live_tree(&cancellable_uri, cancellable_src);
+    let call_column = cancellable_src
+        .lines()
+        .nth(4)
+        .unwrap()
+        .find("resume")
+        .unwrap() as u32;
+
+    let locations = find_references_with_qualifier(
+        "resume",
+        None,
+        &cancellable_uri,
+        Position::new(4, call_column),
+        false,
+        &idx,
+    )
+    .await;
+    let call_sites: Vec<_> = locations
+        .into_iter()
+        .filter(|location| location.range.start.line == 4)
+        .collect();
+
+    assert_eq!(hit_files(&call_sites), ["Cancellable.kt", "Plain.kt"]);
+}
+
+/// Workspace for the local-value tests: `Box.value` is a member, read through
+/// a receiver (`box.value`) and bare inside `Box` itself; `convert` has an
+/// unrelated parameter named `value` and reads it.
+fn local_value_workspace(root: &std::path::Path) -> (Arc<Indexer>, Url, Url) {
+    let box_src = "package app\n\
+                   class Box {\n\
+                   \x20   val value: Int = 0\n\
+                   \x20   fun twice(): Int = value * 2\n\
+                   }\n";
+    let use_src = "package app.use\n\
+                   import app.Box\n\
+                   fun read(box: Box): Int = box.value\n\
+                   fun convert(value: Int): Int {\n\
+                   \x20   return value + 1\n\
+                   }\n";
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    let (_path, box_uri) = write(root, "Box.kt", box_src);
+    let (_path, use_uri) = write(root, "Use.kt", use_src);
+    idx.index_content(&box_uri, box_src);
+    idx.index_content(&use_uri, use_src);
+    idx.store_live_tree(&use_uri, use_src);
+    (idx, box_uri, use_uri)
+}
+
+fn hit_lines(locations: &[tower_lsp::lsp_types::Location]) -> Vec<(String, u32)> {
+    let mut hits: Vec<(String, u32)> = locations
+        .iter()
+        .map(|location| {
+            let file = location.uri.path().rsplit('/').next().unwrap().to_owned();
+            (file, location.range.start.line)
+        })
+        .collect();
+    hits.sort();
+    hits.dedup();
+    hits
+}
+
+/// Find-references on the member `box.value` drops a same-named parameter
+/// declaration and the read of that parameter — neither can be the member —
+/// and keeps the bare `value` read inside `Box`, which is the member through
+/// the implicit `this`.
+#[tokio::test]
+async fn find_references_on_member_drops_same_named_parameters_and_their_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let (idx, _box_uri, use_uri) = local_value_workspace(dir.path());
+    let read_column = "fun read(box: Box): Int = box.".len() as u32;
+
+    let locations = find_references_with_qualifier(
+        "value",
+        None,
+        &use_uri,
+        Position::new(2, read_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits = hit_lines(&locations);
+
+    assert!(
+        hits.contains(&("Use.kt".to_owned(), 2)),
+        "box.value; got {hits:?}"
+    );
+    assert!(
+        hits.contains(&("Box.kt".to_owned(), 3)),
+        "bare member read in Box; got {hits:?}"
+    );
+    for line in [3, 4] {
+        assert!(
+            !hits.contains(&("Use.kt".to_owned(), line)),
+            "parameter `value` (Use.kt:{line}) is not the member; got {hits:?}"
+        );
+    }
+}
+
+/// The other direction: find-references on the parameter itself still finds
+/// its read — a local query has no member identity, so nothing is rejected
+/// for being local.
+#[tokio::test]
+async fn find_references_on_parameter_keeps_its_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let (idx, _box_uri, use_uri) = local_value_workspace(dir.path());
+    let parameter_column = "fun convert(".len() as u32;
+
+    let locations = find_references_with_qualifier(
+        "value",
+        None,
+        &use_uri,
+        Position::new(3, parameter_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits = hit_lines(&locations);
+
+    assert!(
+        hits.contains(&("Use.kt".to_owned(), 4)),
+        "the parameter's read; got {hits:?}"
+    );
+}
+
+/// A bare call is checked through the implicit receiver it reaches, nearest
+/// first: inside `fun Call.await()` a bare `enqueue { }` is `Call.enqueue` and
+/// is dropped from the references of `Server.enqueue`, while a bare call
+/// inside `with(server) { }` (lambda receiver) and one inside `Server` itself
+/// (`this`) are kept.
+#[tokio::test]
+async fn find_references_checks_bare_calls_through_their_implicit_receiver() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let call_src = "package lib\ninterface Call {\n    fun enqueue(callback: () -> Unit)\n}\n";
+    let server_src = "package lib\n\
+                      class Server {\n\
+                      \x20   fun enqueue(response: Int) {}\n\
+                      \x20   fun again() {\n\
+                      \x20       enqueue(3)\n\
+                      \x20   }\n\
+                      }\n";
+    let await_src = "package app\n\
+                     import lib.Call\n\
+                     fun Call.await() {\n\
+                     \x20   enqueue { }\n\
+                     }\n";
+    let queue_src = "package app\n\
+                     import lib.Server\n\
+                     fun push(server: Server) = with(server) {\n\
+                     \x20   enqueue(1)\n\
+                     }\n";
+    let use_src = "package app\n\
+                   import lib.Server\n\
+                   fun use(server: Server) {\n\
+                   \x20   server.enqueue(2)\n\
+                   }\n";
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    let mut use_uri = None;
+    for (file, source) in [
+        ("Call.kt", call_src),
+        ("Server.kt", server_src),
+        ("Await.kt", await_src),
+        ("Queue.kt", queue_src),
+        ("Use.kt", use_src),
+    ] {
+        let (_path, uri) = write(root, file, source);
+        idx.index_content(&uri, source);
+        if file == "Use.kt" {
+            idx.store_live_tree(&uri, source);
+            use_uri = Some(uri);
+        }
+    }
+    let use_uri = use_uri.unwrap();
+    let call_column = use_src.lines().nth(3).unwrap().find("enqueue").unwrap() as u32;
+
+    let locations = find_references_with_qualifier(
+        "enqueue",
+        None,
+        &use_uri,
+        Position::new(3, call_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits = hit_lines(&locations);
+
+    for expected in [("Use.kt", 3), ("Queue.kt", 3), ("Server.kt", 4)] {
+        assert!(
+            hits.contains(&(expected.0.to_owned(), expected.1)),
+            "{expected:?} is Server.enqueue; got {hits:?}"
+        );
+    }
+    assert!(
+        !hits.contains(&("Await.kt".to_owned(), 3)),
+        "bare enqueue in Call.await() is Call.enqueue; got {hits:?}"
+    );
+}
+
+/// A line that both declares the name and uses it (`val string =
+/// body.string()`) keeps the use: the declaration is dropped as one
+/// occurrence, not as the whole line — in another file (the `rg` path, which
+/// used to report only a line's first match) and in the query's own unsaved
+/// buffer (the current-file pass, which skipped any line declaring the name).
+#[tokio::test]
+async fn find_references_keeps_a_use_on_a_line_that_declares_the_same_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let body_src = "package okio.like\nclass ResponseBody {\n    fun string(): String = \"\"\n}\n";
+    let mixed_line = "    val string = body.string()";
+    let reader_src = format!(
+        "package app.reader\n\
+         import okio.like.ResponseBody\n\
+         fun read(body: ResponseBody): String {{\n\
+         {mixed_line}\n\
+         \x20   return string\n\
+         }}\n"
+    );
+    let other_src = format!(
+        "package app.other\n\
+         import okio.like.ResponseBody\n\
+         fun other(body: ResponseBody): String = body.string()\n\
+         fun again(body: ResponseBody): String {{\n\
+         {mixed_line}\n\
+         \x20   return string\n\
+         }}\n"
+    );
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    let mut other_uri = None;
+    // `Other.kt`'s `again` exists only in the editor buffer, not on disk, so
+    // only the current-file pass can find the call in it.
+    let other_saved_src = other_src.split("fun again").next().unwrap().to_owned();
+    for (file, saved_source, live_source) in [
+        ("ResponseBody.kt", body_src, body_src),
+        ("Reader.kt", reader_src.as_str(), reader_src.as_str()),
+        ("Other.kt", other_saved_src.as_str(), other_src.as_str()),
+    ] {
+        let (_path, uri) = write(root, file, saved_source);
+        idx.index_content(&uri, live_source);
+        if file == "Other.kt" {
+            idx.store_live_tree(&uri, live_source);
+            idx.set_live_lines(&uri, live_source);
+            other_uri = Some(uri);
+        }
+    }
+    let other_uri = other_uri.unwrap();
+    let query_column = "fun other(body: ResponseBody): String = body.".len() as u32;
+
+    let locations = find_references_with_qualifier(
+        "string",
+        None,
+        &other_uri,
+        Position::new(2, query_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits: Vec<(String, u32, u32)> = locations
+        .iter()
+        .map(|location| {
+            let file = location.uri.path().rsplit('/').next().unwrap().to_owned();
+            (
+                file,
+                location.range.start.line,
+                location.range.start.character,
+            )
+        })
+        .collect();
+
+    let call_column = mixed_line.find(".string").unwrap() as u32 + 1;
+    let local_column = mixed_line.find("string").unwrap() as u32;
+    for (file, line) in [("Reader.kt", 3), ("Other.kt", 4)] {
+        assert!(
+            hits.contains(&(file.to_owned(), line, call_column)),
+            "the .string() call on {file}:{line} is a reference; got {hits:?}"
+        );
+        assert!(
+            !hits.contains(&(file.to_owned(), line, local_column)),
+            "the local `string` on {file}:{line} is not; got {hits:?}"
+        );
+    }
+}
+
+/// Find-references on a local `val` declared inside a class method finds its
+/// reads. A local `val` is an indexed declaration like a class property, but
+/// it is local: it must get no member identity, or its own reads would be
+/// rejected as reads of a local value.
+#[tokio::test]
+async fn find_references_on_local_val_in_a_method_keeps_its_reads() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let source = "package app\n\
+                  class Reader {\n\
+                  \x20   fun read(): Int {\n\
+                  \x20       val total = 1\n\
+                  \x20       return total + 1\n\
+                  \x20   }\n\
+                  }\n";
+    let (_path, uri) = write(root, "Reader.kt", source);
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&uri, source);
+    idx.store_live_tree(&uri, source);
+    let declaration_column = source.lines().nth(3).unwrap().find("total").unwrap() as u32;
+
+    let locations = find_references_with_qualifier(
+        "total",
+        None,
+        &uri,
+        Position::new(3, declaration_column),
+        false,
+        &idx,
+    )
+    .await;
+    let hits = hit_lines(&locations);
+
+    assert!(
+        hits.contains(&("Reader.kt".to_owned(), 4)),
+        "the read of `total`; got {hits:?}"
+    );
+}
+
+/// Java receivers are typed from the Java tree: a same-named method on an
+/// unrelated class, a same-named local, and comment/string text are not
+/// references of `Repo.save` — from its declaration or from a call site.
+#[tokio::test]
+async fn find_references_java_member_is_filtered_by_receiver_type() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let repo_src = "package app;\npublic class Repo {\n    public void save(String s) {}\n}\n";
+    let other_src = "package app;\npublic class Other {\n    public void save(String s) {}\n}\n";
+    let caller_src = "\
+package app;
+public class Caller {
+    private Repo repo = new Repo();
+    public void run(Other other) {
+        Repo local = new Repo();
+        local.save(\"a\");
+        other.save(\"b\");
+        repo.save(\"c\");
+        int save = 1;
+        // save in a comment
+    }
+}
+";
+    let (_, repo_uri) = write(root, "Repo.java", repo_src);
+    let (_, other_uri) = write(root, "Other.java", other_src);
+    let (_, caller_uri) = write(root, "Caller.java", caller_src);
+    let idx = Arc::new(Indexer::new());
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&repo_uri, repo_src);
+    idx.index_content(&other_uri, other_src);
+    idx.index_content(&caller_uri, caller_src);
+
+    let caller_lines = |locations: &[tower_lsp::lsp_types::Location]| {
+        let mut lines: Vec<u32> = locations
+            .iter()
+            .filter(|location| location.uri == caller_uri)
+            .map(|location| location.range.start.line)
+            .collect();
+        lines.sort_unstable();
+        lines
+    };
+
+    let from_declaration =
+        find_references_with_qualifier("save", None, &repo_uri, Position::new(2, 16), false, &idx)
+            .await;
+    assert_eq!(caller_lines(&from_declaration), vec![5, 7]);
+    assert!(
+        !from_declaration
+            .iter()
+            .any(|location| location.uri == other_uri),
+        "Other.save is a different method: {from_declaration:?}"
+    );
+
+    let from_call_site = find_references_with_qualifier(
+        "save",
+        None,
+        &caller_uri,
+        Position::new(5, 14),
+        false,
+        &idx,
+    )
+    .await;
+    // Call sites are checked by receiver type. (A same-named declaration on
+    // an unrelated class is kept by design — `verify_declaration` never
+    // rejects on a type mismatch — so `Other.java` isn't asserted here.)
+    assert_eq!(caller_lines(&from_call_site), vec![5, 7]);
+}

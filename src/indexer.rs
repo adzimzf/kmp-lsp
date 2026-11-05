@@ -38,10 +38,12 @@ pub(crate) use self::infer::{
     cst_cursor::{cst_call_info, cst_outer_call_info, CallInfo},
     cst_lambda::{call_shape_of, cursor_node_at, LambdaScopeInfo},
     cst_symbol::{
-        classify_cursor, classify_symbol_at, enclosing_nav_expr_if_member, is_call_callee,
-        is_declaration_site, local_scope_occurrences, navigation_member_ident,
+        classify_cursor, classify_occurrence_at, classify_symbol_at, enclosing_nav_expr_if_member,
+        implicit_receiver_of, is_call_callee, is_declaration_site, is_local_declaration_at,
+        is_local_value_reference, local_scope_occurrences, navigation_member_ident,
         navigation_receiver_node, resolve_identity, resolve_identity_with_io,
-        shape_filter_locations, NavigationSource, SymbolAtCursor, SymbolRole,
+        shape_filter_locations, NavigationSource, NotCodeKind, OccurrenceSite, SymbolAtCursor,
+        SymbolRole,
     },
     deps::{
         CallShape, CallableInfo, ExtensionCallable, InferDeps, MemberTypeParameters,
@@ -54,6 +56,7 @@ pub(crate) use self::infer::{
         lambda_param_position_on_line, line_has_lambda_param, ThisContext,
     },
     lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS, SCOPE_FUNCTIONS},
+    occurrences::{classify_occurrences, ClassifiedOccurrence, OccurrenceDetail, OccurrenceScope},
     sig::{
         candidate_applies_to_call, collect_all_fun_params_texts, collect_params_from_line,
         collect_signature, declaration_signature, find_fun_params_text_fast,
@@ -86,6 +89,7 @@ pub(crate) mod jar;
 pub(crate) mod jar_cache;
 pub(crate) mod jar_manifest_cache;
 pub(crate) mod jar_phase;
+pub(crate) mod jdk_sources;
 pub(crate) mod library_sources;
 pub(crate) mod sources_jar_cache;
 
@@ -95,6 +99,9 @@ mod jar_manifest_cache_tests;
 #[cfg(test)]
 #[path = "indexer/jar_tests.rs"]
 mod jar_tests;
+#[cfg(test)]
+#[path = "indexer/jdk_sources_tests.rs"]
+mod jdk_sources_tests;
 #[cfg(test)]
 #[path = "indexer/memory_probe_tests.rs"]
 mod memory_probe_tests;
@@ -299,6 +306,9 @@ pub(crate) struct Indexer {
     /// Whether find-references also searches mounted library sources
     /// (`indexingOptions.referencesIncludeLibraries`, on by default).
     pub(crate) references_include_libraries: std::sync::atomic::AtomicBool,
+    /// `indexingOptions.jdkHome`: the JDK whose sources are indexed, ahead of
+    /// `workspace.json`'s `jdkHome` and the environment (see [`jdk_sources`]).
+    pub(crate) configured_jdk_home: std::sync::RwLock<Option<PathBuf>>,
     /// Library sources jars known by name and loaded on first use
     /// (`indexingOptions.librarySources`, see [`library_sources`]).
     pub(crate) library_sources: library_sources::LibrarySources,
@@ -1076,6 +1086,7 @@ impl Indexer {
             module_dependencies: RwLock::new(HashMap::new()),
             library_uris: DashSet::new(),
             references_include_libraries: std::sync::atomic::AtomicBool::new(true),
+            configured_jdk_home: std::sync::RwLock::new(None),
             library_sources: library_sources::LibrarySources::default(),
             extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),
@@ -1587,6 +1598,8 @@ impl Indexer {
     pub(crate) fn note_jar_symbols_populated(&self) {
         self.bare_names_dirty.store(true, Ordering::Release);
         self.invalidate_completion_cache();
+        self.sig_cache.clear();
+        self.sig_fast_cache.clear();
     }
 
     /// Bust the completion cache so the next request recomputes with the latest

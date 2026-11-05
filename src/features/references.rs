@@ -10,7 +10,7 @@ use super::text_utils::{utf16_column, word_byte_offsets};
 use crate::features::traits::{DocumentAccess, ScopeQuery, SearchAccess, SymbolIndex};
 use crate::indexer::{
     call_shape_of, classify_cursor, cursor_node_at, is_call_callee, Indexer, NavigationSource,
-    SymbolRole,
+    SymbolAtCursor, SymbolRole,
 };
 use crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK;
 use crate::rg::RgSearchRequest;
@@ -172,8 +172,16 @@ pub(crate) async fn verified_references_for(
     Option<String>,
 ) {
     let line = position.line;
+    let cursor_symbol = classify_cursor(index, uri, position);
+    let cursor_site = match &cursor_symbol {
+        Some(SymbolAtCursor {
+            role: SymbolRole::Reference { .. },
+            ..
+        }) => CursorSite::Reference,
+        _ => CursorSite::Unclassified,
+    };
     let (parent_class, declared_pkg) =
-        resolve_scope_with_qualifier(index, uri, line, name, qualifier);
+        resolve_scope_with_qualifier(index, uri, line, cursor_site, name, qualifier);
 
     // A lowercase usage of a JAR/library symbol now also produces a `declared_pkg`
     // (the JAR symbol's package), but the request site is a *usage*, not the symbol's
@@ -244,8 +252,6 @@ pub(crate) async fn verified_references_for(
         );
     }
 
-    let cursor_symbol = classify_cursor(index, uri, position);
-
     // A same-named, wrong-arity call elsewhere in the file is a name
     // collision, not a genuine reference to *this* declaration — without this,
     // renaming e.g. `fun collect(scope, block)` also rewrites an unrelated
@@ -261,16 +267,38 @@ pub(crate) async fn verified_references_for(
         }
     }
 
+    // A local or parameter has no declaring type: it gets no identity, so
+    // verification treats every query that has one as a member and may
+    // reject candidates that read a local value. A local `val` is indexed
+    // like a property, hence the explicit locality check.
+    let cursor_is_local_declaration = crate::indexer::is_local_declaration_at(
+        index,
+        uri,
+        CursorPos {
+            line: position.line as usize,
+            utf16_col: position.character as usize,
+        },
+    );
     let (query_declaring_type, query_declaring_type_uri) = match &cursor_symbol {
         Some(symbol) => match &symbol.role {
-            SymbolRole::Declaration { .. } => (
+            SymbolRole::Declaration { indexed: true } if !cursor_is_local_declaration => (
                 index.enclosing_class_at(uri, line),
                 Some(uri.as_str().to_owned()),
             ),
+            // The member's declaring type, not the cursor's receiver type:
+            // verification keeps candidates whose receiver is that type or a
+            // subtype, so from `mutableStateFlow.collect {}` the query must
+            // be `Flow` or every `Flow`/`StateFlow` caller is rejected.
             SymbolRole::Reference {
                 receiver_type: Some(receiver_type),
+                shape,
                 ..
-            } => (Some(receiver_type.type_path()), None),
+            } => (
+                index
+                    .member_declaring_type(&symbol.name, receiver_type, *shape, uri)
+                    .or_else(|| Some(receiver_type.type_path())),
+                None,
+            ),
             _ => (None, None),
         },
         None => (None, None),
@@ -417,6 +445,7 @@ pub(crate) fn resolve_scope_with_qualifier(
     index: &(impl SymbolIndex + ScopeQuery),
     uri: &Url,
     line: u32,
+    cursor_site: CursorSite,
     name: &str,
     qualifier: Option<&str>,
 ) -> (Option<String>, Option<String>) {
@@ -460,12 +489,7 @@ pub(crate) fn resolve_scope_with_qualifier(
     // importing `IGoldConversionRepository`).  Top-level functions (no enclosing class)
     // fall back to package-scoped discovery as before.
     if !name.starts_with_uppercase() {
-        let on_decl = index.is_declared_in(uri, name)
-            && index
-                .definition_locations(name)
-                .iter()
-                .any(|l| l.uri == *uri && l.range.start.line == line);
-        if on_decl {
+        if is_on_declaration(index, uri, line, cursor_site, name) {
             let enclosing_class = index.enclosing_class_at(uri, line);
             return (enclosing_class, index.package_of(uri));
         }
@@ -507,12 +531,7 @@ pub(crate) fn resolve_scope_with_qualifier(
         return (Some(q.to_string()), parent_pkg);
     }
 
-    let on_decl = index.is_declared_in(uri, name)
-        && index
-            .definition_locations(name)
-            .iter()
-            .any(|l| l.uri == *uri && l.range.start.line == line);
-    if on_decl {
+    if is_on_declaration(index, uri, line, cursor_site, name) {
         let parent = index.enclosing_class_at(uri, line);
         let pkg = index.package_of(uri);
         return (parent, pkg);
@@ -524,6 +543,35 @@ pub(crate) fn resolve_scope_with_qualifier(
     let parent = index.declared_parent_class_of(name, uri);
     let pkg = index.declared_package_of(name, uri);
     (parent, pkg)
+}
+
+/// What the CST shows under the find-references cursor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CursorSite {
+    /// A use of the name, not its declaration — even when the same line
+    /// also declares it (`val string = body.string()`).
+    Reference,
+    /// A declaration, or a position the CST could not classify.
+    Unclassified,
+}
+
+/// Whether the cursor is on `name`'s declaration in `uri`: a declaration of
+/// it on `line`, unless the CST shows the cursor on a reference.
+fn is_on_declaration(
+    index: &(impl SymbolIndex + ScopeQuery),
+    uri: &Url,
+    line: u32,
+    cursor_site: CursorSite,
+    name: &str,
+) -> bool {
+    if cursor_site == CursorSite::Reference {
+        return false;
+    }
+    index.is_declared_in(uri, name)
+        && index
+            .definition_locations(name)
+            .iter()
+            .any(|location| location.uri == *uri && location.range.start.line == line)
 }
 
 fn declaration_files_for(
@@ -852,62 +900,48 @@ fn add_current_file_locations(
     let Some(lines) = index.mem_lines_for(uri.as_str()) else {
         return;
     };
+    // Decided per occurrence, not per line: `val string = body.string()`
+    // declares the name and uses it, and dropping the declaration must keep
+    // the use beside it.
     for (line_idx, line) in lines.iter().enumerate() {
         let line_number = line_idx as u32;
-        if has_reference_line(locations, uri, line_number) {
-            continue;
-        }
-        // When owner_class is set the caller is using variable-name call syntax
-        // (e.g. `reducerFactory.create()`). The only legitimate hit in the declaring
-        // file is the declaration itself; all other create() calls here are to OTHER
-        // injected factory instances and must be excluded.
-        if owner_class.is_some() {
-            if include_decl && crate::rg::is_declaration_of(line, name) {
-                for loc in line_reference_locations(uri, name, line_number, line) {
-                    if !has_reference_start(locations, &loc) {
-                        locations.push(loc);
-                    }
+        for offset in word_byte_offsets(line, name) {
+            let location = reference_location(uri, name, line_number, line, offset);
+            if has_reference_start(locations, &location) {
+                continue;
+            }
+            let is_declaration = crate::rg::is_declaration_occurrence_at(line, offset as u32);
+            // When owner_class is set the caller is using variable-name call
+            // syntax (e.g. `reducerFactory.create()`). The only legitimate hit
+            // in the declaring file is the declaration itself; all other
+            // create() calls here are to OTHER injected factory instances.
+            if owner_class.is_some() {
+                if include_decl && is_declaration {
+                    locations.push(location);
                 }
-            }
-            continue;
-        }
-        // Check qualifier per-occurrence so that a line containing both a valid
-        // and an invalid qualified reference (e.g. `ReducerA.Factory, ReducerC.Factory`)
-        // keeps the valid hit instead of dropping the whole line.
-        for loc in line_reference_locations(uri, name, line_number, line) {
-            if has_reference_start(locations, &loc) {
                 continue;
             }
-            // Respect include_decl: if the caller asked to exclude the declaration,
-            // skip lines that declare this name (mirrors the rg path behaviour).
-            if !include_decl && crate::rg::is_declaration_of(line, name) {
+            // Respect include_decl: the declaration itself is skipped when the
+            // caller excludes it (mirrors the rg path behaviour).
+            if !include_decl && is_declaration {
                 continue;
             }
+            // Per-occurrence qualifier check, so a line holding both a valid
+            // and an invalid qualified reference (`ReducerA.Factory,
+            // ReducerC.Factory`) keeps the valid hit.
             if let Some(parent) = parent_class {
                 if crate::rg::has_wrong_qualifier_at_col(
                     line,
                     name,
                     parent,
-                    loc.range.start.character,
+                    location.range.start.character,
                 ) {
                     continue;
                 }
             }
-            locations.push(loc);
+            locations.push(location);
         }
     }
-}
-
-fn has_reference_line(locations: &[Location], uri: &Url, line_number: u32) -> bool {
-    locations
-        .iter()
-        .any(|loc| loc.uri == *uri && loc.range.start.line == line_number)
-}
-
-fn line_reference_locations(uri: &Url, name: &str, line_number: u32, line: &str) -> Vec<Location> {
-    word_byte_offsets(line, name)
-        .map(|offset| reference_location(uri, name, line_number, line, offset))
-        .collect()
 }
 
 fn reference_location(

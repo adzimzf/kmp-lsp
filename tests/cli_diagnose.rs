@@ -37,6 +37,8 @@ fn write_fixture(dir: &Path, rel_path: &str, content: &str) {
 /// real CI timeout for `lsp_smoke.rs` before it gained this isolation.
 fn build_diagnose_command(root: &Path, file: &Path) -> Command {
     let mut cmd = Command::new(BIN);
+    // Parsing the host JDK's sources into each test's empty cache is slow.
+    cmd.env("KMP_LSP_JDK_SOURCES", "off");
     cmd.args(["diagnose", "--root"])
         .arg(root)
         .arg(file)

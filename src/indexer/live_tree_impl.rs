@@ -4,8 +4,16 @@ use tower_lsp::lsp_types::Url;
 use super::live_tree::{lang_for_path, parse_live, LiveDoc};
 use super::Indexer;
 
-/// How many parsed unopened files `live_doc_or_parse` remembers.
-const UNOPENED_PARSE_CAPACITY: usize = 32;
+/// How much memory the trees `live_doc_or_parse` remembers for unopened
+/// files may take. Find-references reads the tree of every file a name
+/// occurs in, so on a project that fits, a repeated or related search
+/// parses nothing.
+const UNOPENED_PARSE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
+
+/// Memory a parsed tree takes per byte of its source, source copy included.
+/// Measured on a 588-file Kotlin/Java project: 5 MB of source held as
+/// trees raised the resident set by about 50 MB.
+const TREE_BYTES_PER_SOURCE_BYTE: usize = 11;
 
 /// A tree parsed from one version of an indexed file: the version is its
 /// source lines, which a `FileData` rebuild (source-set reclassification)
@@ -14,37 +22,80 @@ pub(crate) struct UnopenedParse {
     uri: String,
     parsed_from: Arc<Vec<String>>,
     doc: Arc<LiveDoc>,
+    /// Estimated memory the tree takes, counted against the budget.
+    cost_bytes: usize,
+}
+
+impl UnopenedParse {
+    fn new(uri: &Url, parsed_from: &Arc<Vec<String>>, doc: &Arc<LiveDoc>) -> Self {
+        UnopenedParse {
+            uri: uri.to_string(),
+            parsed_from: Arc::clone(parsed_from),
+            doc: Arc::clone(doc),
+            cost_bytes: doc.bytes.len().max(1) * TREE_BYTES_PER_SOURCE_BYTE,
+        }
+    }
+}
+
+/// Remember `parse` as the most recently used, replacing any older parse of
+/// the same file, and forget the least recently used ones until all fit in
+/// `budget_bytes`. A tree bigger than the whole budget is not remembered.
+fn remember_parse(parses: &mut Vec<UnopenedParse>, parse: UnopenedParse, budget_bytes: usize) {
+    parses.retain(|remembered| remembered.uri != parse.uri);
+    if parse.cost_bytes > budget_bytes {
+        return;
+    }
+    let mut used: usize = parses.iter().map(|remembered| remembered.cost_bytes).sum();
+    let mut evicted = 0;
+    while used + parse.cost_bytes > budget_bytes && evicted < parses.len() {
+        used -= parses[evicted].cost_bytes;
+        evicted += 1;
+    }
+    parses.drain(..evicted);
+    parses.push(parse);
 }
 
 impl Indexer {
     /// The tree of `uri`'s indexed `lines`, parsed at most once per version
-    /// for the most recently used files. A poisoned lock only loses the
+    /// for the most recently used files that fit the memory budget. A poisoned lock only loses the
     /// memo, never the answer.
     fn parse_unopened(&self, uri: &Url, lines: &Arc<Vec<String>>) -> Option<Arc<LiveDoc>> {
+        if let Some(doc) = self.remembered_unopened_parse(uri, lines) {
+            return Some(doc);
+        }
+        // Parsed without the memo's lock held: find-references classifies
+        // the files of one request on several threads at once.
+        let lang = lang_for_path(uri.path())?;
+        let doc = Arc::new(parse_live(&lines.join("\n"), lang)?);
         let mut parses = self
             .unopened_parses
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let remembered_at = parses
-            .iter()
-            .position(|parse| Arc::ptr_eq(&parse.parsed_from, lines) && parse.uri == uri.as_str());
-        if let Some(position) = remembered_at {
-            let parse = parses.remove(position);
-            let doc = Arc::clone(&parse.doc);
-            parses.push(parse);
-            return Some(doc);
-        }
-        let lang = lang_for_path(uri.path())?;
-        let doc = Arc::new(parse_live(&lines.join("\n"), lang)?);
-        parses.retain(|parse| parse.uri != uri.as_str());
-        if parses.len() >= UNOPENED_PARSE_CAPACITY {
-            parses.remove(0);
-        }
-        parses.push(UnopenedParse {
-            uri: uri.to_string(),
-            parsed_from: Arc::clone(lines),
-            doc: Arc::clone(&doc),
-        });
+        remember_parse(
+            &mut parses,
+            UnopenedParse::new(uri, lines, &doc),
+            UNOPENED_PARSE_BUDGET_BYTES,
+        );
+        Some(doc)
+    }
+
+    /// The memoized tree of this version of `uri`'s lines, marked most
+    /// recently used.
+    fn remembered_unopened_parse(
+        &self,
+        uri: &Url,
+        lines: &Arc<Vec<String>>,
+    ) -> Option<Arc<LiveDoc>> {
+        let mut parses = self
+            .unopened_parses
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let remembered_at = parses.iter().position(|parse| {
+            Arc::ptr_eq(&parse.parsed_from, lines) && parse.uri == uri.as_str()
+        })?;
+        let parse = parses.remove(remembered_at);
+        let doc = Arc::clone(&parse.doc);
+        parses.push(parse);
         Some(doc)
     }
 
@@ -122,3 +173,7 @@ impl Indexer {
         self.repair_candidates.remove(uri.as_str());
     }
 }
+
+#[cfg(test)]
+#[path = "live_tree_impl_tests.rs"]
+mod tests;

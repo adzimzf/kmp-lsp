@@ -348,11 +348,14 @@ private fun entriesFromClass(klass: KmClass, dep: DeprecationInfo, pkg: String):
         val tps = klass.typeParameters.joinToString(", ") { it.name }
         "$classDetailPrefix $simpleName<$tps>"
     }
-    // Direct super types (super class + interfaces) as simple names, for inheritance
-    // walking on the Rust side. `Any` is implicit and dropped as noise.
+    // Direct super types (super class + interfaces), fully qualified, for
+    // inheritance walking on the Rust side. A simple name (`Flow`) is
+    // ambiguous across the jars of a real Gradle cache — another library's
+    // `Flow`, or the same library in two versions — and the Rust walk stops
+    // at an ambiguous name. `Any` is implicit and dropped as noise.
     val supers = klass.supertypes.mapNotNull { st ->
-        (st.classifier as? KmClassifier.Class)?.name?.substringAfterLast('/')
-    }.filter { it != "Any" }
+        (st.classifier as? KmClassifier.Class)?.name?.let(::qualifiedKotlinClassName)
+    }.filter { it != "kotlin.Any" }
     entries += SymbolEntry(simpleName, classKind, ownContainer, classDetail, pkg = pkg, topLevel = isTopLevel, supers = supers)
 
     for (fn in klass.functions) {
@@ -460,11 +463,11 @@ private class JavaClassVisitor(private val entries: MutableList<SymbolEntry>, pr
         val looksSyntheticNested = segments.size > 1 && looksSynthetic(className)
         isPublicClass = (access and Opcodes.ACC_PUBLIC) != 0 && !looksSyntheticNested
         if (isPublicClass) {
-            // Direct super types (super class + interfaces) as simple names; `Object`
-            // is implicit and dropped as noise.
+            // Direct super types (super class + interfaces), fully qualified — see
+            // the Kotlin path above for why. `Object` is implicit and dropped as noise.
             val supers = buildList {
-                superName?.takeIf { it != "java/lang/Object" }?.let { add(it.substringAfterLast('/')) }
-                interfaces?.forEach { add(it.substringAfterLast('/')) }
+                superName?.takeIf { it != "java/lang/Object" }?.let { add(qualifiedJvmClassName(it)) }
+                interfaces?.forEach { add(qualifiedJvmClassName(it)) }
             }
             entries += SymbolEntry(
                 className, "class", ownContainer, "class $className",
@@ -568,3 +571,11 @@ fun indexClassBytes(bytes: ByteArray): List<SymbolEntry> {
         emptyList()
     }
 }
+
+/** `kotlinx/coroutines/flow/Flow` → `kotlinx.coroutines.flow.Flow`; nested `a/Outer.Inner` → `a.Outer.Inner`. */
+internal fun qualifiedKotlinClassName(kotlinMetadataName: String): String =
+    kotlinMetadataName.replace('/', '.')
+
+/** JVM internal name `a/b/Outer$Inner` → `a.b.Outer.Inner`. */
+internal fun qualifiedJvmClassName(internalName: String): String =
+    internalName.replace('/', '.').replace('$', '.')

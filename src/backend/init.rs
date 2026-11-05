@@ -155,7 +155,8 @@ impl Backend {
 
     /// `indexingOptions.dependencySync` (`"auto"`/`"off"`),
     /// `indexingOptions.decompileLibraries` and
-    /// `indexingOptions.referencesIncludeLibraries` (bools).
+    /// `indexingOptions.referencesIncludeLibraries` (bools),
+    /// `indexingOptions.jdkHome` (a path).
     fn apply_dependency_options(&self, initialization_options: Option<&serde_json::Value>) {
         let indexing_options =
             initialization_options.and_then(|options| options.get("indexingOptions"));
@@ -200,6 +201,18 @@ impl Backend {
             self.indexer
                 .references_include_libraries
                 .store(include_libraries, std::sync::atomic::Ordering::Relaxed);
+        }
+        let jdk_home = indexing_options
+            .and_then(|options| options.get("jdkHome"))
+            .and_then(serde_json::Value::as_str)
+            .filter(|path| !path.is_empty());
+        if let Some(jdk_home) = jdk_home {
+            log::info!("jdkHome: {jdk_home}");
+            *self
+                .indexer
+                .configured_jdk_home
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(PathBuf::from(jdk_home));
         }
     }
 

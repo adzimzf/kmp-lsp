@@ -554,6 +554,15 @@ pub(crate) fn load(indexer: &super::Indexer, jar_id: JarId) -> bool {
     true
 }
 
+/// The JDK's sources are never searched for usages (see
+/// [`super::jdk_sources::is_jdk_sources_uri`]).
+fn is_jdk_archive(indexer: &super::Indexer, jar_id: JarId) -> bool {
+    indexer
+        .jar_table
+        .path(jar_id)
+        .is_some_and(|path| super::jdk_sources::is_jdk_sources_archive(Path::new(&*path)))
+}
+
 /// Load the libraries that could contain a usage of a declaration spelled
 /// one of `spellings`: those mentioning a spelling and — when `context` is
 /// non-empty — also one of its words (the declaring package's last segment
@@ -577,6 +586,7 @@ pub(crate) fn load_libraries_mentioning(
         .jars
         .iter()
         .filter(|entry| !indexer.materialized.contains(entry.key()))
+        .filter(|entry| !is_jdk_archive(indexer, *entry.key()))
         .filter(|entry| {
             mentions(&entry.words, &spelling_hashes)
                 && (context_hashes.is_empty() || mentions(&entry.words, &context_hashes))

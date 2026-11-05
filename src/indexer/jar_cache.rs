@@ -66,7 +66,11 @@ use crate::sidecar::SidecarSymbol;
 ///            `assertEquals`) all carry the wrong `(1, 1)` arity (parsed from
 ///            the placeholder's single `...` "parameter"), so older caches
 ///            must be rejected and rescanned.
-const JAR_CACHE_VERSION: u32 = 19;
+/// v19 → v20: sidecar emits each class's `supers` fully qualified
+///            (`kotlinx.coroutines.flow.Flow`, not `Flow`) — a simple name is
+///            ambiguous across a real Gradle cache, which stopped the
+///            supertype walk. Older caches carry simple names — re-scan.
+const JAR_CACHE_VERSION: u32 = 20;
 
 #[derive(Serialize, Deserialize)]
 struct JarCache {

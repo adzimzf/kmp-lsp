@@ -16,13 +16,13 @@ use crate::queries::{
     KIND_ANONYMOUS_INITIALIZER, KIND_BINDING_PATTERN_KIND, KIND_CALL_EXPR, KIND_CATCH_BLOCK,
     KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ,
     KIND_CONTROL_STRUCTURE_BODY, KIND_ENUM_CLASS_BODY, KIND_ENUM_ENTRY, KIND_EQ,
-    KIND_FINALLY_BLOCK, KIND_FOR_STMT, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER,
-    KIND_IMPORT_HEADER, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_MULTI_VAR_DECL, KIND_NAV_EXPR,
-    KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER, KIND_PARAM_WITH_OPTIONAL_TYPE,
-    KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_SETTER, KIND_SIMPLE_IDENT,
-    KIND_STATEMENTS, KIND_TRY_EXPR, KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_MODIFIERS,
-    KIND_TYPE_PARAM, KIND_TYPE_TEST, KIND_VAR_DECL, KIND_WHEN_CONDITION, KIND_WHEN_ENTRY,
-    KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
+    KIND_FINALLY_BLOCK, KIND_FOR_STMT, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS,
+    KIND_IDENTIFIER, KIND_IMPORT_HEADER, KIND_LAMBDA_LIT, KIND_LAMBDA_PARAMS, KIND_MULTI_VAR_DECL,
+    KIND_NAV_EXPR, KIND_NAV_SUFFIX, KIND_OBJECT_DECL, KIND_PARAMETER,
+    KIND_PARAM_WITH_OPTIONAL_TYPE, KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE,
+    KIND_SETTER, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_TRY_EXPR,
+    KIND_TYPE_ALIAS, KIND_TYPE_IDENT, KIND_TYPE_MODIFIERS, KIND_TYPE_PARAM, KIND_TYPE_TEST,
+    KIND_VAR_DECL, KIND_WHEN_CONDITION, KIND_WHEN_ENTRY, KIND_WHEN_EXPR, KIND_WHEN_SUBJECT,
 };
 use crate::resolver::api::Definitions;
 use crate::resolver::jvm_interop::{self, PropertyAccess};
@@ -279,6 +279,15 @@ pub(crate) fn classify_symbol_at(
     let doc = resolution.doc();
     let node = super::cst_lambda::cursor_node_at(doc, pos)?;
 
+    if super::java_cst::is_java_file(uri) {
+        return super::java_cst::classify_java_identifier(
+            node,
+            &doc.bytes,
+            indexer,
+            uri,
+            |type_path, scope| names_a_known_type(indexer, type_path, scope),
+        );
+    }
     if !matches!(node.kind(), KIND_SIMPLE_IDENT | KIND_TYPE_IDENT) {
         return None;
     }
@@ -375,6 +384,251 @@ pub(crate) fn classify_symbol_at(
             access: PropertyAccess::Read,
         },
     })
+}
+
+/// What a text match of a name is, syntactically — the question
+/// find-references asks of every `rg` hit before any type work.
+#[derive(Debug, Clone)]
+pub(crate) enum OccurrenceSite {
+    /// An identifier, classified exactly as [`classify_symbol_at`] does.
+    Symbol(SymbolAtCursor),
+    /// Text that spells the name but can never refer to a symbol.
+    NotCode(NotCodeKind),
+    /// Neither could be shown: the file did not parse, or the position is a
+    /// node kind this classification does not know (e.g. a bare `$name`
+    /// string template). Callers keep these.
+    Unclassified,
+}
+
+/// Why an [`OccurrenceSite::NotCode`] position is not a reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NotCodeKind {
+    /// Inside a comment, and not a KDoc/Javadoc-style `[name]` link.
+    Comment,
+    /// Literal string text (never an interpolation).
+    StringText,
+    /// The `get`/`set` keyword of a property accessor, not a member named so.
+    AccessorKeyword,
+}
+
+/// Classify the text at `pos` as a code identifier, as text that can never
+/// be a reference (comment, string text, accessor keyword), or neither.
+pub(crate) fn classify_occurrence_at(
+    indexer: &Indexer,
+    uri: &Url,
+    pos: CursorPos,
+) -> OccurrenceSite {
+    if let Some(symbol) = classify_symbol_at(indexer, uri, pos) {
+        return OccurrenceSite::Symbol(symbol);
+    }
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return OccurrenceSite::Unclassified;
+    };
+    let Some(node) = super::cst_lambda::cursor_node_at(&doc, pos) else {
+        return OccurrenceSite::Unclassified;
+    };
+    match not_code_kind(node, &doc.bytes, pos) {
+        Some(kind) => OccurrenceSite::NotCode(kind),
+        None => OccurrenceSite::Unclassified,
+    }
+}
+
+/// Whether the declaration whose name is at `pos` is local — declared in a
+/// function or lambda body (`val total = 1` in a method), not a member or a
+/// top-level declaration. A local `val` is indexed like a property, so the
+/// indexed flag alone cannot tell them apart. False when the file does not
+/// parse.
+pub(crate) fn is_local_declaration_at(indexer: &Indexer, uri: &Url, pos: CursorPos) -> bool {
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return false;
+    };
+    let Some(node) = super::cst_lambda::cursor_node_at(&doc, pos) else {
+        return false;
+    };
+    if super::java_cst::is_java_file(uri) {
+        return super::java_cst::is_java_local_declaration(node);
+    }
+    let mut ancestor = node.parent();
+    while let Some(scope) = ancestor {
+        match scope.kind() {
+            KIND_STATEMENTS | KIND_FUN_BODY => return true,
+            KIND_CLASS_BODY | KIND_ENUM_CLASS_BODY | KIND_SOURCE_FILE => return false,
+            _ => ancestor = scope.parent(),
+        }
+    }
+    false
+}
+
+/// Whether the bare identifier at `pos` reads a local value — a local
+/// variable, a parameter, a lambda parameter — rather than a member.
+///
+/// A primary-constructor `val`/`var` is visible as a binding from member
+/// bodies but is a member property, so a name the enclosing class itself
+/// declares as a member is never reported as local. False when the file does
+/// not parse or `pos` is not an identifier.
+pub(crate) fn is_local_value_reference(indexer: &Indexer, uri: &Url, pos: CursorPos) -> bool {
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return false;
+    };
+    let Some(node) = super::cst_lambda::cursor_node_at(&doc, pos) else {
+        return false;
+    };
+    let reads_a_local = if super::java_cst::is_java_file(uri) {
+        super::java_cst::is_java_local_value_reference(node, &doc.bytes)
+    } else {
+        node.kind() == KIND_SIMPLE_IDENT
+            && !matches!(local_binding_at(node, &doc.bytes), LocalBinding::NotLocal)
+    };
+    if !reads_a_local {
+        return false;
+    }
+    let Some(name) = node.utf8_text_owned(&doc.bytes) else {
+        return false;
+    };
+    let enclosing_class_declares_it = indexer
+        .enclosing_class_at(uri, pos.line as u32)
+        .is_some_and(|class_name| indexer.declares_member(uri.as_str(), &class_name, &name));
+    !enclosing_class_declares_it
+}
+
+/// The implicit receiver a bare `name` at `pos` reaches it through, when one
+/// of the receivers in scope has a member (or extension) of that name.
+///
+/// Receivers are tried in Kotlin's order, nearest first: lambda receivers
+/// (`with(x) { name }`), then the enclosing extension's receiver
+/// (`fun Call<T>.await() { enqueue(..) }`), then the enclosing class. `None`
+/// when no receiver in scope has `name` — it is then a top-level or
+/// imported declaration, or the index cannot tell.
+pub(crate) fn implicit_receiver_of(
+    indexer: &Indexer,
+    uri: &Url,
+    pos: CursorPos,
+) -> Option<ResolvedType> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let node = super::cst_lambda::cursor_node_at(&doc, pos)?;
+    if super::java_cst::is_java_file(uri) {
+        return java_implicit_receiver_of(indexer, uri, node, &doc.bytes);
+    }
+    if !matches!(node.kind(), KIND_SIMPLE_IDENT) {
+        return None;
+    }
+    let name = node.utf8_text_owned(&doc.bytes)?;
+    let mut receivers = CstQuery::new(node, &doc, indexer, uri).all_this_receivers();
+    let position = Position::new(pos.line as u32, pos.utf16_col as u32);
+    let extension_receiver = crate::parser::enclosing_extension_receiver_at(
+        doc.tree.root_node(),
+        &doc.bytes,
+        tower_lsp::lsp_types::Range {
+            start: position,
+            end: position,
+        },
+    )
+    .filter(|receiver| !receiver.is_type_parameter);
+    receivers.extend(extension_receiver.map(|receiver| receiver.written));
+    receivers.extend(indexer.enclosing_class_at(uri, pos.line as u32));
+    receivers
+        .into_iter()
+        .map(|receiver| ResolvedType::from_inferred(receiver, uri.clone()))
+        .find(|receiver| {
+            !indexer
+                .find_member_of_type_index_only(&name, receiver, uri)
+                .is_empty()
+        })
+}
+
+/// [`implicit_receiver_of`] for a bare Java name: the innermost enclosing
+/// class that has a member of that name.
+fn java_implicit_receiver_of(
+    indexer: &Indexer,
+    uri: &Url,
+    node: Node<'_>,
+    bytes: &[u8],
+) -> Option<ResolvedType> {
+    if node.kind() != KIND_IDENTIFIER {
+        return None;
+    }
+    let name = node.utf8_text_owned(bytes)?;
+    super::java_cst::enclosing_java_class_names(node, bytes)
+        .into_iter()
+        .map(|receiver| ResolvedType::from_inferred(receiver, uri.clone()))
+        .find(|receiver| {
+            !indexer
+                .find_member_of_type_index_only(&name, receiver, uri)
+                .is_empty()
+        })
+}
+
+fn not_code_kind(node: Node<'_>, bytes: &[u8], pos: CursorPos) -> Option<NotCodeKind> {
+    use crate::queries::{
+        KIND_BLOCK_COMMENT, KIND_COMMENT, KIND_GETTER, KIND_GETTER_SPECIFIER, KIND_LINE_COMMENT,
+        KIND_LINE_STR_TEXT, KIND_MULTILINE_COMMENT, KIND_MULTILINE_STRING_FRAGMENT,
+        KIND_MULTI_LINE_STR_TEXT, KIND_SETTER_SPECIFIER, KIND_STRING_CONTENT, KIND_STRING_FRAGMENT,
+    };
+    let kind = node.kind();
+    let is_comment = matches!(
+        kind,
+        KIND_LINE_COMMENT | KIND_MULTILINE_COMMENT | KIND_BLOCK_COMMENT | KIND_COMMENT
+    );
+    if is_comment {
+        if is_bracketed_doc_link(bytes, pos) {
+            return None;
+        }
+        return Some(NotCodeKind::Comment);
+    }
+    let is_string_text = matches!(
+        kind,
+        KIND_STRING_CONTENT
+            | KIND_STRING_FRAGMENT
+            | KIND_MULTILINE_STRING_FRAGMENT
+            | KIND_LINE_STR_TEXT
+            | KIND_MULTI_LINE_STR_TEXT
+    );
+    if is_string_text {
+        return Some(NotCodeKind::StringText);
+    }
+    // An anonymous token directly under an accessor is its keyword. Inside a
+    // parse error the lexer's keyword choice is no evidence, so leave those.
+    let accessor = node.parent().filter(|parent| {
+        matches!(
+            parent.kind(),
+            KIND_GETTER | KIND_SETTER | KIND_GETTER_SPECIFIER | KIND_SETTER_SPECIFIER
+        ) && !parent.has_error()
+    });
+    let is_accessor_keyword = !node.is_named() && accessor.is_some();
+    if is_accessor_keyword {
+        return Some(NotCodeKind::AccessorKeyword);
+    }
+    None
+}
+
+/// True when the word at `pos` sits inside `[…]` on its comment line —
+/// a KDoc/DocC link such as `[get]` or `[Box.get]`, which does refer to the
+/// symbol and so must be kept.
+fn is_bracketed_doc_link(bytes: &[u8], pos: CursorPos) -> bool {
+    let Some(line_text) = std::str::from_utf8(bytes)
+        .ok()
+        .and_then(|source| source.lines().nth(pos.line))
+    else {
+        return false;
+    };
+    let byte_col =
+        crate::indexer::live_tree::utf16_col_to_byte(line_text, pos.utf16_col).min(line_text.len());
+    let (before, after) = line_text.split_at(byte_col);
+    let last_open = before.rfind('[');
+    let last_close = before.rfind(']');
+    let opened_before = match (last_open, last_close) {
+        (Some(open), Some(close)) => open > close,
+        (Some(_), None) => true,
+        (None, _) => false,
+    };
+    let next_close = after.find(']');
+    let next_open = after.find('[');
+    let closes_after = match (next_close, next_open) {
+        (Some(close), Some(open)) => close < open,
+        (Some(_), None) => true,
+        (None, _) => false,
+    };
+    opened_before && closes_after
 }
 
 /// A definitions lookup result, tagged by how much confidence its identity

@@ -588,24 +588,28 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
 }
 
 /// Mount library sources JARs: the Gradle cache plus the project's own
-/// resolved dependencies from the last dependency sync, if any.
+/// resolved dependencies from the last dependency sync, if any, plus the
+/// project's JDK sources (see [`crate::indexer::jdk_sources`]).
 /// In the default on-demand mode only their names are loaded now (see
 /// [`crate::indexer::library_sources`]).
-fn index_library_sources(indexer: &Indexer) -> usize {
+pub(crate) fn index_library_sources(indexer: &Indexer) -> usize {
     use crate::indexer::library_sources::LibrarySourcesMode;
     let project = indexer
         .workspace_root
         .get()
         .and_then(|root| crate::dependency_sync::load_manifest(&root));
+    let mut jars = crate::indexer::jar::sources_jars_to_mount(
+        crate::indexer::jar::scan_gradle_sources_jars(None),
+        project.as_ref(),
+    );
+    if let Some(jdk) = crate::indexer::jdk_sources::jdk_sources_for(indexer) {
+        jars.push(jdk.archive);
+    }
     match indexer.library_sources.mode() {
         LibrarySourcesMode::Eager => {
-            crate::indexer::jar::index_sources_jars(indexer, None, None, project.as_ref())
+            crate::indexer::jar::index_sources_jar_paths(indexer, &jars, None)
         }
         LibrarySourcesMode::OnDemand => {
-            let jars = crate::indexer::jar::sources_jars_to_mount(
-                crate::indexer::jar::scan_gradle_sources_jars(None),
-                project.as_ref(),
-            );
             crate::indexer::library_sources::mount(indexer, &jars, None)
         }
     }
@@ -676,38 +680,12 @@ fn index_compiled_jars_phase(
         Vec::new()
     };
     let gradle_count = gradle_paths.len();
-    let mut paths = compiled_jar_paths_with_android_sdk(
+    let paths = project_compiled_jar_paths(
         indexer.workspace_root.get(),
         workspace_uses_gradle_cache,
         gradle_paths,
+        init_jar_specs,
     );
-
-    // Explicitly-configured jars (workspace.json `jarPaths` + init-options
-    // `jarPaths`), so non-Gradle projects (Make/Bazel/manual) get symbols too,
-    // and the jars the project's build tool resolved in the last dependency
-    // sync (a Maven project's live in `~/.m2`, outside the Gradle cache).
-    // Filesystem I/O (read workspace.json, walk dirs) runs here off-thread.
-    if let Some(root) = indexer.workspace_root.get() {
-        if workspace_uses_gradle_cache {
-            if let Some(manifest) = crate::dependency_sync::load_manifest(&root) {
-                for jar in manifest.jars() {
-                    if !paths.contains(&jar) {
-                        paths.push(jar);
-                    }
-                }
-            }
-        }
-        let mut configured = crate::workspace_json::load_configured_jar_paths(&root);
-        configured.extend(crate::workspace_json::resolve_jar_path_specs(
-            init_jar_specs,
-            &root,
-        ));
-        for jar in configured {
-            if !paths.contains(&jar) {
-                paths.push(jar);
-            }
-        }
-    }
 
     if !generation_ok() {
         return None;
@@ -769,6 +747,49 @@ fn abandon_stale_jar_scan(
         );
     }
     let _ = jar_done_tx.send(());
+}
+
+/// Every compiled JAR the project depends on: the Gradle-cache scan
+/// (`gradle_paths`), the Android SDK and `R.jar`s, the jars the project's
+/// build tool resolved in the last dependency sync (a Maven project's live in
+/// `~/.m2`, outside the Gradle cache), and explicitly configured `jarPaths`
+/// (workspace.json + init options), so non-Gradle projects (Make/Bazel/manual)
+/// get symbols too. Shared by the LSP's background JAR phase and the CLI.
+/// Does filesystem I/O (reads workspace.json, walks dirs) — call off-thread.
+pub(crate) fn project_compiled_jar_paths(
+    workspace_root: Option<PathBuf>,
+    workspace_uses_gradle_cache: bool,
+    gradle_paths: Vec<PathBuf>,
+    init_jar_specs: &[String],
+) -> Vec<PathBuf> {
+    let mut paths = compiled_jar_paths_with_android_sdk(
+        workspace_root.clone(),
+        workspace_uses_gradle_cache,
+        gradle_paths,
+    );
+    let Some(root) = workspace_root else {
+        return paths;
+    };
+    if workspace_uses_gradle_cache {
+        if let Some(manifest) = crate::dependency_sync::load_manifest(&root) {
+            for jar in manifest.jars() {
+                if !paths.contains(&jar) {
+                    paths.push(jar);
+                }
+            }
+        }
+    }
+    let mut configured = crate::workspace_json::load_configured_jar_paths(&root);
+    configured.extend(crate::workspace_json::resolve_jar_path_specs(
+        init_jar_specs,
+        &root,
+    ));
+    for jar in configured {
+        if !paths.contains(&jar) {
+            paths.push(jar);
+        }
+    }
+    paths
 }
 
 /// Appends the Android SDK's compiled `android.jar`, plus each Gradle

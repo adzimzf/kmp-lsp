@@ -168,3 +168,65 @@ fn context_flag_with_huge_n_does_not_overflow() {
     assert!(stdout.contains("// header"));
     assert!(stdout.contains("val x = 1"));
 }
+
+/// Runs `refs --smart -v` (on an index built first) against a workspace whose Gradle cache holds one
+/// dependency JAR, with `HOME` isolated so no real cache or sources leak in.
+fn smart_refs_stderr(extra_args: &[&str]) -> String {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("workspace");
+    let gradle_home = dir.path().join("gradle");
+    write_fixture(&root, "workspace.json", r#"{"sourcePaths":[]}"#);
+    write_fixture(&root, "src/A.kt", "class Foo\nfun useIt(f: Foo) {}\n");
+    let jar =
+        gradle_home.join("caches/modules-2/files-2.1/com.example/lib/1.0.0/abc123/lib-1.0.0.jar");
+    std::fs::create_dir_all(jar.parent().unwrap()).unwrap();
+    std::fs::write(&jar, b"not a real jar").unwrap();
+
+    // `--smart` needs a pre-built index.
+    let index_status = Command::new(BIN)
+        .env("KMP_LSP_JDK_SOURCES", "off")
+        .args(["index", "--root"])
+        .arg(&root)
+        .env("HOME", dir.path())
+        .env("GRADLE_USER_HOME", &gradle_home)
+        .status()
+        .expect("spawn");
+    assert!(index_status.success(), "kmp-lsp index failed");
+
+    let output = Command::new(BIN)
+        .env("KMP_LSP_JDK_SOURCES", "off")
+        .args(["refs", "Foo", "--smart", "-v"])
+        .args(extra_args)
+        .arg("--root")
+        .arg(&root)
+        .env("HOME", dir.path())
+        .env("GRADLE_USER_HOME", &gradle_home)
+        .env_remove("ANDROID_HOME")
+        .env_remove("ANDROID_SDK_ROOT")
+        .output()
+        .expect("spawn");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("A.kt"),
+        "expected the workspace reference either way:\n{stdout}"
+    );
+    String::from_utf8_lossy(&output.stderr).into_owned()
+}
+
+#[test]
+fn smart_refs_loads_dependency_jars_by_default() {
+    let stderr = smart_refs_stderr(&[]);
+    assert!(
+        stderr.contains("from 1 JAR(s)"),
+        "expected refs to index the Gradle-cache JAR by default:\n{stderr}"
+    );
+}
+
+#[test]
+fn no_deps_flag_skips_dependency_jars() {
+    let stderr = smart_refs_stderr(&["--no-deps"]);
+    assert!(
+        stderr.contains("from 0 JAR(s)"),
+        "expected --no-deps to skip the Gradle-cache JAR:\n{stderr}"
+    );
+}

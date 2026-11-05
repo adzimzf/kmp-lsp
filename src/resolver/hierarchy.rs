@@ -296,24 +296,36 @@ fn super_names_for_class(file_data: &FileData, class_name: &str) -> Vec<String> 
             .collect();
     }
 
-    let class_line = file_data
+    // A JAR's synthetic file holds every symbol of the library, so one name
+    // can be both a type and a same-named factory function
+    // (`interface MutableStateFlow` and `fun MutableStateFlow(value)`). Only
+    // the type has supertypes; the first same-named symbol may be the function.
+    let class_lines: Vec<u32> = file_data
         .symbols
         .iter()
-        .find(|symbol| symbol.name == class_name)
-        .map(|symbol| symbol.selection_start());
-    match class_line {
-        Some(line) => file_data
-            .supers
-            .iter()
-            .filter(|(super_line, _, _)| *super_line == line)
-            .map(|(_, name, _)| name.clone())
-            .collect(),
-        None => file_data
-            .supers
-            .iter()
-            .map(|(_, name, _)| name.clone())
-            .collect(),
+        .filter(|symbol| symbol.name == class_name)
+        .map(|symbol| symbol.selection_start())
+        .collect();
+    if !class_lines.is_empty() {
+        let supers_on = |line: u32| -> Vec<String> {
+            file_data
+                .supers
+                .iter()
+                .filter(|(super_line, _, _)| *super_line == line)
+                .map(|(_, name, _)| name.clone())
+                .collect()
+        };
+        return class_lines
+            .into_iter()
+            .map(supers_on)
+            .find(|supers| !supers.is_empty())
+            .unwrap_or_default();
     }
+    file_data
+        .supers
+        .iter()
+        .map(|(_, name, _)| name.clone())
+        .collect()
 }
 
 /// How a candidate receiver's type relates to a target (query) declaring

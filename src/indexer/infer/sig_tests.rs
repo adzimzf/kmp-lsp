@@ -1133,3 +1133,55 @@ fn receiver_function_types_are_lambda_shaped() {
         assert!(!is_lambda_shaped(type_text), "{type_text}");
     }
 }
+
+// ─── find_fun_params_text_fast: JAR arrival ───────────────────────────────────
+
+/// A callee's signature looked up before its JAR is indexed must not stay
+/// "unknown" once the JAR arrives. The first lookup runs when a file opens —
+/// before JAR indexing finishes — and `sig_fast_cache` memoizes its `None`;
+/// without invalidation on JAR population every lambda passed to a library
+/// function (`suspendCancellableCoroutine { continuation -> }`) stayed
+/// untyped for the whole session.
+#[test]
+fn library_signature_looked_up_before_its_jar_is_indexed_resolves_after() {
+    let idx = Indexer::new();
+    let uri = test_uri("/ws/Await.kt");
+    idx.index_content(
+        &uri,
+        "package app\n\
+         import kotlinx.coroutines.suspendCancellableCoroutine\n\
+         suspend fun await() = suspendCancellableCoroutine<Int> { continuation -> }\n",
+    );
+
+    assert_eq!(
+        find_fun_params_text_fast("suspendCancellableCoroutine", &idx, &uri),
+        None,
+        "no JAR indexed yet"
+    );
+
+    crate::indexer::jar::populate_from_symbols(
+        &idx,
+        std::path::Path::new("/fake/kotlinx-coroutines-core.jar"),
+        &[crate::sidecar::SidecarSymbol {
+            name: "suspendCancellableCoroutine".into(),
+            kind: "fun".into(),
+            container: "CancellableContinuationKt".into(),
+            detail: "suspend fun <T> suspendCancellableCoroutine(block: (CancellableContinuation<T>) -> Unit): T".into(),
+            doc: String::new(),
+            type_params: vec!["T".into()],
+            extension_receiver_type: String::new(),
+            trailing_lambda: true,
+            deprecated: false,
+            pkg: "kotlinx.coroutines".into(),
+            top_level: true,
+            supers: vec![],
+        }],
+    );
+    // What `index_jars` does once a JAR's symbols are in the index.
+    idx.note_jar_symbols_populated();
+
+    assert_eq!(
+        find_fun_params_text_fast("suspendCancellableCoroutine", &idx, &uri).as_deref(),
+        Some("block: (CancellableContinuation<T>) -> Unit"),
+    );
+}

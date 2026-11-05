@@ -14,10 +14,17 @@
 use tower_lsp::lsp_types::*;
 
 use super::infer::lambda::SCOPE_FUNCTIONS;
-use super::{Indexer, ResolvedType};
+use super::{CallShape, Indexer, ResolvedType};
 use crate::resolver::{resolve_symbol_in_type_scope, split_package_prefix, ResolveIo, TypeScope};
 use crate::types::SymbolEntry;
 use crate::StrExt;
+
+/// Who owns a member declaration: a type it is declared in, or the receiver
+/// type of an extension (which overrides nothing).
+enum MemberOwner {
+    Type(String),
+    Extension(String),
+}
 
 /// Throttle counter for [`Indexer::jar_declaration_scope`]'s side-table
 /// misalignment warning — see [`crate::util::throttled_warn`].
@@ -187,6 +194,123 @@ impl Indexer {
         shape: crate::indexer::CallShape,
     ) -> Vec<Location> {
         crate::resolver::resolve_implicit_receiver_callee(self, receiver_base, name, uri, shape)
+    }
+
+    /// The type that declares the member `name` reached through `receiver`,
+    /// climbed to the base declaration when that member overrides another:
+    /// the member's own class/interface, or an extension's receiver type.
+    ///
+    /// This is often a supertype of `receiver` — `flow.collect {}` on a
+    /// `MutableStateFlow` reaches `SharedFlow.collect`, which overrides
+    /// `Flow.collect` — so it, not `receiver`, is the identity a call site
+    /// shares with every other caller of the same member. `None` when the
+    /// member is not in the index. Never spawns `rg`/`fd`.
+    ///
+    /// A call's `shape` picks the overload it can reach: `continuation.resume(body)`
+    /// on a `CancellableContinuation` is the stdlib `Continuation<T>.resume(value)`
+    /// extension, not the two-parameter member `resume(value, onCancellation)`.
+    pub(crate) fn member_declaring_type(
+        &self,
+        name: &str,
+        receiver: &ResolvedType,
+        shape: Option<CallShape>,
+        from_uri: &Url,
+    ) -> Option<String> {
+        let candidates = self.find_member_of_type_index_only(name, receiver, from_uri);
+        // An arity no candidate accepts says more about the index than the
+        // call: keep every candidate rather than none.
+        let candidates = match shape {
+            Some(shape) => {
+                let reachable =
+                    super::shape_filter_locations(self, shape, candidates.clone()).resolved();
+                if reachable.is_empty() {
+                    candidates
+                } else {
+                    reachable
+                }
+            }
+            None => candidates,
+        };
+        let (owner, location) = candidates
+            .into_iter()
+            .find_map(|location| Some((self.member_owner_at(name, &location)?, location)))?;
+        match owner {
+            MemberOwner::Extension(receiver_type) => Some(receiver_type),
+            MemberOwner::Type(type_name) => {
+                Some(self.base_declaring_type(name, type_name, location.uri.to_string()))
+            }
+        }
+    }
+
+    /// Who owns the declaration of `name` at `location`, in a workspace or
+    /// JAR file.
+    ///
+    /// Matched by line and name, not the exact range: a JAR symbol's indexed
+    /// range starts at column 0 of its synthetic line, while a resolved
+    /// location points at the name inside the signature (`val value`).
+    fn member_owner_at(&self, name: &str, location: &Location) -> Option<MemberOwner> {
+        let file_data = self
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| self.jar_files.get(location.uri.as_str()))?;
+        let symbol = file_data.symbols.iter().find(|symbol| {
+            symbol.name == name && symbol.selection_range.start.line == location.range.start.line
+        })?;
+        let extension_receiver = symbol.extension_receiver_type();
+        if !extension_receiver.is_empty() {
+            return Some(MemberOwner::Extension(extension_receiver.to_owned()));
+        }
+        symbol
+            .container
+            .clone()
+            .or_else(|| self.enclosing_class_at(&location.uri, location.range.start.line))
+            .map(MemberOwner::Type)
+    }
+
+    /// The topmost supertype of `type_name` (declared in `type_uri`) that
+    /// also declares a member `name` — the declaration every override of
+    /// `name` below it overrides. `type_name` itself when none does.
+    fn base_declaring_type(&self, name: &str, type_name: String, type_uri: String) -> String {
+        /// Bounds the climb on a malformed (cyclic) hierarchy.
+        const MAX_OVERRIDE_HOPS: usize = 16;
+        let mut base = (type_name, type_uri);
+        for _ in 0..MAX_OVERRIDE_HOPS {
+            let nearest_declaring_supertype = crate::resolver::walk_hierarchy_breadth_first(
+                self,
+                &base.0,
+                &base.1,
+                crate::types::CallerContext::default(),
+                12,
+                crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+                |indexer, super_name, super_uri, _| {
+                    if indexer.declares_member(super_uri, super_name, name) {
+                        vec![(super_name.to_owned(), super_uri.to_owned())]
+                    } else {
+                        vec![]
+                    }
+                },
+            )
+            .into_iter()
+            .next();
+            match nearest_declaring_supertype {
+                Some(supertype) if supertype != base => base = supertype,
+                _ => break,
+            }
+        }
+        base.0
+    }
+
+    /// Whether the type `type_name` declared in `uri` declares a member
+    /// `member` itself (not an extension).
+    pub(crate) fn declares_member(&self, uri: &str, type_name: &str, member: &str) -> bool {
+        let Some(file_data) = self.files.get(uri).or_else(|| self.jar_files.get(uri)) else {
+            return false;
+        };
+        file_data.symbols.iter().any(|symbol| {
+            symbol.name == member
+                && symbol.container.as_deref() == Some(type_name)
+                && symbol.extension_receiver_type().is_empty()
+        })
     }
 
     /// All symbols declared in the given file (for `documentSymbol`).

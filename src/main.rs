@@ -51,7 +51,7 @@ use tower_lsp::{LspService, Server};
 /// This is a safety net, not a licence to recurse without bound: it raises the
 /// depth at which a walker dies, it does not make an unbounded one safe. The
 /// depth caps and cycle guards still carry that.
-const ANALYSIS_STACK_SIZE: usize = 16 * 1024 * 1024;
+pub(crate) const ANALYSIS_STACK_SIZE: usize = 16 * 1024 * 1024;
 
 fn main() {
     install_panic_hook();

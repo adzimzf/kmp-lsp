@@ -31,6 +31,7 @@ fn write_fixture(dir: &Path, rel_path: &str, content: &str) {
 /// Run `kmp-lsp index` against `root` and panic on failure.
 fn index_root(root: &Path) {
     let status = Command::new(BIN)
+        .env("KMP_LSP_JDK_SOURCES", "off")
         .args(["index", "--root"])
         .arg(root)
         .status()
@@ -43,6 +44,7 @@ fn index_root(root: &Path) {
 /// or produces empty stdout.
 fn complete_json(root: &Path, file: &Path, line: u32, col: u32) -> Option<Vec<Value>> {
     let out = Command::new(BIN)
+        .env("KMP_LSP_JDK_SOURCES", "off")
         .args(["complete"])
         .arg(file)
         .arg(line.to_string())

@@ -37,7 +37,7 @@ kmp-lsp extract-sources
 - [Integrate with an AI agent](docs/copilot.md) — Copilot CLI, Serena MCP, agent skill file
 - [More editors](docs/editors.md) — Helix, Neovim, VS Code, Zed
 - [Features & CLI reference](docs/features.md) — capabilities, CLI subcommands, resolution chain, completion ranking
-- [Configuration](docs/features.md#configuration) — workspace root, ignore patterns, source paths, `jarPaths`
+- [Configuration](docs/features.md#configuration) — workspace root, ignore patterns, source paths, `jarPaths`, [`jdkHome`](docs/features.md#jdk-sources)
 - [Limitations & vs. official Kotlin LSP](docs/features.md#limitations)
 - [Architecture](docs/architecture.md) · [Performance & profiling](docs/performance.md) · [Changelog](CHANGELOG.md)
 
