@@ -8,7 +8,7 @@ use tower_lsp::lsp_types::Location;
 use crate::indexer::{Indexer, NoopReporter};
 use crate::rg::{rg_find_definition, rg_word_search, RgSearchRequest};
 
-use super::args::{CliArgs, Mode, OutputFmt, Subcommand};
+use super::args::{CliArgs, Dependencies, Mode, OutputFmt, Subcommand};
 use super::complete::completions_at;
 use super::hover::hover_at;
 use super::output::{attach_context, print_results, CliResult};
@@ -364,6 +364,13 @@ fn fast_refs(name: &str, root: &Path) -> Vec<CliResult> {
 pub(crate) async fn run(args: CliArgs) {
     let json = args.fmt == OutputFmt::Json;
     let verbose = args.verbose;
+    let indexed_command = |root| IndexedCommand {
+        root,
+        mode: args.mode,
+        json,
+        verbose,
+        dependencies: args.dependencies,
+    };
 
     match args.subcommand {
         Subcommand::Index => {
@@ -372,7 +379,7 @@ pub(crate) async fn run(args: CliArgs) {
         }
         Subcommand::Find { name } => {
             let root = resolve_root(args.root.as_deref());
-            run_find(&root, args.mode, json, verbose, &name).await
+            run_find(indexed_command(&root), &name).await
         }
         Subcommand::Refs {
             name,
@@ -380,20 +387,11 @@ pub(crate) async fn run(args: CliArgs) {
             context,
         } => {
             let root = resolve_root(args.root.as_deref());
-            run_refs(
-                &root,
-                args.mode,
-                json,
-                verbose,
-                &name,
-                exclude_imports,
-                context,
-            )
-            .await
+            run_refs(indexed_command(&root), &name, exclude_imports, context).await
         }
         Subcommand::Hover { file, line, col } => {
             let root = resolve_root_for_file(args.root.as_deref(), &file);
-            run_hover(&root, args.mode, json, verbose, &file, line, col).await
+            run_hover(indexed_command(&root), &file, line, col).await
         }
         Subcommand::Complete {
             file,
@@ -505,24 +503,62 @@ fn compiled_jar_paths_for_cli(root: &Path, gradle_paths: Vec<PathBuf>) -> Vec<Pa
     )
 }
 
-async fn run_find(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str) {
+/// What every index-backed lookup (`find`, `refs`, `hover`) needs besides
+/// its own arguments.
+#[derive(Clone, Copy)]
+struct IndexedCommand<'a> {
+    root: &'a Path,
+    mode: Mode,
+    json: bool,
+    verbose: bool,
+    dependencies: Dependencies,
+}
+
+/// Indexes the workspace's compiled dependency JARs (Gradle cache + Android
+/// SDK jar) into `index`, as the LSP does in the background, and leaves
+/// `jar_phase` in a terminal state either way. Without the JARs, library
+/// supertypes, members and receivers don't resolve, and features that wait on
+/// a loading `jar_phase` (call-arg / nullable-dot diagnostics) stay silent.
+fn load_dependencies(index: &Indexer, root: &Path, dependencies: Dependencies, verbose: bool) {
+    let jars = match dependencies {
+        Dependencies::Load => {
+            compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None))
+        }
+        Dependencies::Skip => Vec::new(),
+    };
+    let Ok(mut sidecar_guard) = index.jar_sidecar.lock() else {
+        return;
+    };
+    let total = if jars.is_empty() {
+        0
+    } else {
+        crate::indexer::jar::clear_jar_maps(index);
+        crate::indexer::jar::index_jars(index, &jars, &mut sidecar_guard)
+    };
+    if let Ok(mut phase) = index.jar_phase.lock() {
+        *phase = crate::indexer::jar_phase::JarPhase::Ready { count: total };
+    }
+    if verbose {
+        eprintln!(
+            "Indexed {total} dependency symbols from {} JAR(s)",
+            jars.len()
+        );
+    }
+}
+
+async fn run_find(command: IndexedCommand<'_>, name: &str) {
+    let IndexedCommand {
+        root,
+        mode,
+        json,
+        verbose,
+        dependencies,
+    } = command;
     let results = match effective_mode(mode, root, "find", verbose) {
         Mode::Fast => fast_find(name, root),
         _ => {
             let index = build_index(root, false).await;
-            // Scan Gradle JARs (+ the Android SDK jar, if detected) so
-            // stdlib/library/Android symbols resolve in find queries.
-            let jars =
-                compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None));
-            if !jars.is_empty() {
-                if let Ok(mut sidecar_guard) = index.jar_sidecar.lock() {
-                    crate::indexer::jar::clear_jar_maps(&index);
-                    let total = crate::indexer::jar::index_jars(&index, &jars, &mut sidecar_guard);
-                    if let Ok(mut phase) = index.jar_phase.lock() {
-                        *phase = crate::indexer::jar_phase::JarPhase::Ready { count: total };
-                    }
-                }
-            }
+            load_dependencies(&index, root, dependencies, verbose);
             smart_find(&index, name, root)
         }
     };
@@ -535,18 +571,23 @@ async fn run_find(root: &Path, mode: Mode, json: bool, verbose: bool, name: &str
 }
 
 async fn run_refs(
-    root: &Path,
-    mode: Mode,
-    json: bool,
-    verbose: bool,
+    command: IndexedCommand<'_>,
     name: &str,
     exclude_imports: bool,
     context: Option<u32>,
 ) {
+    let IndexedCommand {
+        root,
+        mode,
+        json,
+        verbose,
+        dependencies,
+    } = command;
     let mut results = match effective_mode(mode, root, "refs", verbose) {
         Mode::Fast => fast_refs(name, root),
         _ => {
             let index = build_index(root, false).await;
+            load_dependencies(&index, root, dependencies, verbose);
             smart_refs(&index, name, root)
         }
     };
@@ -587,20 +628,20 @@ async fn run_refs(
     print_results(&results, json);
 }
 
-async fn run_hover(
-    root: &Path,
-    mode: Mode,
-    json: bool,
-    verbose: bool,
-    file: &Path,
-    line: u32,
-    col: u32,
-) {
+async fn run_hover(command: IndexedCommand<'_>, file: &Path, line: u32, col: u32) {
+    let IndexedCommand {
+        root,
+        mode,
+        json,
+        verbose,
+        dependencies,
+    } = command;
     if effective_mode(mode, root, "hover", verbose) == Mode::Fast {
         eprintln!("hover requires index; run `kmp-lsp index` first or remove --fast");
         std::process::exit(1);
     }
     let index = build_index(root, false).await;
+    load_dependencies(&index, root, dependencies, verbose);
     let Some(text) = hover_at(&index, file, line, col) else {
         eprintln!("No symbol found at {}:{}:{}", file.display(), line, col);
         std::process::exit(1);
@@ -723,7 +764,7 @@ fn diagnostic_enabled(only: Option<&[String]>, name: &str) -> bool {
     only.is_none_or(|names| names.iter().any(|n| n == name))
 }
 
-async fn run_diagnose(root: &Path, file: &Path, _verbose: bool, only: Option<&[String]>) {
+async fn run_diagnose(root: &Path, file: &Path, verbose: bool, only: Option<&[String]>) {
     use crate::features::call_arg_diagnostics::call_arg_diagnostics;
     use crate::features::fill_when::when_diagnostics;
     use crate::features::missing_import_diagnostics::missing_import_diagnostics;
@@ -775,27 +816,10 @@ async fn run_diagnose(root: &Path, file: &Path, _verbose: bool, only: Option<&[S
             index.definitions.len()
         );
 
-        // Index Gradle JARs and resolve `jar_phase` to a TERMINAL state (same
-        // pattern as `run_find`). Without this, a machine with the sidecar
-        // binary installed leaves the phase at its initial `Pending` forever —
-        // and `call_arg_diagnostics`/`nullable_dot_call_diagnostics` suppress
-        // themselves while the phase reads as loading, so `diagnose` printed NO
-        // semantic diagnostics at all. (Machines WITHOUT the sidecar start at
-        // `Unavailable`, which is terminal — which is why the gap only showed up
-        // once a sidecar became present, e.g. in CI after the sidecar artifact
-        // was wired into the test jobs.)
-        let jars = compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None));
-        if let Ok(mut sidecar_guard) = index.jar_sidecar.lock() {
-            let total = if jars.is_empty() {
-                0
-            } else {
-                crate::indexer::jar::clear_jar_maps(&index);
-                crate::indexer::jar::index_jars(&index, &jars, &mut sidecar_guard)
-            };
-            if let Ok(mut phase) = index.jar_phase.lock() {
-                *phase = crate::indexer::jar_phase::JarPhase::Ready { count: total };
-            }
-        }
+        // Diagnose always loads dependencies: call-arg / nullable-dot
+        // diagnostics stay silent while `jar_phase` reads as loading, and
+        // missing-import would flag every library import without the JARs.
+        load_dependencies(&index, root, Dependencies::Load, verbose);
 
         let uri = Url::from_file_path(&abs_path).unwrap_or_else(|_| {
             eprintln!("error: cannot convert path to URI: {}", abs_path.display());

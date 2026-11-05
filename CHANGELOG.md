@@ -22,6 +22,10 @@
 
 - **Java ↔ Kotlin interop navigation** — go-to-definition and find-references now follow the names the JVM gives each language's declarations to the other: Java `getName()`/`setEmail()` reach Kotlin `val name`/`var email` (a setter never reaches a `val`); Java calls through `@JvmName`, `Registry.INSTANCE`, and file facades (`StringUtilsKt`, `@file:JvmName`) reach the Kotlin declaration, and the facade class itself goes to the Kotlin file; Kotlin `account.balance` reaches Java `getBalance()` and `account.balance = …` reaches `setBalance()` (a `private` Java field of the same name no longer shadows the getter); Kotlin `point.x` reaches a Java record component. Find-references on either side includes the other language's spelling, each hit verified by resolving it back to the declaration. Covered end-to-end by `tests/java_kotlin_interop.rs` over a fixture project that compiles with `kotlinc` + `javac`.
 - **Java parameter, local, field and `for`-variable types are indexed** — so a Java receiver like `user` in `user.getName()` is typed from `User user`, the same way a Kotlin `val x: T` is. Java record components are indexed as fields.
+### Changes
+
+- **`kmp-lsp refs` and `kmp-lsp hover` load dependencies by default** — in index mode both commands now index the workspace's compiled dependency JARs (Gradle cache + Android SDK `android.jar`), as `find`, `diagnose` and the LSP already did. Before this, library supertypes, members and receivers did not resolve on the CLI, so `refs` could not verify library-typed call sites. Pass `--no-deps` (to `find`, `refs` or `hover`) for a faster workspace-only index.
+
 ### Bug fixes
 
 - **Find-references on members named `get`, `set`, `value`, `field`, `data`, … returned every text match** — tree-sitter-kotlin wraps a soft keyword used as a name in `simple_identifier`, and the cursor lookup stopped on the inner keyword token, so the CST classifier saw "nothing here". The query's own receiver type was never known and type verification was skipped, so find-references fell back to the raw `rg` hit list. The same lookup also fixes go-to-definition, highlight and rename on such names.

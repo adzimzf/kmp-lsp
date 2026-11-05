@@ -69,6 +69,12 @@ Lists every source root that would be auto-discovered for a project (from `works
 If source roots are missing, the command suggests `extract-sources` as a next step.
 
 ```
+kmp-lsp refs <name> [--no-deps] [--exclude-imports] [-C <n>] [--json] [--root <dir>]
+kmp-lsp hover <file> <line> <col> [--no-deps] [--json] [--root <dir>]
+```
+In index mode, `find`, `refs` and `hover` also index the workspace's compiled dependency JARs (Gradle cache + Android SDK), like the LSP does, so library types, members and hierarchies resolve. `--no-deps` skips them for a faster, workspace-only index. `diagnose` always loads them.
+
+```
 kmp-lsp complete <file> <line> [--dot] [--eol] [--no-stdlib] [--json] [--root <dir>]
 ```
 Returns completion candidates for the cursor position without starting the LSP daemon — useful for shell integrations, editor plugins, and testing.

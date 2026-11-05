@@ -94,6 +94,15 @@ pub(crate) enum Mode {
     Smart,
 }
 
+/// Whether an index-backed command also indexes the workspace's compiled
+/// dependency JARs (Gradle cache + Android SDK). The LSP always does; the CLI
+/// does too unless `--no-deps` asks for a workspace-only index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Dependencies {
+    Load,
+    Skip,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OutputFmt {
     Text,
@@ -107,6 +116,7 @@ pub(crate) struct CliArgs {
     pub fmt: OutputFmt,
     pub root: Option<PathBuf>,
     pub verbose: bool,
+    pub dependencies: Dependencies,
 }
 
 impl CliArgs {
@@ -123,6 +133,7 @@ impl CliArgs {
         let fmt = parsed.fmt;
         let root = parsed.root.clone();
         let verbose = parsed.verbose;
+        let dependencies = parsed.dependencies;
         let subcommand = build_subcommand(&subcommand, parsed)?;
         Ok(Some(Self {
             subcommand,
@@ -130,6 +141,7 @@ impl CliArgs {
             fmt,
             root,
             verbose,
+            dependencies,
         }))
     }
 }
@@ -150,6 +162,7 @@ struct ParsedCliFlags {
     dot: bool,
     eol: bool,
     no_stdlib: bool,
+    dependencies: Dependencies,
     exclude_imports: bool,
     context: Option<u32>,
     only: Option<Vec<String>>,
@@ -200,6 +213,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
         dot: false,
         eol: false,
         no_stdlib: false,
+        dependencies: Dependencies::Load,
         exclude_imports: false,
         context: None,
         only: None,
@@ -232,6 +246,7 @@ fn parse_cli_flags(args: &mut lexopt::Parser) -> Result<ParsedCliFlags, String> 
             Some(lexopt::Arg::Short('d') | lexopt::Arg::Long("dot")) => parsed.dot = true,
             Some(lexopt::Arg::Short('e') | lexopt::Arg::Long("eol")) => parsed.eol = true,
             Some(lexopt::Arg::Long("no-stdlib")) => parsed.no_stdlib = true,
+            Some(lexopt::Arg::Long("no-deps")) => parsed.dependencies = Dependencies::Skip,
             Some(lexopt::Arg::Long("exclude-imports")) => parsed.exclude_imports = true,
             Some(lexopt::Arg::Short('C') | lexopt::Arg::Long("context")) => {
                 let value = args.value().map_err(|e| e.to_string())?;
@@ -522,6 +537,8 @@ OPTIONS:
     -d, --dot           (complete) Resolve col to just after the last '.' on the line
     -e, --eol           (complete) Resolve col to end of trimmed content on the line
     --no-stdlib         (complete) Skip ~/.kmp-lsp/sources; workspace symbols only (~2s)
+    --no-deps           (find, refs, hover) Skip indexing dependency JARs (Gradle cache,
+                         Android SDK); loaded by default, like the LSP
     -v, --verbose       Show progress messages (indexing, cache status)
     -h, --help          Print this help
     -V, --version       Print version
@@ -531,6 +548,7 @@ EXAMPLES:
     kmp-lsp refs --fast MyViewModel --root ./android
     kmp-lsp refs Event --exclude-imports --root ./android
     kmp-lsp refs Event -C 2 --json --root ./android
+    kmp-lsp refs Event --no-deps --root ./android
     kmp-lsp check src/Foo.kt
     kmp-lsp check src/ --json
     kmp-lsp diagnose src/Foo.kt --root ./android
