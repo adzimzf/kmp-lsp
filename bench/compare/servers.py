@@ -61,7 +61,11 @@ def jdtls(paths, state, gradle_home, options):
             "-data", os.path.join(state, "jdtls-workspace"),
         ],
         "env": env,
-        "initialization_options": {"settings": settings},
+        # Every real jdtls client (vscode-java, nvim-jdtls, Zed) enables this:
+        # without it jdtls answers nothing for targets in compiled classes
+        # (libraries, the JDK, and here moshi's own Kotlin core).
+        "initialization_options": {"settings": settings,
+                                   "extendedClientCapabilities": {"classFileContentsSupport": True}},
         "settings": settings,
         "languages": ["java"],
     }
@@ -69,6 +73,10 @@ def jdtls(paths, state, gradle_home, options):
 
 def kotlin_lsp(paths, state, gradle_home, options):
     env = _base_environment(state, gradle_home)
+    # Without these the server starts from a fresh /tmp/idea-system* every
+    # time, so a "warm" run would be cold.
+    env["IJ_JAVA_OPTIONS"] = (f"-Didea.system.path={os.path.join(state, 'idea-system')} "
+                              f"-Didea.config.path={os.path.join(state, 'idea-config')}")
     return {
         "command": [os.path.join(paths["kotlin_lsp"], "bin", "intellij-server"), "--stdio"],
         "env": env,

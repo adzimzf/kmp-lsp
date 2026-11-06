@@ -140,9 +140,11 @@ def main():
     runs = [json.load(open(path)) for path in arguments.results]
     label = lambda run: f"{run['server']} ({run['start']}{'' if run.get('dependency_sync', True) else ', no dep sync'})"
     # Accuracy uses each server's first run (answers don't depend on cold/warm).
+    # A server run without dependency sync is scored as its own variant.
+    variant = lambda run: run["server"] + ("" if run.get("dependency_sync", True) else " (no dep sync)")
     by_server = {}
     for run in runs:
-        by_server.setdefault(run["server"], run)
+        by_server.setdefault(variant(run), run)
 
     out = []
     emit = out.append
@@ -152,13 +154,14 @@ def main():
 
     # ── speed ──────────────────────────────────────────────────────────────
     emit("## Speed\n")
-    emit("| Server | initialize | ready (probes answer correctly) | peak RSS | RSS at ready | total run |")
-    emit("|---|---|---|---|---|---|")
+    emit("| Server | initialize | ready (probes answer correctly) | settled (no background work for 5 s) | peak RSS | RSS at settled | total run |")
+    emit("|---|---|---|---|---|---|---|")
     for run in runs:
         phases = run["phases"]
         emit(f"| {label(run)} | {fmt_seconds(phases.get('initialize'))} | "
              f"{fmt_seconds(phases.get('ready')) if phases.get('ready') else 'never: ' + run.get('error', '')} | "
-             f"{run['peak_rss_kib'] // 1024} MiB | {run.get('rss_at_ready_kib', 0) // 1024} MiB | "
+             f"{fmt_seconds(phases.get('settled'))} | "
+             f"{run['peak_rss_kib'] // 1024} MiB | {run.get('rss_at_settled_kib', run.get('rss_at_ready_kib', 0)) // 1024} MiB | "
              f"{fmt_seconds(run.get('total_seconds'))} |")
     emit("")
     emit("Per-request latency after ready (p50 / p95 / max; timeouts):\n")
@@ -190,8 +193,32 @@ def main():
             targets[answer["id"]][server] = {normalize_target(repo, location, query["name"]) for location in answer["locations"]}
             errors[answer["id"]][server] = answer.get("error")
 
+    def file_class(target):
+        """`JsonReader` for moshi/…/JsonReader.kt — what a compiled-class
+        target of the same declaration is named."""
+        path, _ = target
+        return os.path.splitext(os.path.basename(path))[0]
+
+    def compiled_name(target):
+        name = target[1]
+        return name[:-2] if name.endswith("Kt") else name
+
+    def match(left, right):
+        """'exact' when both name the same (file, line); 'class' when one
+        names a compiled class and the other a line in that class's source
+        file (jdtls can't open Kotlin sources, so it answers with the
+        compiled class); None otherwise."""
+        if left & right:
+            return "exact"
+        for one, other in ((left, right), (right, left)):
+            compiled = {compiled_name(target) for target in one if target[0] == "external"}
+            sources = {file_class(target) for target in other if target[0] != "external"}
+            if compiled & sources:
+                return "class"
+        return None
+
     def same(left, right):
-        return bool(left & right)
+        return match(left, right) is not None
 
     def reference_for(query_id, exclude=None):
         query = queries[query_id]
@@ -207,15 +234,18 @@ def main():
     emit("## Go-to-definition accuracy\n")
     emit("Reference: the compiler-backed server owning the language (kotlin-lsp for `.kt`, jdtls for `.java`), "
          "falling back to the other one. A server is never its own fallback reference.\n")
-    emit("| Server | language | asked | reference had an answer | right | wrong | no answer | errors |")
-    emit("|---|---|---|---|---|---|---|---|")
+    emit("*right* counts exact matches plus *class-level* ones: one server names a compiled class "
+         "(jdtls on moshi's Kotlin core) and the other a line in that class's source file; "
+         "the class-level share is shown separately.\n")
+    emit("| Server | language | asked | reference had an answer | right | of which class-level | wrong | no answer | errors |")
+    emit("|---|---|---|---|---|---|---|---|---|")
     disagreements = defaultdict(list)
     for server in by_server:
         for language in ("kotlin", "java"):
             ids = [qid for qid in targets if server in targets[qid] and queries[qid]["language"] == language]
             if not ids:
                 continue
-            with_reference = right = wrong = empty = failed = 0
+            with_reference = right = class_level = wrong = empty = failed = 0
             for qid in ids:
                 reference_server, reference = reference_for(qid)
                 if reference_server == server:
@@ -230,11 +260,12 @@ def main():
                     empty += 1
                 elif same(mine, reference):
                     right += 1
+                    class_level += match(mine, reference) == "class"
                 else:
                     wrong += 1
                     disagreements[server].append((qid, reference_server, sorted(mine), sorted(reference)))
             emit(f"| {server} | {language} | {len(ids)} | {with_reference} | {fmt_percent(right, with_reference)} | "
-                 f"{wrong} | {empty} | {failed} |")
+                 f"{class_level} | {wrong} | {empty} | {failed} |")
     emit("")
     servers = list(by_server)
     if len(servers) > 1:
@@ -270,6 +301,17 @@ def main():
         for key in sorted(by_category):
             emit(f"| {key} | " + " | ".join(fmt_percent(*by_category[key][s]) if by_category[key][s][1] else "—" for s in servers) + " |")
         emit("")
+
+    emit("Hover answered (non-empty) on the same positions:\n")
+    emit("| Server | kotlin | java |")
+    emit("|---|---|---|")
+    for server, run in by_server.items():
+        cells = []
+        for language in ("kotlin", "java"):
+            hovers = [answer for answer in run["answers"].get("hover", []) if queries[answer["id"]]["language"] == language]
+            cells.append(fmt_percent(sum(1 for answer in hovers if not answer["empty"]), len(hovers)) if hovers else "not asked")
+        emit(f"| {server} | " + " | ".join(cells) + " |")
+    emit("")
 
     # ── references accuracy ────────────────────────────────────────────────
     usages = defaultdict(dict)

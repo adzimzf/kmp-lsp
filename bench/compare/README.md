@@ -80,6 +80,14 @@ kmp-lsp's dependency sync runs it too (`--no-dependency-sync` turns that off,
 at the cost of library types). Run them on one machine, one at a time.
 Each run's server stderr is kept next to its result (`*.stderr.log`).
 
+Notes from running it:
+
+- jdtls snapshots need **Java 25** (`--java`); kotlin-lsp's bundled
+  `jbr/bin/java` works when the machine has an older JDK.
+- kotlin-lsp EAP builds **expire**; a build that prints "This build of
+  kotlin-server has expired" needs replacing with a newer one.
+- Results of a run: `results/moshi-2026-11-06.md`.
+
 ## Caveats
 
 - The definition/references reference is a compiler-backed *server*, not the

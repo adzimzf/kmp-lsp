@@ -11,6 +11,8 @@ Phases, each timed from process start:
   initialize   — `initialize` answered
   ready        — every readiness probe (a known cross-file definition in a
                  language the server handles) returns the expected location
+  settled      — after ready, the last `$/progress` activity once nothing
+                 has been in progress for --settle-quiet seconds
 Then each query is asked once, in a fixed order, and timed.
 """
 
@@ -118,6 +120,19 @@ def wait_until_ready(server, documents, repo, probes, timeout):
     return None if pending else time.monotonic() - server.started
 
 
+def wait_until_settled(server, quiet_seconds, timeout):
+    """Seconds since start of the last progress activity once nothing has
+    been in progress for `quiet_seconds`; None if it never got quiet."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and not server.closed.is_set():
+        last_event = server.progress_events[-1][0] if server.progress_events else 0.0
+        now = time.monotonic() - server.started
+        if not server.active_progress and now - last_event >= quiet_seconds:
+            return max(last_event, 0.0)
+        time.sleep(0.5)
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--server", required=True, choices=sorted(SERVERS))
@@ -135,6 +150,9 @@ def main():
     parser.add_argument("--ready-timeout", type=float, default=1800)
     parser.add_argument("--request-timeout", type=float, default=60)
     parser.add_argument("--symbols-files", type=int, default=30)
+    parser.add_argument("--settle-quiet", type=float, default=5,
+                        help="seconds without $/progress activity that count as settled")
+    parser.add_argument("--settle-timeout", type=float, default=900)
     arguments = parser.parse_args()
 
     repo = os.path.abspath(arguments.repo)
@@ -189,6 +207,11 @@ def main():
         record["rss_at_ready_kib"] = server.rss_kib()
         if record["phases"]["ready"] is None:
             record["error"] = "never ready"
+        # Answering the probes is not "done": background work (dependency
+        # sync, library indexing, a Gradle import's later stages) can still
+        # change answers. Settled = no `$/progress` activity for a while.
+        record["phases"]["settled"] = wait_until_settled(server, arguments.settle_quiet, arguments.settle_timeout)
+        record["rss_at_settled_kib"] = server.rss_kib()
 
         ask = lambda query: query["language"] in languages
         position = lambda query: {"textDocument": {"uri": uri_of(repo, query["file"])},
