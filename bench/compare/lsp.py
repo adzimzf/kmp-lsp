@@ -16,8 +16,27 @@ class RequestTimeout(Exception):
     pass
 
 
-def process_tree_rss_kib(root_pid: int) -> int:
-    """Resident memory of `root_pid` and all its descendants, in KiB."""
+def _processes_from_ps():
+    """(children by parent, RSS KiB by pid) from `ps` — macOS and other
+    systems without /proc."""
+    children, rss = {}, {}
+    try:
+        output = subprocess.run(["ps", "-axo", "pid=,ppid=,rss="], capture_output=True,
+                                text=True, timeout=10).stdout
+    except (OSError, subprocess.SubprocessError):
+        return children, rss
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) != 3 or not all(field.isdigit() for field in fields):
+            continue
+        pid, parent, resident = (int(field) for field in fields)
+        rss[pid] = resident
+        children.setdefault(parent, []).append(pid)
+    return children, rss
+
+
+def _processes_from_proc():
+    """(children by parent, RSS KiB by pid) from Linux /proc."""
     children = {}
     rss = {}
     for entry in os.listdir("/proc"):
@@ -35,6 +54,15 @@ def process_tree_rss_kib(root_pid: int) -> int:
             children.setdefault(parent, []).append(int(entry))
         except (OSError, IndexError, ValueError):
             continue
+    return children, rss
+
+
+def process_tree_rss_kib(root_pid: int) -> int:
+    """Resident memory of `root_pid` and all its descendants, in KiB."""
+    if os.path.isdir("/proc/self"):
+        children, rss = _processes_from_proc()
+    else:
+        children, rss = _processes_from_ps()
     total, stack = 0, [root_pid]
     while stack:
         pid = stack.pop()

@@ -8,6 +8,7 @@ never cleared: downloading dependencies is network time, not server time.
 
 import glob
 import os
+import platform
 import shutil
 
 
@@ -35,6 +36,14 @@ def kmp_lsp(paths, state, gradle_home, options):
     }
 
 
+def _jdtls_configuration_name():
+    """jdtls ships one OSGi configuration per OS and CPU."""
+    system = platform.system()
+    arm = platform.machine().lower() in {"arm64", "aarch64"}
+    name = {"Darwin": "config_mac", "Windows": "config_win"}.get(system, "config_linux")
+    return name + "_arm" if arm and system != "Windows" else name
+
+
 def jdtls(paths, state, gradle_home, options):
     env = _base_environment(state, gradle_home)
     home = paths["jdtls"]
@@ -42,7 +51,7 @@ def jdtls(paths, state, gradle_home, options):
     # jdtls writes into its configuration directory: give each state its own copy.
     configuration = os.path.join(state, "jdtls-config")
     if not os.path.isdir(configuration):
-        shutil.copytree(os.path.join(home, "config_linux"), configuration)
+        shutil.copytree(os.path.join(home, _jdtls_configuration_name()), configuration)
     settings = {"java": {"import": {"gradle": {"enabled": True, "wrapper": {"enabled": True}},
                                     "maven": {"enabled": True}},
                          "autobuild": {"enabled": True}}}
@@ -71,6 +80,22 @@ def jdtls(paths, state, gradle_home, options):
     }
 
 
+def _kotlin_lsp_executable(home):
+    """`bin/intellij-server` of an unpacked kotlin-lsp archive (Linux layout,
+    or `Contents/` inside a macOS app bundle), else the older `kotlin-lsp.sh`."""
+    candidates = [
+        os.path.join(home, "bin", "intellij-server"),
+        os.path.join(home, "Contents", "bin", "intellij-server"),
+        *glob.glob(os.path.join(home, "*", "bin", "intellij-server")),
+        *glob.glob(os.path.join(home, "*", "Contents", "bin", "intellij-server")),
+        os.path.join(home, "kotlin-lsp.sh"),
+    ]
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+    raise SystemExit(f"no bin/intellij-server under {home}: pass the unpacked kotlin-lsp directory")
+
+
 def kotlin_lsp(paths, state, gradle_home, options):
     env = _base_environment(state, gradle_home)
     # Without these the server starts from a fresh /tmp/idea-system* every
@@ -78,7 +103,7 @@ def kotlin_lsp(paths, state, gradle_home, options):
     env["IJ_JAVA_OPTIONS"] = (f"-Didea.system.path={os.path.join(state, 'idea-system')} "
                               f"-Didea.config.path={os.path.join(state, 'idea-config')}")
     return {
-        "command": [os.path.join(paths["kotlin_lsp"], "bin", "intellij-server"), "--stdio"],
+        "command": [_kotlin_lsp_executable(paths["kotlin_lsp"]), "--stdio"],
         "env": env,
         "initialization_options": {},
         "settings": {},

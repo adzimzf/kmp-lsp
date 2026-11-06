@@ -56,23 +56,66 @@ seed 7.
 
 ## Running
 
+Needs: Python 3.8+ (standard library only), Rust (for kmp-lsp), a JDK 21
+for moshi's build, and Java 25 for jdtls (kotlin-lsp bundles one — see
+below). Linux and macOS. Run everything from this directory.
+
+**1. Target and queries**
+
 ```sh
-S=/tmp/lsp-compare
-git clone https://github.com/square/moshi $S/moshi && git -C $S/moshi checkout 889013ec2edb
+cd bench/compare
+S=$HOME/lsp-compare            # anywhere with a few GB free
+git clone https://github.com/square/moshi $S/moshi
+git -C $S/moshi checkout 889013ec2edb8d8034902662a1dc8c4f3b3f8111
 python3 queries.py $S/moshi targets/moshi.json $S/queries.json
+```
 
-# Servers: kmp-lsp release build, jdtls snapshot, kotlin-lsp standalone archive.
-cargo build --release
-#   https://download.eclipse.org/jdtls/snapshots/  → $S/jdtls
-#   kotlin-lsp RELEASES.md "Standalone Kotlin LSP Archive" → $S/kotlin-lsp
+**2. Servers**
 
+```sh
+(cd ../.. && cargo build --release)            # kmp-lsp → ../../target/release/kmp-lsp
+```
+
+- jdtls: the newest `jdt-language-server-*.tar.gz` from
+  <https://download.eclipse.org/jdtls/snapshots/> (name in `latest.txt`),
+  unpacked into `$S/jdtls`.
+- kotlin-lsp: the "Standalone Kotlin LSP Archive" for your platform from
+  [RELEASES.md](https://github.com/Kotlin/kotlin-lsp/blob/main/RELEASES.md),
+  unpacked into `$S/kotlin-lsp` (`--kotlin-lsp` may point at the unpacked
+  directory or the folder holding it; `bin/intellij-server` is found inside).
+  Check it starts: `$S/kotlin-lsp/*/bin/intellij-server --stdio` must not
+  print "This build of kotlin-server has expired".
+
+**3. Warm the Gradle cache once** (dependency downloads are not server time)
+
+```sh
+(cd $S/moshi && GRADLE_USER_HOME=$S/gradle ./gradlew testClasses -x :moshi:records-tests:compileTestJava)
+```
+
+`records-tests` wants a JDK 17 toolchain; skip it unless you have one. No
+query touches it.
+
+**4. Run** — one server at a time, nothing else heavy running
+
+```sh
 common="--repo $S/moshi --target targets/moshi.json --queries $S/queries.json --gradle-home $S/gradle"
+JAVA25=$(ls -d $S/kotlin-lsp/*/jbr/bin/java $S/kotlin-lsp/*/jbr/Contents/Home/bin/java 2>/dev/null | head -1)
 for phase in cold warm; do
   python3 run.py --server kmp-lsp    $common --state $S/state/kmp    --out $S/results/kmp-lsp-$phase.json --kmp-lsp ../../target/release/kmp-lsp
-  python3 run.py --server jdtls      $common --state $S/state/jdtls  --out $S/results/jdtls-$phase.json --jdtls $S/jdtls
-  python3 run.py --server kotlin-lsp $common --state $S/state/kotlin --out $S/results/kotlin-lsp-$phase.json --kotlin-lsp $S/kotlin-lsp
+  python3 run.py --server kmp-lsp    $common --state $S/state/kmp-nosync --out $S/results/kmp-lsp-nosync-$phase.json --kmp-lsp ../../target/release/kmp-lsp --no-dependency-sync
+  python3 run.py --server jdtls      $common --state $S/state/jdtls  --out $S/results/jdtls-$phase.json --jdtls $S/jdtls --java "${JAVA25:-java}"
+  python3 run.py --server kotlin-lsp $common --state $S/state/kotlin --out $S/results/kotlin-lsp-$phase.json --kotlin-lsp $S/kotlin-lsp --request-timeout 90
 done
-python3 score.py --queries $S/queries.json --repo $S/moshi $S/results/*-cold.json $S/results/*-warm.json > report.md
+```
+
+The first loop iteration is *cold* only if `$S/state` doesn't exist yet;
+delete it to start over.
+
+**5. Report**
+
+```sh
+python3 score.py --queries $S/queries.json --repo $S/moshi \
+  $S/results/*-cold.json $S/results/*-warm.json > $S/report.md
 ```
 
 jdtls and kotlin-lsp import the project by running its Gradle build, and
