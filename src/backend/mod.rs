@@ -55,6 +55,8 @@ pub(crate) struct Backend {
     initialize_root: std::sync::Mutex<Option<std::path::PathBuf>>,
     /// Wakes the background dependency sync on build-file changes.
     dependency_sync: Arc<dependency_watcher::DependencySyncTrigger>,
+    /// java-debug's `vscode.java.*` commands (see [`crate::debug`]).
+    pub(super) debug: crate::debug::commands::DebugCommands,
 }
 
 impl Backend {
@@ -68,6 +70,7 @@ impl Backend {
             crate::indexer::enrich::spawn_enrichment_worker(Arc::clone(&indexer), client.clone());
         indexer.set_enrichment_handle(handle);
 
+        let debug = crate::debug::commands::DebugCommands::new(Arc::clone(&indexer));
         Self {
             client,
             indexer,
@@ -79,6 +82,7 @@ impl Backend {
             decompile_libraries: AtomicBool::new(true),
             initialize_root: std::sync::Mutex::new(None),
             dependency_sync: Arc::new(dependency_watcher::DependencySyncTrigger::default()),
+            debug,
         }
     }
 }

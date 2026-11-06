@@ -212,7 +212,7 @@ impl Drop for SidecarHandle {
 
 /// Locate a `java` executable: check `$JAVA_HOME/bin/java` first, then PATH.
 #[allow(dead_code)] // called only from #[cfg(not(test))] launch_jar path
-fn find_java() -> Option<PathBuf> {
+pub(crate) fn find_java() -> Option<PathBuf> {
     if let Ok(home) = std::env::var("JAVA_HOME") {
         let candidate = PathBuf::from(home).join("bin").join("java");
         if candidate.exists() {

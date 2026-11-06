@@ -101,9 +101,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build sidecar JAR
         run: ./gradlew shadowJar
+      - name: Test debug server
+        run: ./gradlew :debug-server:test
       - name: Upload sidecar JAR
         uses: actions/upload-artifact@v4
         with:
           name: sidecar-jar
           path: java-sidecar/build/libs/kmp-jar-indexer.jar
+          if-no-files-found: error
+      - name: Upload debug server JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-server-jar
+          path: java-sidecar/debug-server/build/libs/kmp-debug-server.jar
           if-no-files-found: error

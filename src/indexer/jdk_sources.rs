@@ -69,20 +69,16 @@ pub(crate) struct JdkSources {
     pub(crate) origin: JdkOrigin,
 }
 
-/// The JDK sources to index for `indexer`'s project, if any JDK has them.
-pub(crate) fn jdk_sources_for(indexer: &super::Indexer) -> Option<JdkSources> {
-    let switched_off = std::env::var(JDK_SOURCES_SWITCH).is_ok_and(|value| value == "off");
-    if switched_off {
-        log::info!("jdk: not indexing JDK sources ({JDK_SOURCES_SWITCH}=off)");
-        return None;
-    }
+/// The JDK the user configured: the editor's `jdkHome` setting (relative to
+/// the workspace root) or `workspace.json`'s `jdkHome`.
+pub(crate) fn configured_jdk_home(indexer: &super::Indexer) -> Option<PathBuf> {
     let root = indexer.workspace_root.get();
     let editor_setting = indexer
         .configured_jdk_home
         .read()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clone();
-    let configured = match (editor_setting, &root) {
+    match (editor_setting, &root) {
         (Some(home), Some(root)) => Some(crate::workspace_json::resolve_workspace_path(
             &home.to_string_lossy(),
             root,
@@ -90,7 +86,17 @@ pub(crate) fn jdk_sources_for(indexer: &super::Indexer) -> Option<JdkSources> {
         (Some(home), None) => Some(home),
         (None, Some(root)) => crate::workspace_json::load_configured_jdk_home(root),
         (None, None) => None,
-    };
+    }
+}
+
+/// The JDK sources to index for `indexer`'s project, if any JDK has them.
+pub(crate) fn jdk_sources_for(indexer: &super::Indexer) -> Option<JdkSources> {
+    let switched_off = std::env::var(JDK_SOURCES_SWITCH).is_ok_and(|value| value == "off");
+    if switched_off {
+        log::info!("jdk: not indexing JDK sources ({JDK_SOURCES_SWITCH}=off)");
+        return None;
+    }
+    let configured = configured_jdk_home(indexer);
     let found = find_jdk_sources(configured.as_deref(), environment_jdk_homes());
     match &found {
         Some(jdk) => log::info!(
@@ -138,7 +144,7 @@ pub(crate) fn find_jdk_sources(
 type JdkHomeLookup = (JdkOrigin, fn() -> Option<PathBuf>);
 
 /// The environment's JDK homes, in lookup order, each found only when asked.
-fn environment_jdk_homes() -> impl Iterator<Item = (JdkOrigin, PathBuf)> {
+pub(crate) fn environment_jdk_homes() -> impl Iterator<Item = (JdkOrigin, PathBuf)> {
     let lookups: [JdkHomeLookup; 5] = [
         (JdkOrigin::JavaHome, || {
             std::env::var_os("JAVA_HOME").map(PathBuf::from)

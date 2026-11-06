@@ -33,11 +33,15 @@ pub(super) fn server_capabilities() -> ServerCapabilities {
         }),
         workspace_symbol_provider: Some(OneOf::Left(true)),
         execute_command_provider: Some(ExecuteCommandOptions {
-            commands: vec![
-                "kmp-lsp/reindex".into(),
-                "kmp-lsp/clearCache".into(),
-                "kmp-lsp/syncDependencies".into(),
-            ],
+            commands: [
+                "kmp-lsp/reindex",
+                "kmp-lsp/clearCache",
+                "kmp-lsp/syncDependencies",
+            ]
+            .into_iter()
+            .chain(crate::debug::commands::COMMANDS.iter().copied())
+            .map(String::from)
+            .collect(),
             ..Default::default()
         }),
         rename_provider: Some(OneOf::Right(RenameOptions {
