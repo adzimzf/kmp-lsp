@@ -56,6 +56,32 @@ seed 7.
 
 ## Running
 
+### One command
+
+```sh
+bench/compare/compare.sh                 # clone → install → run → report
+```
+
+It clones the target at its pinned commit and builds the query set, builds
+kmp-lsp and its JAR-indexer sidecar (as a normal install has it),
+downloads the newest jdtls snapshot and kotlin-lsp standalone archive for
+your OS/CPU (checksums verified), builds the target once to fill the Gradle
+cache (retrying rate-limited downloads), runs every server cold then warm,
+and writes `~/lsp-compare/report-moshi.md`. kmp-lsp without dependency sync
+runs first, before anything downloads sources jars into the shared Gradle
+cache, so its result doesn't depend on run order. After each kmp-lsp run the
+script prints how many dependencies came with sources and warns when few did
+(Maven Central rate-limiting would understate kmp-lsp). Re-running skips
+what's already installed. An expired kotlin-lsp build is detected and
+skipped with a warning; point `KOTLIN_LSP_URL` at a newer archive to include
+it. Options: `--workdir`, `--servers kmp-lsp,kmp-lsp-nosync,jdtls,kotlin-lsp`,
+`--phases cold,warm`, `--steps clone,install,run`, `--fresh`; see `--help`.
+
+Needs git, curl, tar, python3, cargo and a JDK 21 (moshi's own build);
+jdtls's Java 25 comes from the JBR bundled with kotlin-lsp (or `JAVA25`).
+
+### By hand
+
 Needs: Python 3.8+ (standard library only), Rust (for kmp-lsp), a JDK 21
 for moshi's build, and Java 25 for jdtls (kotlin-lsp bundles one — see
 below). Linux and macOS. Run everything from this directory.

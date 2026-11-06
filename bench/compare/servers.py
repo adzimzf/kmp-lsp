@@ -26,7 +26,7 @@ def _base_environment(state, gradle_home):
 
 def kmp_lsp(paths, state, gradle_home, options):
     env = _base_environment(state, gradle_home)
-    sync = "on" if options.get("dependency_sync", True) else "off"
+    sync = "auto" if options.get("dependency_sync", True) else "off"
     return {
         "command": [paths["kmp_lsp"]],
         "env": env,
