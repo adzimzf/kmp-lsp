@@ -883,14 +883,10 @@ const PRIMITIVE_SUPERTYPES: [&str; 4] = ["Number", "Comparable", "Serializable",
 /// type arguments, package or nullability, Kotlin and boxed spellings folded
 /// into the Java primitive (`Int`, `Integer` → `int`), varargs as an array.
 pub(crate) fn overload_type_key(type_text: &str) -> String {
-    let mut words: Vec<&str> = type_text
+    let joined: String = type_text
         .split_whitespace()
         .filter(|word| !word.starts_with('@') && *word != "final" && *word != "vararg")
         .collect();
-    if words.is_empty() {
-        return String::new();
-    }
-    let joined = words.drain(..).collect::<Vec<_>>().join("");
     let mut base = String::new();
     let mut depth = 0usize;
     for character in joined.chars() {
