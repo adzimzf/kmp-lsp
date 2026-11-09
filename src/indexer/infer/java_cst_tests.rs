@@ -444,3 +444,21 @@ fn argument_types_read_literals_and_typed_locals() {
         ]
     );
 }
+
+#[test]
+fn statically_imported_call_types_its_result() {
+    let source = "import static com.google.common.truth.Truth.assertThat;\n\
+                  import static org.junit.Assert.*;\n\
+                  class Caller {\n  void run() {\n    assertThat(1).isEqualTo(1);\n    other().go();\n  }\n}\n";
+    let deps = TestDeps::new()
+        .with_method_return_for_type("Truth", "assertThat", "Subject")
+        .with_method_return_for_type("Assert", "other", "Thing");
+    assert_eq!(
+        receiver_type_of(source, &deps, "isEqualTo", 0).as_deref(),
+        Some("Subject")
+    );
+    assert_eq!(
+        receiver_type_of(source, &deps, "go", 1).as_deref(),
+        Some("Thing")
+    );
+}

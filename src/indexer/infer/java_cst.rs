@@ -801,6 +801,58 @@ fn bare_method_return_type(
         .find_map(|class_name| {
             deps.find_method_return_type_with_origin_for_type(&class_name, method, uri)
         })
+        .or_else(|| {
+            statically_imported_from(node, method, bytes)
+                .into_iter()
+                .find_map(|class_path| {
+                    deps.find_method_return_type_with_origin_for_type(
+                        class_path.last_segment(),
+                        method,
+                        uri,
+                    )
+                })
+        })
+}
+
+/// The classes `name` may be statically imported from in `node`'s file:
+/// `com.google.common.truth.Truth` for `import static
+/// com.google.common.truth.Truth.assertThat;`, and every class of an
+/// `import static a.B.*;` — explicit imports first.
+fn statically_imported_from(node: Node<'_>, name: &str, bytes: &[u8]) -> Vec<String> {
+    let mut root = node;
+    while let Some(parent) = root.parent() {
+        root = parent;
+    }
+    let mut explicit = Vec::new();
+    let mut on_demand = Vec::new();
+    for import in root.children_of_kind(IMPORT_DECLARATION) {
+        let Some(text) = import.utf8_text(bytes).ok() else {
+            continue;
+        };
+        let Some(path) = text
+            .trim()
+            .strip_prefix("import")
+            .map(str::trim_start)
+            .and_then(|rest| rest.strip_prefix("static"))
+        else {
+            continue;
+        };
+        let path: String = path
+            .trim_end_matches(';')
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect();
+        let Some((class_path, imported)) = path.rsplit_once('.') else {
+            continue;
+        };
+        if imported == name {
+            explicit.push(class_path.to_owned());
+        } else if imported == "*" {
+            on_demand.push(class_path.to_owned());
+        }
+    }
+    explicit.extend(on_demand);
+    explicit
 }
 
 fn method_declared_in_enclosing_classes(

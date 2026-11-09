@@ -377,3 +377,46 @@ fn java_call_and_super_receivers() {
 fn java_bare_word_has_no_receiver() {
     assert!(derive_at_caret("/JavaBare.java", "class A { void f() { rea| } }\n").is_none());
 }
+
+#[test]
+fn java_receiver_inside_an_argument_list_is_found() {
+    let source = "class Reader { int peek() { return 0; } }\n\
+                  class A {\n\
+                  \x20 void f(Reader reader) {\n\
+                  \x20   assertThat(reader.|).isEqualTo(1);\n\
+                  \x20 }\n\
+                  }\n";
+    let recv = derive_at_caret("/JavaArgument.java", source).unwrap();
+    assert_eq!(
+        recv,
+        DotReceiver::Expr {
+            text: "reader".into(),
+            is_call: false,
+            resolved: Some("Reader".into()),
+        }
+    );
+    let second_argument = source.replace("assertThat(reader.|)", "assertEquals(5, reader.|())");
+    let recv = derive_at_caret("/JavaArgument2.java", &second_argument).unwrap();
+    assert!(
+        matches!(recv, DotReceiver::Expr { ref text, .. } if text == "reader"),
+        "{recv:?}"
+    );
+}
+
+#[test]
+fn java_receiver_is_found_when_completing_inside_an_existing_name() {
+    let recv = derive_at_caret(
+        "/JavaInsideName.java",
+        "class Reader { int peek() { return 0; } }\n\
+         class A {\n\
+         \x20 void f(Reader reader) {\n\
+         \x20   assertThat(reader.|peek()).isEqualTo(1);\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    assert!(
+        matches!(recv, DotReceiver::Expr { ref text, resolved: Some(ref resolved), .. } if text == "reader" && resolved == "Reader"),
+        "{recv:?}"
+    );
+}

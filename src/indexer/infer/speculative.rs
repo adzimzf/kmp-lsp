@@ -159,8 +159,10 @@ pub(crate) fn java_receiver_node_for_marker(
         .tree
         .root_node()
         .descendant_for_byte_range(marker_byte, marker_end)?;
-    let is_whole_marker = marker.start_byte() == marker_byte && marker.end_byte() == marker_end;
-    if !is_whole_marker {
+    // The identifier may run on past the marker: completing inside an
+    // existing name (`reader.|nextName()` → `reader.kmpLspRulezznextName()`).
+    let covers_marker = marker.start_byte() <= marker_byte && marker.end_byte() >= marker_end;
+    if !covers_marker {
         return None;
     }
     super::java_cst::java_member_receiver(marker)
