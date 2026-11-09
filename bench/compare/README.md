@@ -183,7 +183,11 @@ JDTLS=/path/to/jdtls JAVA=/path/to/java25 BUILD_JDK=/path/to/jdk21 \
 - Grading: *definition* — same target (file, line), with a compiled class
   accepted against that class's source file; *references* — the in-repo
   usage set must match exactly; *completion* — the deleted member must rank
-  within the top 10.
+  within the top 10. Every failure prints like a test runner's: the query's
+  file, line and column, the source line it sits on, what was expected
+  there and what the server answered instead (for references: which usages
+  are missing and which are extra; for completion: the rank and the top of
+  the list). `--failures N` sets how many per feature are shown.
 - Every server is held to a baseline recorded in the fixture and the script
   exits non-zero below it: a ratchet, like `tests/architecture_ratchet.rs`.
   Raise a baseline with `--update-baseline` when a fix lands; never lower
@@ -192,6 +196,9 @@ JDTLS=/path/to/jdtls JAVA=/path/to/java25 BUILD_JDK=/path/to/jdk21 \
 kmp-lsp's state directory is primed with one throw-away run first: on an
 empty state it indexes dependency jars in the background without reporting
 progress, so the very first questions are asked before their answers exist.
+
+`itest_selfcheck.py` checks the gate itself on a synthetic result: that a
+score below baseline exits non-zero and that a failure names both locations.
 
 Adding a target: a `targets/<name>.json` with `roots`, `sample`, `probes`
 (known cross-file definitions that mark the server ready) and `build`, then

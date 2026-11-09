@@ -125,8 +125,79 @@ def generate(arguments):
         json.dump(fixture, handle, indent=1)
     print(f"{arguments.out}: " + ", ".join(f"{len(cases[feature])} {feature}" for feature in FEATURES))
 
+class Failure:
+    """One failed case, printed the way a test runner would: where the query
+    is, what was expected there, what the server answered instead."""
+
+    def __init__(self, case, feature, expected, actual, detail=None):
+        self.case, self.feature = case, feature
+        self.expected, self.actual, self.detail = expected, actual, detail
+
+    def render(self, repo, indent="  "):
+        case = self.case
+        lines = [f"{indent}FAIL {case['id']}  {self.feature}",
+                 f"{indent}  at {case['file']}:{case['line'] + 1}:{case['character'] + 1}"
+                 f"  {case['name']} ({case['category']})"]
+        source = repo.file_lines(case["file"])
+        if case["line"] < len(source):
+            lines.append(f"{indent}  source   {source[case['line']].strip()}")
+        lines.append(f"{indent}  expected {self.expected}")
+        lines.append(f"{indent}  actual   {self.actual}")
+        if self.detail:
+            lines.extend(f"{indent}  {line}" for line in self.detail)
+        return lines
+
+def place(target):
+    """`gson/…/Gson.java:850` for an in-repo target, `<compiled Gson>` for a
+    library class a server answered with."""
+    where, what = target
+    return f"<compiled {what}>" if where == "external" else f"{where}:{what + 1}"
+
+def places(targets):
+    return ", ".join(place(target) for target in sorted(targets)) if targets else "no answer"
+
+def usage_lines(usages, limit=5):
+    shown = [f"{relative}:{line + 1}" for relative, line in sorted(usages)[:limit]]
+    if len(usages) > limit:
+        shown.append(f"… {len(usages) - limit} more")
+    return ", ".join(shown) if shown else "none"
+
+def definition_failure(repo, case, answer):
+    """The case's Failure, or None when the answer is right."""
+    expected = {tuple(target) for target in case["expect"]}
+    mine = {normalize_target(repo, location, case["name"]) for location in answer["locations"]}
+    if mine and same_definition(mine, expected):
+        return None
+    return Failure(case, "definition", places(expected), places(mine))
+
+def references_failure(repo, case, answer):
+    expected = {tuple(usage) for usage in case["expect"]}
+    mine = in_repo_usages(repo, answer, case)
+    if mine == expected:
+        return None
+    missing, extra = expected - mine, mine - expected
+    detail = []
+    if missing:
+        detail.append(f"missing  {usage_lines(missing)}")
+    if extra:
+        detail.append(f"extra    {usage_lines(extra)}")
+    return Failure(case, "references", f"{len(expected)} usages",
+                   f"{len(mine)} usages, {len(mine & expected)} of them expected", detail)
+
+def completion_failure(case, answer):
+    rank = completion_rank(answer, case["name"])
+    within = case["expect_rank_within"]
+    if rank is not None and rank <= within:
+        return None
+    top = ", ".join(label_name(item) for item in sorted(
+        answer["items"], key=lambda item: ((item.get("sortText") or item.get("label") or ""),
+                                           item.get("label") or ""))[:5]) or "empty list"
+    return Failure(case, "completion", f"`{case['name']}` within the top {within}",
+                   f"rank {rank}" if rank else f"absent from {answer['total']} items",
+                   [f"top      {top}"])
+
 def score(repo, fixture, result):
-    """feature → (passed, asked, [failure descriptions])."""
+    """feature → (passed, asked, [Failure])."""
     report = {}
     for feature in FEATURES:
         cases = fixture["cases"][feature]
@@ -135,31 +206,19 @@ def score(repo, fixture, result):
         for case in cases:
             answer = answers.get(case["id"])
             if answer is None or answer.get("error"):
-                failures.append(f"{case['id']} {case['name']}: {answer.get('error') if answer else 'not asked'}")
+                failures.append(Failure(case, feature, "an answer",
+                                        answer.get("error") if answer else "the query was not asked"))
                 continue
             if feature == "definition":
-                expected = {tuple(target) for target in case["expect"]}
-                mine = {normalize_target(repo, location, case["name"]) for location in answer["locations"]}
-                if mine and same_definition(mine, expected):
-                    passed += 1
-                else:
-                    failures.append(f"{case['id']} {case['name']} ({case['category']}): "
-                                    f"{sorted(mine) or 'no answer'} ≠ {sorted(expected)}")
+                failure = definition_failure(repo, case, answer)
             elif feature == "references":
-                expected = {tuple(usage) for usage in case["expect"]}
-                mine = in_repo_usages(repo, answer, case)
-                if mine == expected:
-                    passed += 1
-                else:
-                    failures.append(f"{case['id']} {case['name']}: "
-                                    f"{len(mine & expected)}/{len(expected)} found, {len(mine - expected)} extra")
+                failure = references_failure(repo, case, answer)
             else:
-                rank = completion_rank(answer, case["name"])
-                if rank is not None and rank <= case["expect_rank_within"]:
-                    passed += 1
-                else:
-                    failures.append(f"{case['id']} {case['name']}: rank {rank or 'absent'} "
-                                    f"of {answer['total']} items")
+                failure = completion_failure(case, answer)
+            if failure is None:
+                passed += 1
+            else:
+                failures.append(failure)
         report[feature] = (passed, len(cases), failures)
     return report
 
@@ -184,10 +243,11 @@ def check(arguments):
               + (f" ({100 * passed / asked:.0f}%)" if asked else "")
               + (f"  baseline {minimum}" if minimum is not None else "")
               + f"  {verdict}")
-        for line in failures[:arguments.failures]:
-            print(f"      - {line}")
+        for failure in failures[:arguments.failures]:
+            print("\n".join(failure.render(repo, indent="    ")))
         if len(failures) > arguments.failures:
-            print(f"      … {len(failures) - arguments.failures} more")
+            print(f"    … {len(failures) - arguments.failures} more failures "
+                  f"(--failures {len(failures)} to see them all)")
 
     if arguments.update_baseline:
         fixture.setdefault("baselines", {})[server] = {feature: report[feature][0] for feature in FEATURES}
