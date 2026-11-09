@@ -4965,9 +4965,9 @@
    "completion": 54
   },
   "kmp-lsp": {
-   "definition": 136,
-   "references": 5,
-   "completion": 34
+   "definition": 143,
+   "references": 6,
+   "completion": 35
   }
  }
 }
