@@ -541,7 +541,8 @@ fn load_dependencies(index: &Indexer, root: &Path, dependencies: Dependencies, v
 }
 
 fn load_dependency_jars(index: &Indexer, root: &Path) -> LoadedDependencies {
-    let jars = compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None));
+    let mut jars = compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None));
+    jars.extend(crate::indexer::jdk_sources::jdk_compiled_modules_for(index));
     let compiled_symbols = index_compiled_jars(index, &jars);
     let library_source_names = crate::workspace::scan_handler::index_library_sources(index);
     LoadedDependencies {

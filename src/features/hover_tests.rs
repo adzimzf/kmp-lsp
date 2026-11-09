@@ -457,3 +457,33 @@ fn hover_renders_for_a_same_arity_extension_collision() {
          decline outright"
     );
 }
+
+/// A Java call of an overloaded Kotlin member used to show nothing: every
+/// overload survived, so hover declined. The argument type picks one.
+#[test]
+fn java_hover_on_an_overloaded_call_shows_the_overload_the_argument_fits() {
+    let idx = Indexer::new();
+    let writer_uri = Url::parse("file:///t/Writer.kt").unwrap();
+    let writer = "class Writer {\n\
+                  \x20 fun value(value: String?): Writer = this\n\
+                  \x20 fun value(value: Double): Writer = this\n\
+                  \x20 fun value(value: Number?): Writer = this\n\
+                  }\n";
+    idx.index_content(&writer_uri, writer);
+    let caller_uri = Url::parse("file:///t/Caller.java").unwrap();
+    let caller = "class Caller {\n\
+                  \x20 void run(Writer writer) {\n\
+                  \x20   writer.value(9.0);\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+    let col = caller.lines().nth(2).unwrap().find("value").unwrap() as u32;
+    let position = Position::new(2, col);
+    let ctx = CursorContext::build(&idx, &caller_uri, position).unwrap();
+
+    let hover = compute_hover(&idx, &ctx, &caller_uri, position).expect("a hover");
+    let text = hover_text(&hover);
+    assert!(text.contains("value: Double"), "got: {text:?}");
+    assert!(!text.contains("String?"), "got: {text:?}");
+}

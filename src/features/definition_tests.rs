@@ -347,3 +347,93 @@ async fn goto_definition_prefers_supertype_extension_over_wrong_arity_concrete_m
          String) on line 1, not Derived's own 0-arg act() on line 3, got: {loc:?}"
     );
 }
+
+/// Definition lines of `find_definition` at `needle`'s first occurrence on
+/// `line` of `uri`'s source.
+async fn definition_lines(
+    idx: &Indexer,
+    uri: &Url,
+    src: &str,
+    line: u32,
+    needle: &str,
+) -> Vec<u32> {
+    let col = src
+        .lines()
+        .nth(line as usize)
+        .unwrap()
+        .find(needle)
+        .unwrap() as u32;
+    let position = Position::new(line, col);
+    let ctx = CursorContext::build(idx, uri, position).unwrap();
+    let mut lines: Vec<u32> = match find_definition(&ctx, idx, uri, position).await {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location.range.start.line],
+        Some(GotoDefinitionResponse::Array(locations)) => locations
+            .iter()
+            .map(|location| location.range.start.line)
+            .collect(),
+        Some(GotoDefinitionResponse::Link(links)) => links
+            .iter()
+            .map(|link| link.target_selection_range.start.line)
+            .collect(),
+        None => Vec::new(),
+    };
+    lines.sort_unstable();
+    lines
+}
+
+/// Kotlin overloads called from Java: the argument's type picks the one,
+/// as javac would (`writer.value(9.0)` → `value(Double)`).
+#[tokio::test]
+async fn java_call_picks_the_overload_its_argument_types_fit() {
+    let idx = Indexer::new();
+    let writer_uri = Url::parse("file:///t/Writer.kt").unwrap();
+    let writer = "class Writer {\n\
+                  \x20 fun value(value: String?): Writer = this\n\
+                  \x20 fun value(value: Boolean): Writer = this\n\
+                  \x20 fun value(value: Boolean?): Writer = this\n\
+                  \x20 fun value(value: Double): Writer = this\n\
+                  \x20 fun value(value: Long): Writer = this\n\
+                  \x20 fun value(value: Number?): Writer = this\n\
+                  }\n";
+    idx.index_content(&writer_uri, writer);
+    let caller_uri = Url::parse("file:///t/Caller.java").unwrap();
+    let caller = "class Caller {\n\
+                  \x20 void run(Writer writer, Integer boxed) {\n\
+                  \x20   writer.value(9.0);\n\
+                  \x20   writer.value(\"two\");\n\
+                  \x20   writer.value(true);\n\
+                  \x20   writer.value(3);\n\
+                  \x20   writer.value(boxed);\n\
+                  \x20   writer.value(null);\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 2, "value").await,
+        vec![4]
+    );
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 3, "value").await,
+        vec![1]
+    );
+    // `Boolean` and `Boolean?` are one Java signature: the first is kept.
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 4, "value").await,
+        vec![2]
+    );
+    // `int` widens to `long` (and not to `Double`'s `double` first: `long`
+    // is the narrower widening — both fit, and so does `Number`).
+    let widened = definition_lines(&idx, &caller_uri, caller, 5, "value").await;
+    assert!(
+        widened.contains(&5) && !widened.contains(&1),
+        "got {widened:?}"
+    );
+    // An unknown-to-overloads argument type rules out nothing but String/Boolean/…
+    let boxed = definition_lines(&idx, &caller_uri, caller, 6, "value").await;
+    assert!(!boxed.contains(&1), "an Integer is not a String: {boxed:?}");
+    // `null` fits every reference parameter, no primitive one.
+    let null = definition_lines(&idx, &caller_uri, caller, 7, "value").await;
+    assert!(null.contains(&1) && !null.contains(&4), "got {null:?}");
+}

@@ -372,3 +372,75 @@ fn receiver_type_arguments_substitute_the_members_type() {
         Some("Repo")
     );
 }
+
+// ─── overload selection ──────────────────────────────────────────────────────
+
+#[test]
+fn type_keys_fold_kotlin_boxed_and_annotated_spellings() {
+    assert_eq!(overload_type_key("Int"), "int");
+    assert_eq!(overload_type_key("java.lang.Integer"), "int");
+    assert_eq!(overload_type_key("Double?"), "double");
+    assert_eq!(overload_type_key("@Nullable final String"), "String");
+    assert_eq!(overload_type_key("Map<String, List<Int>>"), "Map");
+    assert_eq!(overload_type_key("String..."), "String[]");
+    assert_eq!(overload_type_key("okio.BufferedSource"), "BufferedSource");
+}
+
+#[test]
+fn parameter_keys_read_java_and_kotlin_parameter_lists() {
+    assert_eq!(
+        parameter_type_keys("@Nullable String name, final int count, Object... rest"),
+        vec!["String", "int", "Object[]"]
+    );
+    assert_eq!(
+        parameter_type_keys("name: String?, count: Int = 0, vararg rest: Any"),
+        vec!["String", "int", "Any[]"]
+    );
+    assert!(parameter_type_keys("").is_empty());
+}
+
+#[test]
+fn exact_beats_widening_beats_catch_all_and_closed_classes_rule_out() {
+    let double = [ArgumentType::Known("double".into())];
+    let string = [ArgumentType::Known("String".into())];
+    let int = [ArgumentType::Known("int".into())];
+    let score = |arguments: &[ArgumentType], parameter: &str| {
+        overload_fit_score(arguments, &[parameter.to_owned()])
+    };
+    assert!(score(&double, "double") > score(&double, "Number"));
+    assert_eq!(score(&double, "String"), None);
+    assert_eq!(score(&double, "long"), None, "no narrowing");
+    assert!(score(&int, "long") > score(&int, "Object"));
+    assert_eq!(score(&string, "BufferedSource"), None);
+    assert!(score(&string, "CharSequence").is_some());
+    let reader = [ArgumentType::Known("JsonReader".into())];
+    assert!(
+        score(&reader, "BufferedSource").is_some(),
+        "a class may extend another"
+    );
+    assert_eq!(score(&[ArgumentType::Null], "int"), None);
+}
+
+#[test]
+fn argument_types_read_literals_and_typed_locals() {
+    let source = "class Caller {\n  void run(JsonReader reader) {\n    sink.put(1, 2L, 3.0f, 'c', true, null, -4, \"s\", reader);\n  }\n}\n";
+    let doc = java_doc(source);
+    let name = identifier_at(&doc, "put", 0);
+    let invocation = invocation_of_method_name(name).unwrap();
+    let types = java_argument_types(invocation, &doc.bytes, &TestDeps::new(), &uri());
+    let known = |key: &str| ArgumentType::Known(key.to_owned());
+    assert_eq!(
+        types,
+        vec![
+            known("int"),
+            known("long"),
+            known("float"),
+            known("char"),
+            known("boolean"),
+            ArgumentType::Null,
+            known("int"),
+            known("String"),
+            known("JsonReader"),
+        ]
+    );
+}

@@ -758,6 +758,92 @@ fn java_setter_for_assignment(
         .collect()
 }
 
+/// At a Java method call, keep only the overloads in `locations` whose
+/// parameter types fit the call's arguments best (`writer.value(9.0)` →
+/// `value(double)`, not `value(String)`). `locations` comes back unchanged
+/// when the cursor isn't on a Java call's method name, there's at most one
+/// candidate, or the arguments rule nothing out.
+pub(crate) fn narrow_java_overloads(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+    locations: Vec<Location>,
+) -> Vec<Location> {
+    if locations.len() < 2 || !super::java_cst::is_java_file(uri) {
+        return locations;
+    }
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return locations;
+    };
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let Some(invocation) = super::cst_lambda::cursor_node_at(&doc, cursor)
+        .and_then(super::java_cst::invocation_of_method_name)
+    else {
+        return locations;
+    };
+    let arguments = super::java_cst::java_argument_types(invocation, &doc.bytes, indexer, uri);
+    let scored: Vec<ScoredOverload> = locations
+        .into_iter()
+        .map(|location| {
+            let parameters = declared_params(indexer, &location)
+                .map(|params| super::java_cst::parameter_type_keys(&params));
+            let score = parameters.as_ref().map_or(Some(0), |parameters| {
+                super::java_cst::overload_fit_score(&arguments, parameters)
+            });
+            ScoredOverload {
+                score,
+                parameters,
+                location,
+            }
+        })
+        .collect();
+    let Some(best) = scored.iter().filter_map(|overload| overload.score).max() else {
+        // No overload accepts the arguments: the inference is off somewhere,
+        // so don't hide anything.
+        return scored
+            .into_iter()
+            .map(|overload| overload.location)
+            .collect();
+    };
+    let mut kept: Vec<ScoredOverload> = Vec::new();
+    for overload in scored {
+        // Kotlin's `value(Boolean)` and `value(Boolean?)` are one Java
+        // signature: a Java caller can't tell them apart, so keep the first.
+        let same_signature_kept = overload.parameters.is_some()
+            && kept
+                .iter()
+                .any(|earlier| earlier.parameters == overload.parameters);
+        if overload.score == Some(best) && !same_signature_kept {
+            kept.push(overload);
+        }
+    }
+    kept.into_iter().map(|overload| overload.location).collect()
+}
+
+/// One overload candidate of [`narrow_java_overloads`].
+struct ScoredOverload {
+    /// How well the call's arguments fit; `None` when they can't.
+    score: Option<u32>,
+    /// Its parameter type keys, when its declaration is indexed.
+    parameters: Option<Vec<String>>,
+    location: Location,
+}
+
+/// The indexed parameter text of the declaration at `location`.
+fn declared_params(indexer: &Indexer, location: &Location) -> Option<String> {
+    let file = indexer
+        .files
+        .get(location.uri.as_str())
+        .or_else(|| indexer.jar_files.get(location.uri.as_str()))?;
+    file.symbols
+        .iter()
+        .find(|symbol| symbol.selection_range == location.range)
+        .map(|symbol| symbol.params.clone())
+}
+
 /// Classify `locations` by whether each one's own declared arity `shape`
 /// accepts — each `Location` is looked up by an exact `selection_range` match
 /// against the declaring file's own symbol table (how `resolve_qualified`'s

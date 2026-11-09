@@ -4,8 +4,8 @@
 use std::path::{Path, PathBuf};
 
 use super::jdk_sources::{
-    find_jdk_sources, home_of_java_executable, is_indexed_jdk_entry, is_jdk_sources_archive,
-    is_jdk_sources_uri, sources_archive, JdkOrigin,
+    find_jdk_compiled_modules, find_jdk_sources, home_of_java_executable, is_indexed_jdk_entry,
+    is_jdk_sources_archive, is_jdk_sources_uri, sources_archive, JdkOrigin,
 };
 
 /// A fake JDK at `home`: a `bin/java` launcher and, when `with_sources`,
@@ -143,6 +143,61 @@ fn no_jdk_with_sources_finds_nothing() {
     assert_eq!(
         find_jdk_sources(None, [(JdkOrigin::JavaHome, without_sources)]),
         None
+    );
+}
+
+/// A fake JDK's `jmods/<module>.jmod` for each of `modules`.
+fn with_jmods(home: &Path, modules: &[&str]) -> Vec<PathBuf> {
+    std::fs::create_dir_all(home.join("jmods")).unwrap();
+    modules
+        .iter()
+        .map(|module| {
+            let jmod = home.join("jmods").join(format!("{module}.jmod"));
+            std::fs::write(&jmod, "JM").unwrap();
+            jmod
+        })
+        .collect()
+}
+
+#[test]
+fn a_jdk_without_sources_offers_its_compiled_indexed_modules() {
+    let dir = tempfile::tempdir().unwrap();
+    let home = fake_jdk(&dir.path().join("jdk"), false);
+    let indexed = with_jmods(&home, &["java.base", "java.sql"]);
+    // A module outside the indexed set (AWT/Swing) stays out.
+    with_jmods(&home, &["java.desktop"]);
+    let (found_home, modules) =
+        find_jdk_compiled_modules(None, [(JdkOrigin::JavaHome, home.clone())]).unwrap();
+    assert_eq!(found_home, home);
+    let mut modules = modules;
+    modules.sort();
+    assert_eq!(modules, indexed);
+}
+
+#[test]
+fn compiled_modules_are_skipped_when_any_jdk_has_sources() {
+    let dir = tempfile::tempdir().unwrap();
+    let without_sources = fake_jdk(&dir.path().join("jre"), false);
+    with_jmods(&without_sources, &["java.base"]);
+    let with_sources = fake_jdk(&dir.path().join("jdk"), true);
+    assert_eq!(
+        find_jdk_compiled_modules(
+            Some(&without_sources),
+            [(JdkOrigin::JavaHome, with_sources)]
+        ),
+        None
+    );
+}
+
+#[test]
+fn a_jdk_without_jmods_falls_through_to_the_next() {
+    let dir = tempfile::tempdir().unwrap();
+    let jre = fake_jdk(&dir.path().join("jre"), false);
+    let jdk = fake_jdk(&dir.path().join("jdk"), false);
+    let modules = with_jmods(&jdk, &["java.base"]);
+    assert_eq!(
+        find_jdk_compiled_modules(Some(&jre), [(JdkOrigin::JavaOnPath, jdk.clone())]),
+        Some((jdk, modules))
     );
 }
 
