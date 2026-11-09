@@ -28,7 +28,7 @@ use crate::resolver::api::Definitions;
 use crate::resolver::jvm_interop::{self, PropertyAccess};
 use crate::semantic_tokens::is_named_argument_label;
 use crate::types::CursorPos;
-use tower_lsp::lsp_types::{Location, Position, Url};
+use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
 
 use super::deps::InferDeps as _;
 use super::speculative::ResolutionDoc;
@@ -779,9 +779,13 @@ pub(crate) fn narrow_java_overloads(
         line: position.line as usize,
         utf16_col: position.character as usize,
     };
-    let Some(invocation) = super::cst_lambda::cursor_node_at(&doc, cursor)
-        .and_then(super::java_cst::invocation_of_method_name)
-    else {
+    let Some(cursor_node) = super::cst_lambda::cursor_node_at(&doc, cursor) else {
+        return locations;
+    };
+    if let Some(creation) = super::java_cst::object_creation_of_type_name(cursor_node) {
+        return constructors_fitting_creation(indexer, uri, creation, &doc.bytes, locations);
+    }
+    let Some(invocation) = super::java_cst::invocation_of_method_name(cursor_node) else {
         return locations;
     };
     let arguments = super::java_cst::java_argument_types(invocation, &doc.bytes, indexer, uri);
@@ -797,6 +801,61 @@ pub(crate) fn narrow_java_overloads(
         return locations;
     }
     best
+}
+
+/// At `new Writer(..)`, the constructors of the class in `locations` that
+/// the creation's arguments fit best, as javac picks one. A class that
+/// declares no constructor (its implicit one has no declaration) keeps the
+/// class itself.
+fn constructors_fitting_creation(
+    indexer: &Indexer,
+    uri: &Url,
+    creation: Node<'_>,
+    bytes: &[u8],
+    locations: Vec<Location>,
+) -> Vec<Location> {
+    let constructors = declared_constructors(indexer, &locations);
+    if constructors.is_empty() {
+        return locations;
+    }
+    let arguments = super::java_cst::java_argument_types(creation, bytes, indexer, uri);
+    best_fitting_overloads(indexer, &arguments, constructors)
+}
+
+/// The constructors declared by the classes at `locations`, next to each
+/// class in its own file.
+fn declared_constructors(indexer: &Indexer, locations: &[Location]) -> Vec<Location> {
+    let mut constructors: Vec<Location> = Vec::new();
+    for location in locations {
+        let Some(file) = indexer
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| indexer.jar_files.get(location.uri.as_str()))
+        else {
+            continue;
+        };
+        let Some(class) = file.symbols.iter().find(|symbol| {
+            symbol.selection_range == location.range && symbol.kind == SymbolKind::CLASS
+        }) else {
+            continue;
+        };
+        let nested_container = class
+            .container
+            .as_ref()
+            .map(|outer| format!("{outer}.{}", class.name));
+        let declared_by_class = |container: &str| {
+            container == class.name || Some(container) == nested_container.as_deref()
+        };
+        for symbol in file.symbols.iter() {
+            let is_its_constructor = symbol.kind == SymbolKind::CONSTRUCTOR
+                && symbol.name == class.name
+                && symbol.container.as_deref().is_some_and(declared_by_class);
+            if is_its_constructor {
+                constructors.push(Location::new(location.uri.clone(), symbol.selection_range));
+            }
+        }
+    }
+    constructors
 }
 
 /// The overloads among `locations` whose parameters `arguments` fit best,

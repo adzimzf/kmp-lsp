@@ -438,6 +438,76 @@ async fn java_call_picks_the_overload_its_argument_types_fit() {
     assert!(null.contains(&1) && !null.contains(&4), "got {null:?}");
 }
 
+/// `new Writer(..)` goes to the constructor the arguments pick, as javac
+/// (and jdtls) would; a class that declares none keeps the class itself.
+#[tokio::test]
+async fn java_object_creation_goes_to_the_constructor_its_arguments_fit() {
+    let idx = Indexer::new();
+    let writer_uri = Url::parse("file:///t/Writer.java").unwrap();
+    let writer = "package t;\n\
+                  public class Writer {\n\
+                  \x20 public Writer(String name) {}\n\
+                  \x20 public Writer(int size) {}\n\
+                  \x20 protected Writer() {}\n\
+                  \x20 static class Nested {\n\
+                  \x20   Nested(String name) {}\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&writer_uri, writer);
+    let plain_uri = Url::parse("file:///t/Plain.java").unwrap();
+    let plain = "package t;\n\
+                 public class Plain {\n\
+                 \x20 void run() {}\n\
+                 }\n";
+    idx.index_content(&plain_uri, plain);
+    let token_uri = Url::parse("file:///t/Token.java").unwrap();
+    let token = "package t;\n\
+                 public class Token<T> {\n\
+                 \x20 Token(Class<T> type) {}\n\
+                 \x20 protected Token() {}\n\
+                 }\n";
+    idx.index_content(&token_uri, token);
+    let caller_uri = Url::parse("file:///t/Caller.java").unwrap();
+    let caller = "package t;\n\
+                  class Caller {\n\
+                  \x20 void run() {\n\
+                  \x20   Writer named = new Writer(\"a\");\n\
+                  \x20   Writer sized = new Writer(3);\n\
+                  \x20   Writer anonymous = new Writer() {};\n\
+                  \x20   Plain plain = new Plain();\n\
+                  \x20   Object token = new Token<String>() {};\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 3, "Writer(").await,
+        vec![2]
+    );
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 4, "Writer(").await,
+        vec![3]
+    );
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 5, "Writer(").await,
+        vec![4]
+    );
+    // The declared type of the local is a type reference, not a creation.
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 3, "Writer").await,
+        vec![1]
+    );
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 6, "Plain(").await,
+        vec![1]
+    );
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 7, "Token<").await,
+        vec![3]
+    );
+}
+
 /// A statically imported overloaded call: the qualified lookup finds one
 /// overload; the argument picks the right sibling.
 #[tokio::test]

@@ -32,6 +32,7 @@ use super::deps::{CallShape, InferDeps};
 
 const IDENTIFIER: &str = "identifier";
 const TYPE_IDENTIFIER: &str = "type_identifier";
+const GENERIC_TYPE: &str = "generic_type";
 const METHOD_INVOCATION: &str = "method_invocation";
 const FIELD_ACCESS: &str = "field_access";
 const OBJECT_CREATION: &str = "object_creation_expression";
@@ -928,6 +929,10 @@ impl Fit {
     }
 }
 
+/// What an overload whose parameter count equals the argument count scores
+/// before any argument is compared.
+const ARITY_MATCH: u32 = 1;
+
 /// Java's primitive widening order (JLS 5.1.2), `char` aside.
 const NUMERIC_WIDENING: [&str; 6] = ["byte", "short", "int", "long", "float", "double"];
 
@@ -1029,7 +1034,10 @@ pub(crate) fn overload_fit_score(arguments: &[ArgumentType], parameters: &[Strin
     if arguments.len() != parameters.len() {
         return Some(0);
     }
-    let mut score = 0;
+    // Matching the argument count already beats a candidate that would need
+    // varargs or default values: `new Writer()` is `Writer()`, not
+    // `Writer(String)`, even with nothing known about any argument.
+    let mut score = ARITY_MATCH;
     for (argument, parameter) in arguments.iter().zip(parameters) {
         let argument_fit = fit(argument, parameter);
         if argument_fit == Fit::Impossible {
@@ -1080,14 +1088,35 @@ pub(crate) fn invocation_of_method_name(name_node: Node<'_>) -> Option<Node<'_>>
     is_its_name.then_some(parent)
 }
 
-/// The types of `invocation`'s arguments, in order.
+/// The `new …(…)` expression whose created type is named by `name_node`
+/// (`new Writer(..)`, `new Token<String>() {}`), or `None` when the type
+/// name is used anywhere else.
+pub(crate) fn object_creation_of_type_name(name_node: Node<'_>) -> Option<Node<'_>> {
+    if name_node.kind() != TYPE_IDENTIFIER {
+        return None;
+    }
+    let parent = name_node.parent()?;
+    let names_a_generic_type =
+        parent.kind() == GENERIC_TYPE && parent.named_child(0) == Some(name_node);
+    let created_type = if names_a_generic_type {
+        parent
+    } else {
+        name_node
+    };
+    let creation = created_type.parent()?;
+    let is_the_created_type =
+        creation.kind() == OBJECT_CREATION && is_field_named(creation, "type", created_type);
+    is_the_created_type.then_some(creation)
+}
+
+/// The types of a call's or an object creation's arguments, in order.
 pub(crate) fn java_argument_types(
-    invocation: Node<'_>,
+    call: Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Vec<ArgumentType> {
-    let Some(arguments) = invocation.child_by_field_name("arguments") else {
+    let Some(arguments) = call.child_by_field_name("arguments") else {
         return Vec::new();
     };
     let mut cursor = arguments.walk();
