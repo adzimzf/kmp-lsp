@@ -802,15 +802,21 @@ fn bare_method_return_type(
             deps.find_method_return_type_with_origin_for_type(&class_name, method, uri)
         })
         .or_else(|| {
-            statically_imported_from(node, method, bytes)
-                .into_iter()
-                .find_map(|class_path| {
-                    deps.find_method_return_type_with_origin_for_type(
-                        class_path.last_segment(),
-                        method,
-                        uri,
-                    )
-                })
+            let classes = statically_imported_from(node, method, bytes);
+            if classes.is_empty() {
+                return None;
+            }
+            let arguments = java_argument_types(node, bytes, deps, uri);
+            classes.into_iter().find_map(|class_path| {
+                deps.find_static_method_return_type(&class_path, method, &arguments, uri)
+                    .or_else(|| {
+                        deps.find_method_return_type_with_origin_for_type(
+                            class_path.last_segment(),
+                            method,
+                            uri,
+                        )
+                    })
+            })
         })
 }
 

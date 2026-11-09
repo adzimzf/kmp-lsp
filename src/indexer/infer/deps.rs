@@ -309,6 +309,20 @@ pub(crate) trait InferDeps {
     /// return type was written in — the scope its type NAME must be resolved
     /// against (see `ResolvedType::declaring_uri`). `uri` (the caller) when the
     /// lookup does not report a file (a JAR or extension-registry answer).
+    /// The return type of the overload of `class_path`'s static `method`
+    /// that `arguments` fit best, with the file it is written in — a Java
+    /// call of a statically imported method (`assertThat(flag)` →
+    /// `BooleanSubject`). The default implementation returns `None`.
+    fn find_static_method_return_type(
+        &self,
+        _class_path: &str,
+        _method: &str,
+        _arguments: &[super::java_cst::ArgumentType],
+        _uri: &Url,
+    ) -> Option<(String, Url)> {
+        None
+    }
+
     fn find_method_return_type_with_origin_for_type(
         &self,
         class_name: &str,

@@ -437,3 +437,36 @@ async fn java_call_picks_the_overload_its_argument_types_fit() {
     let null = definition_lines(&idx, &caller_uri, caller, 7, "value").await;
     assert!(null.contains(&1) && !null.contains(&4), "got {null:?}");
 }
+
+/// A statically imported overloaded call: the qualified lookup finds one
+/// overload; the argument picks the right sibling.
+#[tokio::test]
+async fn java_static_import_call_picks_the_overload_its_argument_fits() {
+    let idx = Indexer::new();
+    let truth_uri = Url::parse("file:///t/com/example/truth/Truth.java").unwrap();
+    let truth = "package com.example.truth;\n\
+                 public final class Truth {\n\
+                 \x20 public static Subject assertThat(Object actual) { return null; }\n\
+                 \x20 public static StringSubject assertThat(String actual) { return null; }\n\
+                 \x20 public static BooleanSubject assertThat(boolean actual) { return null; }\n\
+                 }\n";
+    idx.index_content(&truth_uri, truth);
+    let caller_uri = Url::parse("file:///t/A.java").unwrap();
+    let caller = "import static com.example.truth.Truth.assertThat;\n\
+                  class A {\n\
+                  \x20 void f() {\n\
+                  \x20   assertThat(\"s\");\n\
+                  \x20   assertThat(false);\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 3, "assertThat").await,
+        vec![3]
+    );
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 4, "assertThat").await,
+        vec![4]
+    );
+}

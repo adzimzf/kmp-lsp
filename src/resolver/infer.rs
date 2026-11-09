@@ -1778,7 +1778,10 @@ fn find_method_return_type_declared_scoped(
 /// A Java method's return type, written before its name (`List<T> items()`),
 /// from the indexed `detail` or — when that was cut short — the declaration's
 /// own lines. `None` for `void` and for a constructor.
-fn java_method_return_type(method: &crate::types::SymbolEntry, lines: &[String]) -> Option<String> {
+pub(crate) fn java_method_return_type(
+    method: &crate::types::SymbolEntry,
+    lines: &[String],
+) -> Option<String> {
     const VOID: &str = "void";
     let declared = if method.detail.contains('\u{2026}') {
         crate::rg::declared_type_from_raw_lines(lines, method.range, SymbolKind::METHOD)

@@ -769,7 +769,7 @@ pub(crate) fn narrow_java_overloads(
     position: Position,
     locations: Vec<Location>,
 ) -> Vec<Location> {
-    if locations.len() < 2 || !super::java_cst::is_java_file(uri) {
+    if locations.is_empty() || !super::java_cst::is_java_file(uri) {
         return locations;
     }
     let Some(doc) = indexer.live_doc_or_parse(uri) else {
@@ -785,13 +785,34 @@ pub(crate) fn narrow_java_overloads(
         return locations;
     };
     let arguments = super::java_cst::java_argument_types(invocation, &doc.bytes, indexer, uri);
+    // A qualified lookup may have answered with one overload of several.
+    let candidates = with_sibling_overloads(indexer, locations.clone());
+    if candidates.len() < 2 {
+        return locations;
+    }
+    let candidate_count = candidates.len();
+    let best = best_fitting_overloads(indexer, &arguments, candidates);
+    // The arguments told nothing apart: keep the original answer.
+    if best.len() == candidate_count && candidate_count > locations.len() {
+        return locations;
+    }
+    best
+}
+
+/// The overloads among `locations` whose parameters `arguments` fit best,
+/// one per distinct Java signature; all of them when none fits.
+fn best_fitting_overloads(
+    indexer: &Indexer,
+    arguments: &[super::java_cst::ArgumentType],
+    locations: Vec<Location>,
+) -> Vec<Location> {
     let scored: Vec<ScoredOverload> = locations
         .into_iter()
         .map(|location| {
             let parameters = declared_params(indexer, &location)
                 .map(|params| super::java_cst::parameter_type_keys(&params));
             let score = parameters.as_ref().map_or(Some(0), |parameters| {
-                super::java_cst::overload_fit_score(&arguments, parameters)
+                super::java_cst::overload_fit_score(arguments, parameters)
             });
             ScoredOverload {
                 score,
@@ -821,6 +842,85 @@ pub(crate) fn narrow_java_overloads(
         }
     }
     kept.into_iter().map(|overload| overload.location).collect()
+}
+
+/// See [`InferDeps::find_static_method_return_type`]: `method` is looked
+/// up on `class_path` (the imported class, qualified, then by its simple
+/// name), narrowed to the overloads `arguments` fit, and the first of them
+/// with a declared return type answers.
+pub(crate) fn static_method_return_type(
+    indexer: &Indexer,
+    class_path: &str,
+    method: &str,
+    arguments: &[super::java_cst::ArgumentType],
+    uri: &Url,
+) -> Option<(String, Url)> {
+    use crate::StrExt as _;
+    let mut found = indexer.find_definition_qualified_index_only(method, Some(class_path), uri);
+    if found.is_empty() {
+        found = indexer.find_definition_qualified_index_only(
+            method,
+            Some(class_path.last_segment()),
+            uri,
+        );
+    }
+    let locations = with_sibling_overloads(indexer, found);
+    best_fitting_overloads(indexer, arguments, locations)
+        .iter()
+        .find_map(|location| declared_return_type(indexer, location))
+}
+
+/// `locations` plus every same-named declaration of the same class next to
+/// each: a qualified lookup answers with one overload.
+fn with_sibling_overloads(indexer: &Indexer, locations: Vec<Location>) -> Vec<Location> {
+    let mut expanded: Vec<Location> = Vec::new();
+    for location in locations {
+        let siblings = indexer
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| indexer.jar_files.get(location.uri.as_str()))
+            .and_then(|file| {
+                let found = file
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.selection_range == location.range)?;
+                Some(
+                    file.symbols
+                        .iter()
+                        .filter(|symbol| {
+                            symbol.name == found.name && symbol.container == found.container
+                        })
+                        .map(|symbol| Location::new(location.uri.clone(), symbol.selection_range))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_else(|| vec![location]);
+        for sibling in siblings {
+            if !expanded.contains(&sibling) {
+                expanded.push(sibling);
+            }
+        }
+    }
+    expanded
+}
+
+/// The return type the declaration at `location` states, with its file.
+fn declared_return_type(indexer: &Indexer, location: &Location) -> Option<(String, Url)> {
+    let file = indexer
+        .files
+        .get(location.uri.as_str())
+        .or_else(|| indexer.jar_files.get(location.uri.as_str()))?;
+    let symbol = file
+        .symbols
+        .iter()
+        .find(|symbol| symbol.selection_range == location.range)?;
+    let is_java = location.uri.path().ends_with(".java");
+    let return_type = if is_java {
+        crate::resolver::infer::java_method_return_type(symbol, &file.lines)
+    } else {
+        crate::resolver::extract_return_type_from_detail(&symbol.detail)
+    }?;
+    Some((return_type, location.uri.clone()))
 }
 
 /// One overload candidate of [`narrow_java_overloads`].

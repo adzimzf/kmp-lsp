@@ -420,3 +420,35 @@ fn java_receiver_is_found_when_completing_inside_an_existing_name() {
         "{recv:?}"
     );
 }
+
+#[test]
+fn java_statically_imported_overload_types_the_receiver_by_its_argument() {
+    let index = Indexer::new();
+    let truth_uri = uri("/com/example/truth/Truth.java");
+    let truth = "package com.example.truth;\n\
+                 public final class Truth {\n\
+                 \x20 public static Subject assertThat(Object actual) { return null; }\n\
+                 \x20 public static StringSubject assertThat(String actual) { return null; }\n\
+                 \x20 public static BooleanSubject assertThat(boolean actual) { return null; }\n\
+                 }\n";
+    index.index_content(&truth_uri, truth);
+    let caller = "import static com.example.truth.Truth.assertThat;\n\
+                  class A {\n\
+                  \x20 void f(Reader reader) {\n\
+                  \x20   assertThat(true).|\n\
+                  \x20   assertThat(\"s\").isEqualTo(\"s\");\n\
+                  \x20 }\n\
+                  }\n";
+    let caret = caller.find('|').unwrap();
+    let src = caller.replace('|', "");
+    let line = caller[..caret].matches('\n').count();
+    let col = caret - caller[..caret].rfind('\n').unwrap() - 1;
+    let caller_uri = uri("/A.java");
+    index.index_content(&caller_uri, &src);
+    index.store_live_tree(&caller_uri, &src);
+    let recv = derive_dot_receiver(&index, &caller_uri, Position::new(line as u32, col as u32));
+    assert!(
+        matches!(recv, Some(DotReceiver::Expr { resolved: Some(ref resolved), .. }) if resolved == "BooleanSubject"),
+        "{recv:?}"
+    );
+}

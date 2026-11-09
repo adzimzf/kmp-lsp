@@ -572,6 +572,15 @@ impl InferDeps for Indexer {
         }
         Vec::new()
     }
+    fn find_static_method_return_type(
+        &self,
+        class_path: &str,
+        method: &str,
+        arguments: &[self::infer::java_cst::ArgumentType],
+        uri: &Url,
+    ) -> Option<(String, Url)> {
+        self::infer::cst_symbol::static_method_return_type(self, class_path, method, arguments, uri)
+    }
     fn find_method_return_type_with_origin_for_type(
         &self,
         class_name: &str,
