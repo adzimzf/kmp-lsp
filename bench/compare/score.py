@@ -71,10 +71,40 @@ def external_name(uri):
     return segment.split("$")[0]
 
 
+COMPILED_STUB_DIR = "/compiled-stubs/"
+
+
+def compiled_stub_class(location):
+    """kmp-lsp opens a compiled library class in a per-jar stub listing
+    (`…/compiled-stubs/java.base-<hash>.kt`), one declaration per line:
+    `class String    // java.lang` or `fun endsWith(…)    // java.lang.String`.
+    The class the target line belongs to, or None for any other file."""
+    parsed = urllib.parse.urlparse(location["uri"])
+    path = urllib.parse.unquote(parsed.path)
+    if parsed.scheme != "file" or COMPILED_STUB_DIR not in path:
+        return None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for number, text in enumerate(handle):
+                if number == location["line"]:
+                    break
+            else:
+                return None
+    except OSError:
+        return None
+    declaration, _, owner = text.partition("//")
+    declared = re.match(r"\s*(?:class|interface|object|enum class|annotation class)\s+(\w+)", declaration)
+    if declared:
+        return declared.group(1)
+    owner = owner.strip()
+    return owner.rsplit(".", 1)[-1].split("$")[0] if owner else None
+
+
 def normalize_target(repo, location, name):
     relative = repo.relative(location["uri"])
     if relative is None:
-        return ("external", external_name(location["uri"]))
+        stub_class = compiled_stub_class(location)
+        return ("external", stub_class or external_name(location["uri"]))
     lines = repo.file_lines(relative)
     line = location["line"]
     # Some servers point at the declaration's first line (annotations,

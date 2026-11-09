@@ -261,3 +261,194 @@ fn scope_walk_survives_an_unclosed_lambda() {
         "brace repair must recover the lambda scope stack mid-typing"
     );
 }
+
+// ─── Java receivers ──────────────────────────────────────────────────────────
+
+#[test]
+fn java_local_receiver_is_typed_from_its_declaration() {
+    // A same-named Kotlin-style local elsewhere must not leak in: the Java
+    // tree's own binding decides.
+    let recv = derive_at_caret(
+        "/JavaLocal.java",
+        "class Reader { int peek() { return 0; } }\n\
+         class Writer { void flush() {} }\n\
+         class A {\n\
+         \x20 Writer reader;\n\
+         \x20 void f() {\n\
+         \x20   Reader reader = new Reader();\n\
+         \x20   reader.|\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    assert_eq!(
+        recv,
+        DotReceiver::Expr {
+            text: "reader".into(),
+            is_call: false,
+            resolved: Some("Reader".into()),
+        }
+    );
+}
+
+#[test]
+fn java_receiver_before_an_argument_list_is_found() {
+    // The query deletes `peek` from `reader.peek()`, leaving `reader.()`.
+    let recv = derive_at_caret(
+        "/JavaCallSite.java",
+        "class Reader { int peek() { return 0; } }\n\
+         class A {\n\
+         \x20 void f(Reader reader) {\n\
+         \x20   int x = reader.|();\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    assert_eq!(
+        recv,
+        DotReceiver::Expr {
+            text: "reader".into(),
+            is_call: false,
+            resolved: Some("Reader".into()),
+        }
+    );
+}
+
+#[test]
+fn java_receiver_without_semicolon_before_a_declaration_is_found() {
+    // `reader.` then a declaration on the next line parses as the qualified
+    // type `reader.<marker>` of that declaration.
+    let recv = derive_at_caret(
+        "/JavaNoSemicolon.java",
+        "class Reader { int peek() { return 0; } }\n\
+         class A {\n\
+         \x20 void f(Reader reader) {\n\
+         \x20   reader.|\n\
+         \x20   int y = 1;\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    match recv {
+        DotReceiver::Expr { text, resolved, .. } => {
+            assert_eq!(text, "reader");
+            assert_eq!(resolved.as_deref(), Some("Reader"));
+        }
+        other => panic!("expected an expression receiver, got {other:?}"),
+    }
+}
+
+#[test]
+fn java_call_and_super_receivers() {
+    let call = derive_at_caret(
+        "/JavaCall.java",
+        "class Reader {\n\
+         \x20 Reader next() { return this; }\n\
+         \x20 int peek() { return 0; }\n\
+         }\n\
+         class A {\n\
+         \x20 void f(Reader reader) {\n\
+         \x20   reader.next().|;\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    match call {
+        DotReceiver::Expr {
+            text,
+            is_call: true,
+            resolved,
+        } => {
+            assert_eq!(text, "next");
+            assert_eq!(resolved.as_deref(), Some("Reader"));
+        }
+        other => panic!("expected a call receiver, got {other:?}"),
+    }
+
+    let super_receiver = derive_at_caret(
+        "/JavaSuper.java",
+        "class A extends B { void f() { super.|; } }\n",
+    )
+    .unwrap();
+    assert_eq!(super_receiver, DotReceiver::Super);
+}
+
+#[test]
+fn java_bare_word_has_no_receiver() {
+    assert!(derive_at_caret("/JavaBare.java", "class A { void f() { rea| } }\n").is_none());
+}
+
+#[test]
+fn java_receiver_inside_an_argument_list_is_found() {
+    let source = "class Reader { int peek() { return 0; } }\n\
+                  class A {\n\
+                  \x20 void f(Reader reader) {\n\
+                  \x20   assertThat(reader.|).isEqualTo(1);\n\
+                  \x20 }\n\
+                  }\n";
+    let recv = derive_at_caret("/JavaArgument.java", source).unwrap();
+    assert_eq!(
+        recv,
+        DotReceiver::Expr {
+            text: "reader".into(),
+            is_call: false,
+            resolved: Some("Reader".into()),
+        }
+    );
+    let second_argument = source.replace("assertThat(reader.|)", "assertEquals(5, reader.|())");
+    let recv = derive_at_caret("/JavaArgument2.java", &second_argument).unwrap();
+    assert!(
+        matches!(recv, DotReceiver::Expr { ref text, .. } if text == "reader"),
+        "{recv:?}"
+    );
+}
+
+#[test]
+fn java_receiver_is_found_when_completing_inside_an_existing_name() {
+    let recv = derive_at_caret(
+        "/JavaInsideName.java",
+        "class Reader { int peek() { return 0; } }\n\
+         class A {\n\
+         \x20 void f(Reader reader) {\n\
+         \x20   assertThat(reader.|peek()).isEqualTo(1);\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    assert!(
+        matches!(recv, DotReceiver::Expr { ref text, resolved: Some(ref resolved), .. } if text == "reader" && resolved == "Reader"),
+        "{recv:?}"
+    );
+}
+
+#[test]
+fn java_statically_imported_overload_types_the_receiver_by_its_argument() {
+    let index = Indexer::new();
+    let truth_uri = uri("/com/example/truth/Truth.java");
+    let truth = "package com.example.truth;\n\
+                 public final class Truth {\n\
+                 \x20 public static Subject assertThat(Object actual) { return null; }\n\
+                 \x20 public static StringSubject assertThat(String actual) { return null; }\n\
+                 \x20 public static BooleanSubject assertThat(boolean actual) { return null; }\n\
+                 }\n";
+    index.index_content(&truth_uri, truth);
+    let caller = "import static com.example.truth.Truth.assertThat;\n\
+                  class A {\n\
+                  \x20 void f(Reader reader) {\n\
+                  \x20   assertThat(true).|\n\
+                  \x20   assertThat(\"s\").isEqualTo(\"s\");\n\
+                  \x20 }\n\
+                  }\n";
+    let caret = caller.find('|').unwrap();
+    let src = caller.replace('|', "");
+    let line = caller[..caret].matches('\n').count();
+    let col = caret - caller[..caret].rfind('\n').unwrap() - 1;
+    let caller_uri = uri("/A.java");
+    index.index_content(&caller_uri, &src);
+    index.store_live_tree(&caller_uri, &src);
+    let recv = derive_dot_receiver(&index, &caller_uri, Position::new(line as u32, col as u32));
+    assert!(
+        matches!(recv, Some(DotReceiver::Expr { resolved: Some(ref resolved), .. }) if resolved == "BooleanSubject"),
+        "{recv:?}"
+    );
+}

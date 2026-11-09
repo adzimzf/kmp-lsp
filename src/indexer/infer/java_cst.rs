@@ -265,7 +265,7 @@ pub(crate) fn classify_java_identifier(
     if let Some(member) = member_access_of(node) {
         let receiver_type = java_expr_type(member.receiver, bytes, deps, uri)
             .filter(|(type_name, origin)| {
-                let resolution_scope = if origin.scheme() == "file" {
+                let resolution_scope = if super::has_own_imports(origin) {
                     origin
                 } else {
                     uri
@@ -616,6 +616,31 @@ fn lambda_parameter_binding<'tree>(
     }
 }
 
+// ─── member receivers ────────────────────────────────────────────────────────
+
+/// The receiver of the member access whose member name is `member`: `foo`
+/// in `foo.member`, `foo.member(..)`, and in the `foo.member` a missing `;`
+/// turns into a declaration's type (`foo.member\n bar = 1;`). `None` when
+/// `member` isn't the member half of a qualified access.
+pub(crate) fn java_member_receiver(member: Node<'_>) -> Option<Node<'_>> {
+    let parent = member.parent()?;
+    let (member_field, receiver_field) = match parent.kind() {
+        FIELD_ACCESS => ("field", "object"),
+        METHOD_INVOCATION => ("name", "object"),
+        "scoped_type_identifier" | "scoped_identifier" => {
+            let is_last = parent
+                .named_child(u32::try_from(parent.named_child_count().checked_sub(1)?).ok()?)
+                .is_some_and(|last| last.id() == member.id());
+            return is_last.then(|| parent.named_child(0)).flatten();
+        }
+        _ => return None,
+    };
+    if !is_field_named(parent, member_field, member) {
+        return None;
+    }
+    parent.child_by_field_name(receiver_field)
+}
+
 // ─── expression types ────────────────────────────────────────────────────────
 
 /// The type of the Java expression `node`, as written (type arguments
@@ -643,7 +668,10 @@ fn expr_type_at_depth(
     match node.kind() {
         STRING_LITERAL | "text_block" => here("String".to_owned()),
         THIS => here(enclosing_java_class_names(node, bytes).into_iter().next()?),
-        IDENTIFIER => identifier_type(node, bytes, deps, uri, depth),
+        // A `type_identifier` here is a receiver the parser misread as a
+        // type: `foo.bar` with no `;` before the next line's declaration
+        // parses as the type `foo.bar` of that declaration.
+        IDENTIFIER | TYPE_IDENTIFIER => identifier_type(node, bytes, deps, uri, depth),
         OBJECT_CREATION => {
             let created = node.child_by_field_name("type")?.utf8_text_owned(bytes)?;
             here(without_diamond(&created))
@@ -773,6 +801,64 @@ fn bare_method_return_type(
         .find_map(|class_name| {
             deps.find_method_return_type_with_origin_for_type(&class_name, method, uri)
         })
+        .or_else(|| {
+            let classes = statically_imported_from(node, method, bytes);
+            if classes.is_empty() {
+                return None;
+            }
+            let arguments = java_argument_types(node, bytes, deps, uri);
+            classes.into_iter().find_map(|class_path| {
+                deps.find_static_method_return_type(&class_path, method, &arguments, uri)
+                    .or_else(|| {
+                        deps.find_method_return_type_with_origin_for_type(
+                            class_path.last_segment(),
+                            method,
+                            uri,
+                        )
+                    })
+            })
+        })
+}
+
+/// The classes `name` may be statically imported from in `node`'s file:
+/// `com.google.common.truth.Truth` for `import static
+/// com.google.common.truth.Truth.assertThat;`, and every class of an
+/// `import static a.B.*;` — explicit imports first.
+fn statically_imported_from(node: Node<'_>, name: &str, bytes: &[u8]) -> Vec<String> {
+    let mut root = node;
+    while let Some(parent) = root.parent() {
+        root = parent;
+    }
+    let mut explicit = Vec::new();
+    let mut on_demand = Vec::new();
+    for import in root.children_of_kind(IMPORT_DECLARATION) {
+        let Some(text) = import.utf8_text(bytes).ok() else {
+            continue;
+        };
+        let Some(path) = text
+            .trim()
+            .strip_prefix("import")
+            .map(str::trim_start)
+            .and_then(|rest| rest.strip_prefix("static"))
+        else {
+            continue;
+        };
+        let path: String = path
+            .trim_end_matches(';')
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect();
+        let Some((class_path, imported)) = path.rsplit_once('.') else {
+            continue;
+        };
+        if imported == name {
+            explicit.push(class_path.to_owned());
+        } else if imported == "*" {
+            on_demand.push(class_path.to_owned());
+        }
+    }
+    explicit.extend(on_demand);
+    explicit
 }
 
 fn method_declared_in_enclosing_classes(
@@ -802,6 +888,256 @@ fn method_declared_in_enclosing_classes(
         ancestor = current.parent();
     }
     None
+}
+
+// ─── overload selection ──────────────────────────────────────────────────────
+
+/// The type of one call argument, as overload selection compares it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ArgumentType {
+    /// `null`: fits any reference type, no primitive.
+    Null,
+    /// A type key ([`overload_type_key`]): `int`, `double`, `String`, `JsonReader`, `Foo[]`.
+    Known(String),
+    /// Not inferred: fits anything, prefers nothing.
+    Unknown,
+}
+
+/// How well an argument fits a parameter, best last.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Fit {
+    /// Never applicable: `9.0` for a `String` parameter.
+    Impossible,
+    /// Nothing known either way (an untyped argument, a possible subtype).
+    Possible,
+    /// `Object` / `Number`-like catch-alls and boxing.
+    Loose,
+    /// Primitive widening: `1` for a `long` parameter.
+    Widening,
+    Exact,
+}
+
+impl Fit {
+    fn score(self) -> u32 {
+        match self {
+            Fit::Impossible | Fit::Possible => 0,
+            Fit::Loose => 1,
+            Fit::Widening => 2,
+            Fit::Exact => 3,
+        }
+    }
+}
+
+/// Java's primitive widening order (JLS 5.1.2), `char` aside.
+const NUMERIC_WIDENING: [&str; 6] = ["byte", "short", "int", "long", "float", "double"];
+
+/// Reference types any argument may be passed as without knowing its class.
+const CATCH_ALL_TYPES: [&str; 2] = ["Object", "Any"];
+
+/// Reference types a boxed primitive or a string also is.
+const PRIMITIVE_SUPERTYPES: [&str; 4] = ["Number", "Comparable", "Serializable", "CharSequence"];
+
+/// A type as overload selection compares it: no annotations, modifiers,
+/// type arguments, package or nullability, Kotlin and boxed spellings folded
+/// into the Java primitive (`Int`, `Integer` → `int`), varargs as an array.
+pub(crate) fn overload_type_key(type_text: &str) -> String {
+    let joined: String = type_text
+        .split_whitespace()
+        .filter(|word| !word.starts_with('@') && *word != "final" && *word != "vararg")
+        .collect();
+    let mut base = String::new();
+    let mut depth = 0usize;
+    for character in joined.chars() {
+        match character {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => base.push(character),
+            _ => {}
+        }
+    }
+    let is_array = base.ends_with("[]") || base.ends_with("...");
+    let element = base
+        .trim_end_matches("...")
+        .trim_end_matches("[]")
+        .trim_end_matches('?')
+        .last_segment()
+        .to_owned();
+    let element = match element.as_str() {
+        "Int" | "Integer" => "int".to_owned(),
+        "Long" => "long".to_owned(),
+        "Double" => "double".to_owned(),
+        "Float" => "float".to_owned(),
+        "Short" => "short".to_owned(),
+        "Byte" => "byte".to_owned(),
+        "Boolean" => "boolean".to_owned(),
+        "Char" | "Character" => "char".to_owned(),
+        _ => element,
+    };
+    if is_array {
+        format!("{element}[]")
+    } else {
+        element
+    }
+}
+
+fn is_primitive_key(key: &str) -> bool {
+    NUMERIC_WIDENING.contains(&key) || key == "boolean" || key == "char"
+}
+
+fn fit(argument: &ArgumentType, parameter: &str) -> Fit {
+    let known = match argument {
+        ArgumentType::Unknown => return Fit::Possible,
+        ArgumentType::Null if is_primitive_key(parameter) => return Fit::Impossible,
+        ArgumentType::Null => return Fit::Possible,
+        ArgumentType::Known(known) => known.as_str(),
+    };
+    if known == parameter {
+        return Fit::Exact;
+    }
+    if CATCH_ALL_TYPES.contains(&parameter) {
+        return Fit::Loose;
+    }
+    let widening_rank = |key: &str| NUMERIC_WIDENING.iter().position(|numeric| *numeric == key);
+    if let (Some(from), Some(to)) = (widening_rank(known), widening_rank(parameter)) {
+        return if from < to {
+            Fit::Widening
+        } else {
+            Fit::Impossible
+        };
+    }
+    // A primitive or a `String` is exactly that class: anything else it fits
+    // only as one of the few supertypes it has.
+    let is_closed_class = is_primitive_key(known) || known == "String";
+    if is_closed_class {
+        return if PRIMITIVE_SUPERTYPES.contains(&parameter) {
+            Fit::Loose
+        } else {
+            Fit::Impossible
+        };
+    }
+    // Two other classes: the argument's may extend the parameter's.
+    if is_primitive_key(parameter) {
+        Fit::Impossible
+    } else {
+        Fit::Possible
+    }
+}
+
+/// How well arguments of `arguments` fit parameters of type keys
+/// `parameters`; `None` when some argument can't be passed at all.
+pub(crate) fn overload_fit_score(arguments: &[ArgumentType], parameters: &[String]) -> Option<u32> {
+    if arguments.len() != parameters.len() {
+        return Some(0);
+    }
+    let mut score = 0;
+    for (argument, parameter) in arguments.iter().zip(parameters) {
+        let argument_fit = fit(argument, parameter);
+        if argument_fit == Fit::Impossible {
+            return None;
+        }
+        score += argument_fit.score();
+    }
+    Some(score)
+}
+
+/// The parameter type keys of a declaration's indexed parameter text — Java's
+/// `@Nullable String name, int count` or Kotlin's `name: String?, count: Int = 0`.
+pub(crate) fn parameter_type_keys(params: &str) -> Vec<String> {
+    if params.trim().is_empty() {
+        return Vec::new();
+    }
+    crate::indexer::split_params_at_depth_zero(params)
+        .into_iter()
+        .map(|parameter| {
+            let without_default = parameter.split('=').next().unwrap_or(parameter);
+            match without_default.split_once(':') {
+                Some((name, type_text)) => {
+                    let is_vararg = name.split_whitespace().any(|word| word == "vararg");
+                    let key = overload_type_key(type_text);
+                    if is_vararg {
+                        format!("{key}[]")
+                    } else {
+                        key
+                    }
+                }
+                None => {
+                    let trimmed = without_default.trim();
+                    let type_text = trimmed
+                        .rsplit_once(char::is_whitespace)
+                        .map_or(trimmed, |(type_text, _name)| type_text);
+                    overload_type_key(type_text)
+                }
+            }
+        })
+        .collect()
+}
+
+/// The method invocation whose method name is `name_node`.
+pub(crate) fn invocation_of_method_name(name_node: Node<'_>) -> Option<Node<'_>> {
+    let parent = name_node.parent()?;
+    let is_its_name =
+        parent.kind() == METHOD_INVOCATION && is_field_named(parent, "name", name_node);
+    is_its_name.then_some(parent)
+}
+
+/// The types of `invocation`'s arguments, in order.
+pub(crate) fn java_argument_types(
+    invocation: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Vec<ArgumentType> {
+    let Some(arguments) = invocation.child_by_field_name("arguments") else {
+        return Vec::new();
+    };
+    let mut cursor = arguments.walk();
+    arguments
+        .named_children(&mut cursor)
+        .filter(|argument| !argument.is_extra())
+        .map(|argument| argument_type(argument, bytes, deps, uri))
+        .collect()
+}
+
+fn argument_type(
+    argument: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> ArgumentType {
+    let known = |key: &str| ArgumentType::Known(key.to_owned());
+    let text = argument.utf8_text(bytes).unwrap_or_default();
+    match argument.kind() {
+        "decimal_integer_literal"
+        | "hex_integer_literal"
+        | "octal_integer_literal"
+        | "binary_integer_literal" => {
+            if text.ends_with(['l', 'L']) {
+                known("long")
+            } else {
+                known("int")
+            }
+        }
+        "decimal_floating_point_literal" | "hex_floating_point_literal" => {
+            if text.ends_with(['f', 'F']) {
+                known("float")
+            } else {
+                known("double")
+            }
+        }
+        "true" | "false" => known("boolean"),
+        "character_literal" => known("char"),
+        "null_literal" => ArgumentType::Null,
+        "class_literal" => known("Class"),
+        "unary_expression" => argument
+            .child_by_field_name("operand")
+            .map_or(ArgumentType::Unknown, |operand| {
+                argument_type(operand, bytes, deps, uri)
+            }),
+        _ => match java_expr_type(argument, bytes, deps, uri) {
+            Some((type_text, _)) => ArgumentType::Known(overload_type_key(&type_text)),
+            None => ArgumentType::Unknown,
+        },
+    }
 }
 
 #[cfg(test)]

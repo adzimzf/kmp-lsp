@@ -81,6 +81,34 @@ class IndexerTest {
     }
 
     @Test
+    @DisplayName("indexJarFile reads a JDK .jmod: its public java.* classes, not its internals")
+    fun testJmod(@TempDir tmpDir: File) {
+        val zip = createTestJar(
+            tmpDir, "inner.zip", mapOf(
+                "classes/java/util/Widget.class" to minimalClassBytes("java/util/Widget"),
+                "classes/jdk/internal/Hidden.class" to minimalClassBytes("jdk/internal/Hidden"),
+                "classes/module-info.class" to minimalClassBytes("module-info"),
+            )
+        )
+        val jmod = File(tmpDir, "java.base.jmod")
+        jmod.writeBytes(byteArrayOf('J'.code.toByte(), 'M'.code.toByte(), 1, 0) + zip.readBytes())
+
+        val names = indexJarFile(jmod.absolutePath).map { it.name }
+
+        assertTrue("Widget" in names, "java.* class must be indexed; got: $names")
+        assertFalse("Hidden" in names, "jdk.internal must stay out; got: $names")
+    }
+
+    @Test
+    @DisplayName("indexJarFile treats a .jmod without its magic header as nothing")
+    fun testJmodWithoutHeader(@TempDir tmpDir: File) {
+        val notAJmod = createTestJar(
+            tmpDir, "fake.jmod", mapOf("classes/java/util/Widget.class" to minimalClassBytes("java/util/Widget"))
+        )
+        assertTrue(indexJarFile(notAJmod.absolutePath).isEmpty())
+    }
+
+    @Test
     @DisplayName("indexClassBytes extracts a public method via the Java fallback path (no Kotlin metadata, no sources JAR)")
     fun testJavaPublicMethodExtraction() {
         // Mirrors android.jar's own shape: plain Java bytecode, no @kotlin.Metadata,
