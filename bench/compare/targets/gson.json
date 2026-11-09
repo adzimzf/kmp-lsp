@@ -1,0 +1,41 @@
+{
+  "name": "gson",
+  "git": "https://github.com/google/gson",
+  "commit": "65df6e5a99747f73d386f3a61d887a0257255e0f",
+  "build": "maven",
+  "build_args": [
+    "-pl",
+    "gson",
+    "-am",
+    "test-compile"
+  ],
+  "roots": [
+    "gson/src/main/java",
+    "gson/src/test/java"
+  ],
+  "seed": 7,
+  "sample": {
+    "definition": 150,
+    "references": 40,
+    "completion": 100
+  },
+  "probes": [
+    {
+      "language": "java",
+      "file": "gson/src/main/java/com/google/gson/Gson.java",
+      "line": 340,
+      "name": "TypeToken",
+      "expect_file": "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      "expect_line": 54
+    },
+    {
+      "language": "java",
+      "file": "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      "line": 89,
+      "name": "fromJson",
+      "expect_file": "gson/src/main/java/com/google/gson/Gson.java",
+      "expect_line": 850
+    }
+  ],
+  "_lines": "probe lines are 1-based; query files use 0-based LSP positions"
+}
