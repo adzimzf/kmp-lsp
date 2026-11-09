@@ -192,6 +192,13 @@ JDTLS=/path/to/jdtls JAVA=/path/to/java25 BUILD_JDK=/path/to/jdk21 \
   exits non-zero below it: a ratchet, like `tests/architecture_ratchet.rs`.
   Raise a baseline with `--update-baseline` when a fix lands; never lower
   one without saying why.
+- The recorded baseline is the score from an **empty state directory and a
+  dependency cache holding only what the target's own build downloaded** —
+  what CI reproduces. A state that has been run against for a while scores
+  higher (more library sources jars have arrived: `assertThat(..).contains`
+  and `hasMessageThat` resolve, `getActualTypeArguments` finds its usages),
+  so record a baseline from a fresh `--workdir`, not from the directory you
+  have been iterating in.
 
 kmp-lsp's state directory is primed with one throw-away run first: on an
 empty state it indexes dependency jars in the background without reporting
