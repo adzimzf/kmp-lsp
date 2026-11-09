@@ -238,7 +238,11 @@ java25() {
   if [ -n "${JAVA25:-}" ]; then echo "$JAVA25"; return; fi
   local bundled
   bundled=$(find "$SERVERS_DIR/kotlin-lsp" -path '*jbr*/bin/java' -type f 2>/dev/null | head -1)
-  if [ -n "$bundled" ]; then echo "$bundled"; else echo java; fi
+  if [ -n "$bundled" ]; then echo "$bundled"; return; fi
+  # No kotlin-lsp (expired or not downloadable): an installed JDK 25+.
+  local installed
+  installed=$(ls -d /usr/lib/jvm/*-2[5-9]*/bin/java /Library/Java/JavaVirtualMachines/*-2[5-9]*/Contents/Home/bin/java 2>/dev/null | head -1)
+  if [ -n "$installed" ]; then echo "$installed"; else echo java; fi
 }
 
 warm_gradle() {
