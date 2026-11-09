@@ -616,6 +616,31 @@ fn lambda_parameter_binding<'tree>(
     }
 }
 
+// ─── member receivers ────────────────────────────────────────────────────────
+
+/// The receiver of the member access whose member name is `member`: `foo`
+/// in `foo.member`, `foo.member(..)`, and in the `foo.member` a missing `;`
+/// turns into a declaration's type (`foo.member\n bar = 1;`). `None` when
+/// `member` isn't the member half of a qualified access.
+pub(crate) fn java_member_receiver(member: Node<'_>) -> Option<Node<'_>> {
+    let parent = member.parent()?;
+    let (member_field, receiver_field) = match parent.kind() {
+        FIELD_ACCESS => ("field", "object"),
+        METHOD_INVOCATION => ("name", "object"),
+        "scoped_type_identifier" | "scoped_identifier" => {
+            let is_last = parent
+                .named_child(u32::try_from(parent.named_child_count().checked_sub(1)?).ok()?)
+                .is_some_and(|last| last.id() == member.id());
+            return is_last.then(|| parent.named_child(0)).flatten();
+        }
+        _ => return None,
+    };
+    if !is_field_named(parent, member_field, member) {
+        return None;
+    }
+    parent.child_by_field_name(receiver_field)
+}
+
 // ─── expression types ────────────────────────────────────────────────────────
 
 /// The type of the Java expression `node`, as written (type arguments
@@ -643,7 +668,10 @@ fn expr_type_at_depth(
     match node.kind() {
         STRING_LITERAL | "text_block" => here("String".to_owned()),
         THIS => here(enclosing_java_class_names(node, bytes).into_iter().next()?),
-        IDENTIFIER => identifier_type(node, bytes, deps, uri, depth),
+        // A `type_identifier` here is a receiver the parser misread as a
+        // type: `foo.bar` with no `;` before the next line's declaration
+        // parses as the type `foo.bar` of that declaration.
+        IDENTIFIER | TYPE_IDENTIFIER => identifier_type(node, bytes, deps, uri, depth),
         OBJECT_CREATION => {
             let created = node.child_by_field_name("type")?.utf8_text_owned(bytes)?;
             here(without_diamond(&created))

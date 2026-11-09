@@ -261,3 +261,119 @@ fn scope_walk_survives_an_unclosed_lambda() {
         "brace repair must recover the lambda scope stack mid-typing"
     );
 }
+
+// ─── Java receivers ──────────────────────────────────────────────────────────
+
+#[test]
+fn java_local_receiver_is_typed_from_its_declaration() {
+    // A same-named Kotlin-style local elsewhere must not leak in: the Java
+    // tree's own binding decides.
+    let recv = derive_at_caret(
+        "/JavaLocal.java",
+        "class Reader { int peek() { return 0; } }\n\
+         class Writer { void flush() {} }\n\
+         class A {\n\
+         \x20 Writer reader;\n\
+         \x20 void f() {\n\
+         \x20   Reader reader = new Reader();\n\
+         \x20   reader.|\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    assert_eq!(
+        recv,
+        DotReceiver::Expr {
+            text: "reader".into(),
+            is_call: false,
+            resolved: Some("Reader".into()),
+        }
+    );
+}
+
+#[test]
+fn java_receiver_before_an_argument_list_is_found() {
+    // The query deletes `peek` from `reader.peek()`, leaving `reader.()`.
+    let recv = derive_at_caret(
+        "/JavaCallSite.java",
+        "class Reader { int peek() { return 0; } }\n\
+         class A {\n\
+         \x20 void f(Reader reader) {\n\
+         \x20   int x = reader.|();\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    assert_eq!(
+        recv,
+        DotReceiver::Expr {
+            text: "reader".into(),
+            is_call: false,
+            resolved: Some("Reader".into()),
+        }
+    );
+}
+
+#[test]
+fn java_receiver_without_semicolon_before_a_declaration_is_found() {
+    // `reader.` then a declaration on the next line parses as the qualified
+    // type `reader.<marker>` of that declaration.
+    let recv = derive_at_caret(
+        "/JavaNoSemicolon.java",
+        "class Reader { int peek() { return 0; } }\n\
+         class A {\n\
+         \x20 void f(Reader reader) {\n\
+         \x20   reader.|\n\
+         \x20   int y = 1;\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    match recv {
+        DotReceiver::Expr { text, resolved, .. } => {
+            assert_eq!(text, "reader");
+            assert_eq!(resolved.as_deref(), Some("Reader"));
+        }
+        other => panic!("expected an expression receiver, got {other:?}"),
+    }
+}
+
+#[test]
+fn java_call_and_super_receivers() {
+    let call = derive_at_caret(
+        "/JavaCall.java",
+        "class Reader {\n\
+         \x20 Reader next() { return this; }\n\
+         \x20 int peek() { return 0; }\n\
+         }\n\
+         class A {\n\
+         \x20 void f(Reader reader) {\n\
+         \x20   reader.next().|;\n\
+         \x20 }\n\
+         }\n",
+    )
+    .unwrap();
+    match call {
+        DotReceiver::Expr {
+            text,
+            is_call: true,
+            resolved,
+        } => {
+            assert_eq!(text, "next");
+            assert_eq!(resolved.as_deref(), Some("Reader"));
+        }
+        other => panic!("expected a call receiver, got {other:?}"),
+    }
+
+    let super_receiver = derive_at_caret(
+        "/JavaSuper.java",
+        "class A extends B { void f() { super.|; } }\n",
+    )
+    .unwrap();
+    assert_eq!(super_receiver, DotReceiver::Super);
+}
+
+#[test]
+fn java_bare_word_has_no_receiver() {
+    assert!(derive_at_caret("/JavaBare.java", "class A { void f() { rea| } }\n").is_none());
+}

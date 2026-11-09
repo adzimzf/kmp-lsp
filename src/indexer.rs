@@ -30,7 +30,7 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
 pub(crate) use self::infer::speculative::{
-    lambda_doc_at, receiver_node_for_marker, speculative_doc,
+    java_receiver_node_for_marker, lambda_doc_at, receiver_node_for_marker, speculative_doc,
 };
 #[allow(unused_imports)]
 pub(crate) use self::infer::{

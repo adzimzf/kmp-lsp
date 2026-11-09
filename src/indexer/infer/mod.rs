@@ -218,12 +218,19 @@ impl<'a, D: InferDeps> CstQuery<'a, D> {
     /// boolean operators, `if` expressions, and `this`.  Returns
     /// `Resolution::Unresolved` for compound forms not yet handled.
     pub(crate) fn expr_type(&self) -> Resolution<ResolvedType> {
-        match crate::indexer::infer::expr_type::infer_expr_type_with_origin(
-            self.node,
-            &self.doc.bytes,
-            self.deps,
-            self.uri,
-        ) {
+        // The Kotlin walker matches Kotlin node kinds only; a Java tree has
+        // its own (`identifier`, `method_invocation`, `field_access`).
+        let inferred = if java_cst::is_java_file(self.uri) {
+            java_cst::java_expr_type(self.node, &self.doc.bytes, self.deps, self.uri)
+        } else {
+            crate::indexer::infer::expr_type::infer_expr_type_with_origin(
+                self.node,
+                &self.doc.bytes,
+                self.deps,
+                self.uri,
+            )
+        };
+        match inferred {
             Some((raw, declaring_uri)) => {
                 Resolution::Resolved(ResolvedType::from_inferred(raw, declaring_uri))
             }
