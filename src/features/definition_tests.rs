@@ -470,3 +470,46 @@ async fn java_static_import_call_picks_the_overload_its_argument_fits() {
         vec![4]
     );
 }
+
+/// `StringSubject` inherits `isEqualTo` from `Subject`; its nested
+/// `CaseInsensitiveStringComparison` declares its own. A call on a
+/// `StringSubject` must reach `Subject.isEqualTo`, not the nested class's.
+#[tokio::test]
+async fn java_member_of_a_class_is_not_its_nested_classs_member() {
+    let idx = Indexer::new();
+    let subject_uri = Url::parse("file:///t/Subject.java").unwrap();
+    let subject = "public class Subject {\n\
+                   \x20 public void isEqualTo(Object expected) {}\n\
+                   }\n";
+    idx.index_content(&subject_uri, subject);
+    let string_subject_uri = Url::parse("file:///t/StringSubject.java").unwrap();
+    let string_subject = "public class StringSubject extends Subject {\n\
+                          \x20 public void contains(String part) {}\n\
+                          \x20 public final class CaseInsensitiveStringComparison {\n\
+                          \x20   public void isEqualTo(String expected) {}\n\
+                          \x20 }\n\
+                          }\n";
+    idx.index_content(&string_subject_uri, string_subject);
+    let caller_uri = Url::parse("file:///t/A.java").unwrap();
+    let caller = "class A {\n\
+                  \x20 void f(StringSubject subject) {\n\
+                  \x20   subject.isEqualTo(\"a\");\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+    let col = caller.lines().nth(2).unwrap().find("isEqualTo").unwrap() as u32;
+    let position = Position::new(2, col);
+    let ctx = CursorContext::build(&idx, &caller_uri, position).unwrap();
+    let uris: Vec<(String, u32)> = match find_definition(&ctx, &idx, &caller_uri, position).await {
+        Some(GotoDefinitionResponse::Scalar(location)) => {
+            vec![(location.uri.path().to_owned(), location.range.start.line)]
+        }
+        Some(GotoDefinitionResponse::Array(locations)) => locations
+            .iter()
+            .map(|location| (location.uri.path().to_owned(), location.range.start.line))
+            .collect(),
+        _ => Vec::new(),
+    };
+    assert_eq!(uris, vec![("/t/Subject.java".to_owned(), 1)]);
+}

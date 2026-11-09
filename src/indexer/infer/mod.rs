@@ -157,7 +157,7 @@ impl ResolvedType {
     /// or `caller` when that is a `jar:` file — a jar has no import list to
     /// resolve a name against, so the caller's scope stays (pre-existing behaviour).
     pub(crate) fn resolution_scope<'a>(&'a self, caller: &'a Url) -> &'a Url {
-        if self.declaring_uri().scheme() == "file" {
+        if has_own_imports(self.declaring_uri()) {
             self.declaring_uri()
         } else {
             caller
@@ -168,6 +168,20 @@ impl ResolvedType {
     pub(crate) fn is_nullable(&self) -> bool {
         self.nullable
     }
+}
+
+/// Whether names written in `uri` resolve through `uri`'s own imports: a
+/// project file, or a source file inside a library's sources jar
+/// (`jar:file:///…-sources.jar!/com/x/Truth.java`). A compiled jar's stub
+/// (`jar:file:///…/x.jar`) has none.
+pub(crate) fn has_own_imports(uri: &Url) -> bool {
+    if uri.scheme() == "file" {
+        return true;
+    }
+    let is_archive_entry = uri.as_str().contains("!/");
+    let path = uri.path();
+    let is_source = path.ends_with(".java") || path.ends_with(".kt");
+    is_archive_entry && is_source
 }
 
 // ─── CstQuery — the unified CST resolution context ───────────────────────────

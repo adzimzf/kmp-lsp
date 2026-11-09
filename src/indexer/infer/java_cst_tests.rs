@@ -462,3 +462,14 @@ fn statically_imported_call_types_its_result() {
         Some("Thing")
     );
 }
+
+#[test]
+fn a_sources_jar_entry_resolves_names_through_its_own_imports() {
+    let entry =
+        Url::parse("jar:file:///g/truth-1.4.5-sources.jar!/com/google/common/truth/Truth.java")
+            .unwrap();
+    let compiled_stub = Url::parse("jar:file:///g/truth-1.4.5.jar").unwrap();
+    assert!(super::super::has_own_imports(&entry));
+    assert!(!super::super::has_own_imports(&compiled_stub));
+    assert!(super::super::has_own_imports(&uri()));
+}

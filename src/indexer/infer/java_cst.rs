@@ -265,7 +265,7 @@ pub(crate) fn classify_java_identifier(
     if let Some(member) = member_access_of(node) {
         let receiver_type = java_expr_type(member.receiver, bytes, deps, uri)
             .filter(|(type_name, origin)| {
-                let resolution_scope = if origin.scheme() == "file" {
+                let resolution_scope = if super::has_own_imports(origin) {
                     origin
                 } else {
                     uri
