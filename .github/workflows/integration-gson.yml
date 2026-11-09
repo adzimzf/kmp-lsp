@@ -111,6 +111,17 @@ jobs:
         env:
           BUILD_JDK: ${{ env.JAVA_HOME_21_X64 }}
 
+      # What the server logged (jar progress lines left out): why a library
+      # or the JDK did not resolve shows here — a failed dependency sync, a
+      # JDK without sources — without downloading the artifact.
+      - name: Server log
+        if: failure()
+        run: |
+          for log in "$WORKDIR"/itest-results/*.stderr.log; do
+            echo "== $log"
+            grep -v 'indexer::jar\]' "$log" | cut -c1-300 || true
+          done
+
       # The scores and every failure's expected-vs-actual, for a run that
       # fell below baseline (or one that is about to raise it).
       - name: Upload the results

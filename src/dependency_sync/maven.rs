@@ -18,27 +18,71 @@ pub(crate) fn resolve(
     let mut command = launch(launcher);
     command
         .current_dir(root)
-        .args(["--batch-mode", "--quiet"])
+        // One module that can't resolve must not hide every other module's
+        // dependencies: a reactor module depending on a sibling's SNAPSHOT
+        // that was never installed fails these goals (no `package` phase
+        // runs), while the modules that matter resolve fine.
+        .args(["--batch-mode", "--quiet", "--fail-at-end"])
         .arg(format!("{DEPENDENCY_PLUGIN}:sources"))
         .arg(format!("{DEPENDENCY_PLUGIN}:list"))
         .arg("-DoutputAbsoluteArtifactFilename=true")
         .arg(format!("-DoutputFile={}", output_file.display()))
         // Every module of a multi-module build appends to the same file.
         .arg("-DappendOutput=true");
-    run_build_tool(
+    let run = run_build_tool(
         command,
         &format!(
             "`{} dependency:sources dependency:list`",
             launcher.display()
         ),
-    )?;
-    let text = std::fs::read_to_string(output_file)
-        .map_err(|error| format!("Maven wrote no dependency list: {error}"))?;
+    );
+    let modules = match run {
+        Ok(()) => ModulesResolved::All,
+        Err(BuildToolFailure::Failed(message)) => ModulesResolved::Some { failure: message },
+        Err(not_found @ BuildToolFailure::NotFound(_)) => return Err(not_found),
+    };
+    let text = std::fs::read_to_string(output_file).unwrap_or_default();
+    resolved_from(parse_output(&text), modules)
+}
+
+/// Whether every module of the build resolved its dependencies.
+pub(crate) enum ModulesResolved {
+    All,
+    /// Maven failed, but the modules it got through before (or around, with
+    /// `--fail-at-end`) the failure may still have written their list.
+    Some {
+        failure: String,
+    },
+}
+
+/// The sync result for the dependencies Maven listed. A partial list is
+/// kept — the libraries of the modules that resolved are still the right
+/// ones — and marked incomplete so a later sync tries again; an empty list
+/// from a failed run is the failure itself.
+pub(crate) fn resolved_from(
+    dependencies: Vec<ResolvedDependency>,
+    modules: ModulesResolved,
+) -> Result<Resolved, BuildToolFailure> {
+    let incomplete = match modules {
+        ModulesResolved::All => false,
+        ModulesResolved::Some { failure } if dependencies.is_empty() => {
+            return Err(BuildToolFailure::Failed(failure));
+        }
+        ModulesResolved::Some { failure } => {
+            log::warn!(
+                "dependency sync: some Maven modules could not resolve; using the {} \
+                 dependencies of the others: {failure}",
+                dependencies.len()
+            );
+            true
+        }
+    };
     // Maven's `sources` goal reports a missing and a failed download alike
-    // ("NOT been resolved"), so a Maven result is never marked incomplete.
+    // ("NOT been resolved"), so a complete Maven result is never marked
+    // incomplete.
     Ok(Resolved {
-        dependencies: parse_output(&text),
-        incomplete_sources: false,
+        dependencies,
+        incomplete_sources: incomplete,
         decompiler: None,
     })
 }
