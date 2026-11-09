@@ -1,0 +1,4973 @@
+{
+ "target": "gson",
+ "language": "java",
+ "reference": "jdtls",
+ "note": "generated from the reference server's own answers: it passes 100% by construction",
+ "completion_rank_within": 10,
+ "cases": {
+  "definition": [
+   {
+    "id": "definition-java-000",
+    "file": "gson/src/main/java/com/google/gson/Gson.java",
+    "line": 500,
+    "character": 13,
+    "name": "getAdapter",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      339
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-001",
+    "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+    "line": 952,
+    "character": 18,
+    "name": "TypeAdapters",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+      62
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-002",
+    "file": "gson/src/main/java/com/google/gson/LongSerializationPolicy.java",
+    "line": 78,
+    "character": 40,
+    "name": "Long",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "Long"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-003",
+    "file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+    "line": 240,
+    "character": 12,
+    "name": "V",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+      43
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-004",
+    "file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+    "line": 395,
+    "character": 9,
+    "name": "right",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+      461
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-005",
+    "file": "gson/src/main/java/com/google/gson/internal/UnsafeAllocator.java",
+    "line": 85,
+    "character": 9,
+    "name": "SuppressWarnings",
+    "category": "annotation",
+    "expect": [
+     [
+      "external",
+      "SuppressWarnings"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-006",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/CollectionTypeAdapterFactory.java",
+    "line": 50,
+    "character": 56,
+    "name": "TypeToken",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      53
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-007",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/DefaultDateTypeAdapter.java",
+    "line": 117,
+    "character": 21,
+    "name": "DateFormat",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "DateFormat"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-008",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+    "line": 101,
+    "character": 14,
+    "name": "toIntExact",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Math"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-009",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+    "line": 208,
+    "character": 53,
+    "name": "getAdapter",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      406
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-010",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JdkOptionalTypeAdapters.java",
+    "line": 173,
+    "character": 14,
+    "name": "name",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+      498
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-011",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+    "line": 83,
+    "character": 8,
+    "name": "getTypeAdapter",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+      104
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-012",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+    "line": 105,
+    "character": 6,
+    "name": "ConstructorConstructor",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/ConstructorConstructor.java",
+      44
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-013",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+    "line": 199,
+    "character": 34,
+    "name": "isAssignableFrom",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Class"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-014",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+    "line": 156,
+    "character": 10,
+    "name": "endArray",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+      417
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-015",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+    "line": 153,
+    "character": 20,
+    "name": "isString",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+      152
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-016",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+    "line": 193,
+    "character": 33,
+    "name": "Entry",
+    "category": "member_access",
+    "expect": [
+     [
+      "external",
+      "Map"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-017",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+    "line": 243,
+    "character": 34,
+    "name": "NUMBER",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonToken.java",
+      62
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-018",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeWriter.java",
+    "line": 99,
+    "character": 3,
+    "name": "Override",
+    "category": "annotation",
+    "expect": [
+     [
+      "external",
+      "Override"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-019",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+    "line": 178,
+    "character": 11,
+    "name": "nextNull",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      1060
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-020",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+    "line": 275,
+    "character": 28,
+    "name": "isJsonNull",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonElement.java",
+      145
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-021",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/ObjectTypeAdapter.java",
+    "line": 99,
+    "character": 11,
+    "name": "nextNull",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      1060
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-022",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+    "line": 290,
+    "character": 30,
+    "name": "IllegalAccessException",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "IllegalAccessException"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-023",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+    "line": 372,
+    "character": 30,
+    "name": "includeField",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+      79
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-024",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/TreeTypeAdapter.java",
+    "line": 204,
+    "character": 29,
+    "name": "JsonElement",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonElement.java",
+      95
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-025",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+    "line": 287,
+    "character": 43,
+    "name": "INTEGER",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+      262
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-026",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+    "line": 372,
+    "character": 56,
+    "name": "ATOMIC_INTEGER_ARRAY",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+      339
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-027",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+    "line": 473,
+    "character": 22,
+    "name": "JsonWriter",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+      161
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-028",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+    "line": 735,
+    "character": 24,
+    "name": "JsonReader",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      211
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-029",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/util/ISO8601Utils.java",
+    "line": 68,
+    "character": 31,
+    "name": "TIMEZONE_UTC",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/util/ISO8601Utils.java",
+      53
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-030",
+    "file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+    "line": 98,
+    "character": 6,
+    "name": "appendExecutableParameters",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+      132
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-031",
+    "file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+    "line": 151,
+    "character": 20,
+    "name": "isStatic",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Modifier"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-032",
+    "file": "gson/src/main/java/com/google/gson/internal/sql/SqlTypesSupport.java",
+    "line": 63,
+    "character": 47,
+    "name": "Date",
+    "category": "member_access",
+    "expect": [
+     [
+      "external",
+      "Date"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-033",
+    "file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+    "line": 469,
+    "character": 10,
+    "name": "doPeek",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      590
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-034",
+    "file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+    "line": 691,
+    "character": 12,
+    "name": "checkLenient",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      1727
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-035",
+    "file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+    "line": 1039,
+    "character": 10,
+    "name": "doPeek",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      590
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-036",
+    "file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+    "line": 1185,
+    "character": 80,
+    "name": "locationString",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      1778
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-038",
+    "file": "gson/src/test/java/com/google/gson/CommentsTest.java",
+    "line": 44,
+    "character": 82,
+    "name": "getType",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      165
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-039",
+    "file": "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+    "line": 224,
+    "character": 20,
+    "name": "newJsonWriter",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      796
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-040",
+    "file": "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+    "line": 257,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-041",
+    "file": "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+    "line": 289,
+    "character": 90,
+    "name": "create",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/GsonBuilder.java",
+      921
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-042",
+    "file": "gson/src/test/java/com/google/gson/GsonTest.java",
+    "line": 385,
+    "character": 32,
+    "name": "DummyFactory",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      361
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-043",
+    "file": "gson/src/test/java/com/google/gson/GsonTest.java",
+    "line": 508,
+    "character": 24,
+    "name": "CustomClass2",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      622
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-044",
+    "file": "gson/src/test/java/com/google/gson/InnerClassExclusionStrategyTest.java",
+    "line": 40,
+    "character": 24,
+    "name": "excludeClass",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/Excluder.java",
+      198
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-045",
+    "file": "gson/src/test/java/com/google/gson/JsonArrayAsListTest.java",
+    "line": 106,
+    "character": 8,
+    "name": "assertThrows",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Assert"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-046",
+    "file": "gson/src/test/java/com/google/gson/JsonArrayAsListTest.java",
+    "line": 284,
+    "character": 6,
+    "name": "add",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonArray.java",
+      105
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-047",
+    "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+    "line": 393,
+    "character": 19,
+    "name": "add",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonArray.java",
+      105
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-048",
+    "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+    "line": 514,
+    "character": 18,
+    "name": "add",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonArray.java",
+      105
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-049",
+    "file": "gson/src/test/java/com/google/gson/JsonObjectAsMapTest.java",
+    "line": 128,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-050",
+    "file": "gson/src/test/java/com/google/gson/JsonObjectAsMapTest.java",
+    "line": 130,
+    "character": 19,
+    "name": "remove",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Map"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-051",
+    "file": "gson/src/test/java/com/google/gson/JsonObjectAsMapTest.java",
+    "line": 146,
+    "character": 19,
+    "name": "get",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Map"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-052",
+    "file": "gson/src/test/java/com/google/gson/JsonObjectAsMapTest.java",
+    "line": 146,
+    "character": 43,
+    "name": "JsonPrimitive",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+      57
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-053",
+    "file": "gson/src/test/java/com/google/gson/JsonObjectAsMapTest.java",
+    "line": 180,
+    "character": 17,
+    "name": "UnsupportedOperationException",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "UnsupportedOperationException"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-054",
+    "file": "gson/src/test/java/com/google/gson/JsonParserTest.java",
+    "line": 115,
+    "character": 28,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Subject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-055",
+    "file": "gson/src/test/java/com/google/gson/JsonPrimitiveTest.java",
+    "line": 88,
+    "character": 20,
+    "name": "getAsBigDecimal",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+      181
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-056",
+    "file": "gson/src/test/java/com/google/gson/JsonPrimitiveTest.java",
+    "line": 161,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-057",
+    "file": "gson/src/test/java/com/google/gson/JsonPrimitiveTest.java",
+    "line": 251,
+    "character": 35,
+    "name": "NaN",
+    "category": "member_access",
+    "expect": [
+     [
+      "external",
+      "Float"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-058",
+    "file": "gson/src/test/java/com/google/gson/MixedStreamTest.java",
+    "line": 142,
+    "character": 32,
+    "name": "JsonWriter",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+      230
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-059",
+    "file": "gson/src/test/java/com/google/gson/ObjectTypeAdapterTest.java",
+    "line": 106,
+    "character": 29,
+    "name": "Map",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "Map"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-060",
+    "file": "gson/src/test/java/com/google/gson/OverrideCoreTypeAdaptersTest.java",
+    "line": 73,
+    "character": 49,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Subject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-061",
+    "file": "gson/src/test/java/com/google/gson/ParameterizedTypeFixtures.java",
+    "line": 131,
+    "character": 57,
+    "name": "serialize",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonSerializationContext.java",
+      35
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-062",
+    "file": "gson/src/test/java/com/google/gson/TypeAdapterTest.java",
+    "line": 98,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-063",
+    "file": "gson/src/test/java/com/google/gson/common/MoreAsserts.java",
+    "line": 92,
+    "character": 32,
+    "name": "remove",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Set"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-064",
+    "file": "gson/src/test/java/com/google/gson/functional/ConcurrencyTest.java",
+    "line": 111,
+    "character": 41,
+    "name": "newFixedThreadPool",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Executors"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-065",
+    "file": "gson/src/test/java/com/google/gson/functional/CustomSerializerTest.java",
+    "line": 52,
+    "character": 85,
+    "name": "NAME",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/common/TestTypes.java",
+      82
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-066",
+    "file": "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+    "line": 399,
+    "character": 21,
+    "name": "contains",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "StringSubject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-067",
+    "file": "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+    "line": 195,
+    "character": 37,
+    "name": "URI",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "URI"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-068",
+    "file": "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+    "line": 349,
+    "character": 38,
+    "name": "getExpectedJson",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      800
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-069",
+    "file": "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+    "line": 477,
+    "character": 20,
+    "name": "GsonBuilder",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/GsonBuilder.java",
+      157
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-070",
+    "file": "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+    "line": 841,
+    "character": 23,
+    "name": "toJson",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      564
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-071",
+    "file": "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+    "line": 976,
+    "character": 12,
+    "name": "LocalDate",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "LocalDate"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-072",
+    "file": "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+    "line": 1082,
+    "character": 13,
+    "name": "map",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Stream"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-073",
+    "file": "gson/src/test/java/com/google/gson/functional/EscapingTest.java",
+    "line": 68,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-074",
+    "file": "gson/src/test/java/com/google/gson/functional/ExclusionStrategyFunctionalTest.java",
+    "line": 216,
+    "character": 29,
+    "name": "Foo",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/ExclusionStrategyFunctionalTest.java",
+      182
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-075",
+    "file": "gson/src/test/java/com/google/gson/functional/FormattingStyleTest.java",
+    "line": 66,
+    "character": 34,
+    "name": "setPrettyPrinting",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/GsonBuilder.java",
+      548
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-076",
+    "file": "gson/src/test/java/com/google/gson/functional/FormattingStyleTest.java",
+    "line": 110,
+    "character": 25,
+    "name": "createInput",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/FormattingStyleTest.java",
+      41
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-077",
+    "file": "gson/src/test/java/com/google/gson/functional/JavaUtilConcurrentAtomicTest.java",
+    "line": 85,
+    "character": 30,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Subject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-079",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+    "line": 715,
+    "character": 31,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Subject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-080",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+    "line": 767,
+    "character": 6,
+    "name": "Serializer",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      767
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-081",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+    "line": 281,
+    "character": 22,
+    "name": "part",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+      267
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-082",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+    "line": 479,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-083",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+    "line": 697,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-084",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+    "line": 730,
+    "character": 25,
+    "name": "List",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "List"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-085",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterSerializerDeserializerTest.java",
+    "line": 157,
+    "character": 20,
+    "name": "Gson",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      242
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-086",
+    "file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+    "line": 131,
+    "character": 19,
+    "name": "get",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Map"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-087",
+    "file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+    "line": 157,
+    "character": 25,
+    "name": "TypeToken",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      72
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-088",
+    "file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+    "line": 576,
+    "character": 26,
+    "name": "toJson",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      564
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-089",
+    "file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+    "line": 649,
+    "character": 15,
+    "name": "String",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "String"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-090",
+    "file": "gson/src/test/java/com/google/gson/functional/MoreSpecificTypeSerializationTest.java",
+    "line": 83,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-091",
+    "file": "gson/src/test/java/com/google/gson/functional/MoreSpecificTypeSerializationTest.java",
+    "line": 101,
+    "character": 51,
+    "name": "Sub",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/MoreSpecificTypeSerializationTest.java",
+      180
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-092",
+    "file": "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+    "line": 206,
+    "character": 3,
+    "name": "Test",
+    "category": "annotation",
+    "expect": [
+     [
+      "external",
+      "Test"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-093",
+    "file": "gson/src/test/java/com/google/gson/functional/NumberLimitsTest.java",
+    "line": 81,
+    "character": 19,
+    "name": "JsonPrimitive",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+      67
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-094",
+    "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+    "line": 253,
+    "character": 68,
+    "name": "fromJson",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      878
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-095",
+    "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+    "line": 260,
+    "character": 9,
+    "name": "Integer",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "Integer"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-096",
+    "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+    "line": 458,
+    "character": 21,
+    "name": "equal",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Objects"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-097",
+    "file": "gson/src/test/java/com/google/gson/functional/PrettyPrintingTest.java",
+    "line": 56,
+    "character": 23,
+    "name": "toJson",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      589
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-098",
+    "file": "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+    "line": 142,
+    "character": 9,
+    "name": "hasMessageThat",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "ThrowableSubject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-099",
+    "file": "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+    "line": 248,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-100",
+    "file": "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+    "line": 578,
+    "character": 20,
+    "name": "fromJson",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      849
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-101",
+    "file": "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+    "line": 760,
+    "character": 51,
+    "name": "String",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "String"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-102",
+    "file": "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+    "line": 944,
+    "character": 20,
+    "name": "fromJson",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      849
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-104",
+    "file": "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+    "line": 380,
+    "character": 36,
+    "name": "JsonWriter",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+      161
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-105",
+    "file": "gson/src/test/java/com/google/gson/functional/ReusedTypeVariablesFullyResolveTest.java",
+    "line": 43,
+    "character": 3,
+    "name": "SuppressWarnings",
+    "category": "annotation",
+    "expect": [
+     [
+      "external",
+      "SuppressWarnings"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-106",
+    "file": "gson/src/test/java/com/google/gson/functional/StreamingTypeAdaptersTest.java",
+    "line": 249,
+    "character": 50,
+    "name": "asList",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Arrays"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-107",
+    "file": "gson/src/test/java/com/google/gson/functional/TreeTypeAdaptersTest.java",
+    "line": 53,
+    "character": 15,
+    "name": "GsonBuilder",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/GsonBuilder.java",
+      157
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-108",
+    "file": "gson/src/test/java/com/google/gson/functional/TypeAdapterRuntimeTypeWrapperTest.java",
+    "line": 58,
+    "character": 3,
+    "name": "Test",
+    "category": "annotation",
+    "expect": [
+     [
+      "external",
+      "Test"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-109",
+    "file": "gson/src/test/java/com/google/gson/functional/TypeAdapterRuntimeTypeWrapperTest.java",
+    "line": 199,
+    "character": 23,
+    "name": "CyclicBase",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterRuntimeTypeWrapperTest.java",
+      178
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-110",
+    "file": "gson/src/test/java/com/google/gson/functional/TypeHierarchyAdapterTest.java",
+    "line": 129,
+    "character": 12,
+    "name": "userid",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeHierarchyAdapterTest.java",
+      209
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-111",
+    "file": "gson/src/test/java/com/google/gson/functional/TypeHierarchyAdapterTest.java",
+    "line": 166,
+    "character": 54,
+    "name": "userid",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeHierarchyAdapterTest.java",
+      209
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-112",
+    "file": "gson/src/test/java/com/google/gson/functional/TypeVariableTest.java",
+    "line": 116,
+    "character": 11,
+    "name": "someSField",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeVariableTest.java",
+      108
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-113",
+    "file": "gson/src/test/java/com/google/gson/functional/UncategorizedTest.java",
+    "line": 98,
+    "character": 52,
+    "name": "OP2",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/UncategorizedTest.java",
+      114
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-114",
+    "file": "gson/src/test/java/com/google/gson/functional/UncategorizedTest.java",
+    "line": 114,
+    "character": 4,
+    "name": "OP2",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/UncategorizedTest.java",
+      114
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-115",
+    "file": "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+    "line": 79,
+    "character": 35,
+    "name": "Version1_1",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+      190
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-116",
+    "file": "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+    "line": 171,
+    "character": 33,
+    "name": "SinceUntilMixing",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+      202
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-117",
+    "file": "gson/src/test/java/com/google/gson/integration/OSGiManifestIT.java",
+    "line": 128,
+    "character": 3,
+    "name": "Test",
+    "category": "annotation",
+    "expect": [
+     [
+      "external",
+      "Test"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-118",
+    "file": "gson/src/test/java/com/google/gson/internal/LinkedTreeMapTest.java",
+    "line": 246,
+    "character": 45,
+    "name": "iterator",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Set"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-119",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/DefaultDateTypeAdapterTest.java",
+    "line": 97,
+    "character": 45,
+    "name": "DateFormat",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "DateFormat"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-120",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/DefaultDateTypeAdapterTest.java",
+    "line": 97,
+    "character": 74,
+    "name": "SHORT",
+    "category": "member_access",
+    "expect": [
+     [
+      "external",
+      "DateFormat"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-121",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/DefaultDateTypeAdapterTest.java",
+    "line": 116,
+    "character": 24,
+    "name": "TimeZone",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "TimeZone"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-122",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/DefaultDateTypeAdapterTest.java",
+    "line": 122,
+    "character": 42,
+    "name": "createAdapterFactory",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/DefaultDateTypeAdapter.java",
+      106
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-123",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/Java17ReflectiveTypeAdapterFactoryTest.java",
+    "line": 63,
+    "character": 12,
+    "name": "GsonBuilder",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/GsonBuilder.java",
+      157
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-124",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+    "line": 140,
+    "character": 30,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Subject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-125",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+    "line": 267,
+    "character": 55,
+    "name": "JsonPrimitive",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonPrimitive.java",
+      57
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-126",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/JsonTreeReaderTest.java",
+    "line": 174,
+    "character": 32,
+    "name": "JsonObject",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/JsonObject.java",
+      44
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-127",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/JsonTreeWriterTest.java",
+    "line": 143,
+    "character": 18,
+    "name": "hasMessageThat",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "ThrowableSubject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-128",
+    "file": "gson/src/test/java/com/google/gson/internal/sql/SqlTypesGsonTest.java",
+    "line": 82,
+    "character": 24,
+    "name": "TimeZone",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "TimeZone"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-129",
+    "file": "gson/src/test/java/com/google/gson/reflect/TypeTokenTest.java",
+    "line": 54,
+    "character": 60,
+    "name": "String",
+    "category": "type_reference",
+    "expect": [
+     [
+      "external",
+      "String"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-130",
+    "file": "gson/src/test/java/com/google/gson/reflect/TypeTokenTest.java",
+    "line": 162,
+    "character": 84,
+    "name": "getType",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      165
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-131",
+    "file": "gson/src/test/java/com/google/gson/reflect/TypeTokenTest.java",
+    "line": 178,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-132",
+    "file": "gson/src/test/java/com/google/gson/reflect/TypeTokenTest.java",
+    "line": 452,
+    "character": 30,
+    "name": "assertThrows",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Assert"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-133",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+    "line": 128,
+    "character": 33,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Subject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-134",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+    "line": 144,
+    "character": 32,
+    "name": "peek",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      550
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-135",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+    "line": 348,
+    "character": 11,
+    "name": "beginArray",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      466
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-136",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 48,
+    "character": 28,
+    "name": "JsonReader",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      322
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-137",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 498,
+    "character": 58,
+    "name": "reader",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2456
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-138",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 879,
+    "character": 39,
+    "name": "reader",
+    "category": "call",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2456
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-139",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 1075,
+    "character": 30,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "Subject"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-140",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 1270,
+    "character": 4,
+    "name": "assertThat",
+    "category": "call",
+    "expect": [
+     [
+      "external",
+      "Truth"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-141",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 1524,
+    "character": 11,
+    "name": "setStrictness",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      410
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-142",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 1596,
+    "character": 23,
+    "name": "nextBoolean",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      1036
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-143",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 1645,
+    "character": 11,
+    "name": "setStrictness",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      410
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-144",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 1648,
+    "character": 22,
+    "name": "peek",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      550
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-145",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 1656,
+    "character": 11,
+    "name": "endArray",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      486
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-146",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 2214,
+    "character": 35,
+    "name": "BUFFER_SIZE",
+    "category": "member_access",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+      258
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-147",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 2422,
+    "character": 61,
+    "name": "length",
+    "category": "member_call",
+    "expect": [
+     [
+      "external",
+      "String"
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-148",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+    "line": 189,
+    "character": 32,
+    "name": "JsonWriter",
+    "category": "type_reference",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+      230
+     ]
+    ]
+   },
+   {
+    "id": "definition-java-149",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+    "line": 907,
+    "character": 11,
+    "name": "beginArray",
+    "category": "member_call",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+      406
+     ]
+    ]
+   }
+  ],
+  "references": [
+   {
+    "id": "references-java-000",
+    "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+    "line": 673,
+    "character": 21,
+    "name": "setDateFormat",
+    "category": "method",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      404
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      415
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      418
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      584
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      595
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      632
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      643
+     ]
+    ]
+   },
+   {
+    "id": "references-java-001",
+    "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+    "line": 921,
+    "character": 14,
+    "name": "create",
+    "category": "method",
+    "expect": [
+     [
+      "extras/src/test/java/com/google/gson/interceptors/InterceptorTest.java",
+      52
+     ],
+     [
+      "extras/src/test/java/com/google/gson/interceptors/InterceptorTest.java",
+      132
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/PostConstructAdapterFactoryTest.java",
+      33
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/PostConstructAdapterFactoryTest.java",
+      53
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactoryTest.java",
+      33
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactoryTest.java",
+      53
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactoryTest.java",
+      69
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactoryTest.java",
+      131
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactoryTest.java",
+      148
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactoryTest.java",
+      165
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactoryTest.java",
+      182
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactoryTest.java",
+      200
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/UtcDateTypeAdapterTest.java",
+      34
+     ],
+     [
+      "extras/src/test/java/com/google/gson/typeadapters/UtcDateTypeAdapterTest.java",
+      63
+     ],
+     [
+      "gson/src/main/java/com/google/gson/GsonBuilder.java",
+      155
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      55
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      57
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      61
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      74
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      103
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      106
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      155
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      169
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      189
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      221
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      233
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      245
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      289
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      339
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      370
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      372
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      376
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      389
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonBuilderTest.java",
+      391
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      59
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      82
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      119
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      133
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      150
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      214
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      308
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      394
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      448
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      477
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      517
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      520
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      565
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      595
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTest.java",
+      598
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTypeAdapterTest.java",
+      43
+     ],
+     [
+      "gson/src/test/java/com/google/gson/GsonTypeAdapterTest.java",
+      165
+     ],
+     [
+      "gson/src/test/java/com/google/gson/LongSerializationPolicyTest.java",
+      44
+     ],
+     [
+      "gson/src/test/java/com/google/gson/LongSerializationPolicyTest.java",
+      54
+     ],
+     [
+      "gson/src/test/java/com/google/gson/LongSerializationPolicyTest.java",
+      72
+     ],
+     [
+      "gson/src/test/java/com/google/gson/LongSerializationPolicyTest.java",
+      82
+     ],
+     [
+      "gson/src/test/java/com/google/gson/MixedStreamTest.java",
+      200
+     ],
+     [
+      "gson/src/test/java/com/google/gson/MixedStreamTest.java",
+      215
+     ],
+     [
+      "gson/src/test/java/com/google/gson/ObjectTypeAdapterTest.java",
+      31
+     ],
+     [
+      "gson/src/test/java/com/google/gson/OverrideCoreTypeAdaptersTest.java",
+      61
+     ],
+     [
+      "gson/src/test/java/com/google/gson/OverrideCoreTypeAdaptersTest.java",
+      71
+     ],
+     [
+      "gson/src/test/java/com/google/gson/OverrideCoreTypeAdaptersTest.java",
+      81
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ArrayTest.java",
+      119
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CircularReferenceTest.java",
+      97
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CollectionTest.java",
+      225
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CollectionTest.java",
+      417
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+      50
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+      131
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+      170
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+      182
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+      194
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomDeserializerTest.java",
+      207
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomSerializerTest.java",
+      48
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomSerializerTest.java",
+      61
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomSerializerTest.java",
+      74
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomSerializerTest.java",
+      86
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomSerializerTest.java",
+      99
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      72
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      90
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      128
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      144
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      162
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      183
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      203
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      241
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      253
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      272
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      293
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      349
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      364
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      378
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      393
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      408
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      422
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      436
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      447
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+      458
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      121
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      137
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      365
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      375
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      469
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      477
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      486
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      498
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      516
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      534
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      565
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      595
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      616
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      619
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      632
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      643
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      661
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      677
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+      1017
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/DelegateTypeAdapterTest.java",
+      46
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/EnumTest.java",
+      144
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/EscapingTest.java",
+      78
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/EscapingTest.java",
+      79
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ExclusionStrategyFunctionalTest.java",
+      130
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ExclusionStrategyFunctionalTest.java",
+      139
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ExclusionStrategyFunctionalTest.java",
+      152
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ExclusionStrategyFunctionalTest.java",
+      163
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ExclusionStrategyFunctionalTest.java",
+      177
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ExposeFieldsTest.java",
+      44
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/FieldExclusionTest.java",
+      49
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/FieldExclusionTest.java",
+      57
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/FieldExclusionTest.java",
+      70
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/FieldNamingTest.java",
+      94
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/FormattingStyleTest.java",
+      66
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/FormattingStyleTest.java",
+      82
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/FormattingStyleTest.java",
+      96
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/GsonVersionDiagnosticsTest.java",
+      58
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/InstanceCreatorTest.java",
+      47
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/InstanceCreatorTest.java",
+      58
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/InstanceCreatorTest.java",
+      74
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/InstanceCreatorTest.java",
+      88
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/InstanceCreatorTest.java",
+      99
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/Java17RecordTest.java",
+      270
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/Java17RecordTest.java",
+      316
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/Java17RecordTest.java",
+      338
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/Java17RecordTest.java",
+      436
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JavaUtilConcurrentAtomicTest.java",
+      72
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JavaUtilConcurrentAtomicTest.java",
+      104
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JdkOptionalTest.java",
+      55
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JdkOptionalTest.java",
+      99
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JdkOptionalTest.java",
+      169
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JdkOptionalTest.java",
+      192
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      90
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      100
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      111
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      504
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      534
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      576
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      624
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      751
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+      67
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+      91
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+      427
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+      464
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+      505
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterSerializerDeserializerTest.java",
+      223
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/LeniencyTest.java",
+      35
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      39
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      64
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      76
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      86
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      101
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      113
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      123
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      135
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      145
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      159
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+      186
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      136
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      193
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      368
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      390
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      440
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      464
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      560
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      563
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      568
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      570
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      592
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      622
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      626
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/MapTest.java",
+      643
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      49
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      60
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      68
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      79
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      90
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      98
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      107
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      119
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      127
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      135
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      144
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      159
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      176
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      188
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      197
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      209
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      217
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      257
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      280
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NamingPolicyTest.java",
+      303
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      51
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      61
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      68
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      77
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      84
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      93
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      102
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      110
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      118
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      127
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      137
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      141
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      149
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      153
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      232
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+      247
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      204
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      389
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      405
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      417
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      433
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      480
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      597
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      668
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      695
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+      75
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+      119
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+      139
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+      171
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrettyPrintingTest.java",
+      45
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      189
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      544
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      570
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      608
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      640
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      678
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      710
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      729
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      743
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+      772
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/PrintFormattingTest.java",
+      71
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReadersWritersTest.java",
+      86
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReadersWritersTest.java",
+      94
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      64
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      87
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      109
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      128
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      143
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      174
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      226
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      265
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      294
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      316
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      353
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      384
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      400
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      429
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      459
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      479
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      499
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessTest.java",
+      103
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReusedTypeVariablesFullyResolveTest.java",
+      39
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/SecurityTest.java",
+      44
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/SecurityTest.java",
+      55
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/SecurityTest.java",
+      62
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/SecurityTest.java",
+      73
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/SecurityTest.java",
+      88
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/StreamingTypeAdaptersTest.java",
+      42
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/StreamingTypeAdaptersTest.java",
+      132
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/StreamingTypeAdaptersTest.java",
+      196
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/StreamingTypeAdaptersTest.java",
+      214
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ToNumberPolicyFunctionalTest.java",
+      50
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ToNumberPolicyFunctionalTest.java",
+      63
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ToNumberPolicyFunctionalTest.java",
+      76
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ToNumberPolicyFunctionalTest.java",
+      91
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ToNumberPolicyFunctionalTest.java",
+      109
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ToNumberPolicyFunctionalTest.java",
+      130
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TreeTypeAdaptersTest.java",
+      53
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterPrecedenceTest.java",
+      44
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterPrecedenceTest.java",
+      55
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterPrecedenceTest.java",
+      67
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterPrecedenceTest.java",
+      79
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterPrecedenceTest.java",
+      91
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterPrecedenceTest.java",
+      103
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterPrecedenceTest.java",
+      115
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterPrecedenceTest.java",
+      128
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterRuntimeTypeWrapperTest.java",
+      65
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterRuntimeTypeWrapperTest.java",
+      77
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterRuntimeTypeWrapperTest.java",
+      107
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterRuntimeTypeWrapperTest.java",
+      125
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterRuntimeTypeWrapperTest.java",
+      146
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeAdapterRuntimeTypeWrapperTest.java",
+      172
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeHierarchyAdapterTest.java",
+      60
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeHierarchyAdapterTest.java",
+      126
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TypeHierarchyAdapterTest.java",
+      144
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/UncategorizedTest.java",
+      89
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+      39
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/DefaultDateTypeAdapterTest.java",
+      202
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/Java17ReflectiveTypeAdapterFactoryTest.java",
+      66
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/sql/SqlTypesGsonTest.java",
+      87
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/sql/SqlTypesGsonTest.java",
+      138
+     ],
+     [
+      "metrics/src/main/java/com/google/gson/metrics/ParseBenchmark.java",
+      280
+     ],
+     [
+      "metrics/src/main/java/com/google/gson/metrics/SerializationBenchmark.java",
+      41
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/LegacyProtoTypeAdapterFactoryTest.java",
+      65
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/LegacyProtoTypeAdapterFactoryTest.java",
+      409
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/LegacyProtoTypeAdapterFactoryTest.java",
+      440
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithAnnotationsAndJsonNamesTest.java",
+      39
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithAnnotationsAndJsonNamesTest.java",
+      48
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithAnnotationsAndJsonNamesTest.java",
+      54
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithAnnotationsAndJsonNamesTest.java",
+      63
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithAnnotationsTest.java",
+      54
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithAnnotationsTest.java",
+      60
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithAnnotationsTest.java",
+      69
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithComplexAndRepeatedFieldsTest.java",
+      50
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithComplexAndRepeatedFieldsTest.java",
+      59
+     ],
+     [
+      "proto/src/test/java/com/google/gson/protobuf/functional/ProtosWithPrimitiveTypesTest.java",
+      40
+     ],
+     [
+      "test-graal-native-image/src/test/java/com/google/gson/native_test/Java17RecordReflectionTest.java",
+      174
+     ],
+     [
+      "test-graal-native-image/src/test/java/com/google/gson/native_test/ReflectionTest.java",
+      109
+     ],
+     [
+      "test-graal-native-image/src/test/java/com/google/gson/native_test/ReflectionTest.java",
+      246
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      63
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      96
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      110
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      126
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      150
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      168
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      192
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      208
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      228
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      237
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      249
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      255
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      263
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/NoSerializedNameMain.java",
+      46
+     ]
+    ]
+   },
+   {
+    "id": "references-java-002",
+    "file": "gson/src/main/java/com/google/gson/annotations/Since.java",
+    "line": 58,
+    "character": 18,
+    "name": "Since",
+    "category": "interface",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      229
+     ],
+     [
+      "gson/src/main/java/com/google/gson/GsonBuilder.java",
+      20
+     ],
+     [
+      "gson/src/main/java/com/google/gson/GsonBuilder.java",
+      190
+     ],
+     [
+      "gson/src/main/java/com/google/gson/GsonBuilder.java",
+      200
+     ],
+     [
+      "gson/src/main/java/com/google/gson/annotations/Until.java",
+      56
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/Excluder.java",
+      24
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/Excluder.java",
+      39
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/Excluder.java",
+      172
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/Excluder.java",
+      200
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/Excluder.java",
+      239
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/Excluder.java",
+      243
+     ],
+     [
+      "gson/src/test/java/com/google/gson/VersionExclusionStrategyTest.java",
+      21
+     ],
+     [
+      "gson/src/test/java/com/google/gson/VersionExclusionStrategyTest.java",
+      95
+     ],
+     [
+      "gson/src/test/java/com/google/gson/VersionExclusionStrategyTest.java",
+      98
+     ],
+     [
+      "gson/src/test/java/com/google/gson/VersionExclusionStrategyTest.java",
+      111
+     ],
+     [
+      "gson/src/test/java/com/google/gson/VersionExclusionStrategyTest.java",
+      115
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+      21
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+      185
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+      191
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+      196
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/VersioningTest.java",
+      205
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/ClassWithVersionAnnotations.java",
+      2
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/ClassWithVersionAnnotations.java",
+      5
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/ClassWithVersionAnnotations.java",
+      7
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/ClassWithVersionAnnotations.java",
+      13
+     ]
+    ]
+   },
+   {
+    "id": "references-java-003",
+    "file": "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+    "line": 536,
+    "character": 18,
+    "name": "getActualTypeArguments",
+    "category": "method",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/ConstructorConstructor.java",
+      181
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/ConstructorConstructor.java",
+      199
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+      111
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+      191
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+      314
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+      337
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+      398
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/GsonTypes.java",
+      465
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JdkOptionalTypeAdapters.java",
+      53
+     ],
+     [
+      "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      99
+     ],
+     [
+      "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      139
+     ],
+     [
+      "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      263
+     ],
+     [
+      "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      299
+     ],
+     [
+      "gson/src/main/java/com/google/gson/reflect/TypeToken.java",
+      300
+     ],
+     [
+      "gson/src/test/java/com/google/gson/ParameterizedTypeFixtures.java",
+      140
+     ],
+     [
+      "gson/src/test/java/com/google/gson/ParameterizedTypeTest.java",
+      46
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      196
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/TreeTypeAdaptersTest.java",
+      110
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/GsonTypesTest.java",
+      48
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/GsonTypesTest.java",
+      65
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/GsonTypesTest.java",
+      73
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/GsonTypesTest.java",
+      106
+     ],
+     [
+      "gson/src/test/java/com/google/gson/reflect/TypeTokenTest.java",
+      88
+     ],
+     [
+      "gson/src/test/java/com/google/gson/reflect/TypeTokenTest.java",
+      167
+     ],
+     [
+      "gson/src/test/java/com/google/gson/reflect/TypeTokenTest.java",
+      446
+     ]
+    ]
+   },
+   {
+    "id": "references-java-004",
+    "file": "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+    "line": 551,
+    "character": 25,
+    "name": "LinkedTreeMapIterator",
+    "category": "class",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+      597
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/LinkedTreeMap.java",
+      638
+     ]
+    ]
+   },
+   {
+    "id": "references-java-005",
+    "file": "gson/src/main/java/com/google/gson/internal/Primitives.java",
+    "line": 63,
+    "character": 29,
+    "name": "wrap",
+    "category": "method",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      1103
+     ],
+     [
+      "gson/src/test/java/com/google/gson/ParameterizedTypeFixtures.java",
+      54
+     ],
+     [
+      "gson/src/test/java/com/google/gson/PrimitiveTypeAdapter.java",
+      33
+     ]
+    ]
+   },
+   {
+    "id": "references-java-006",
+    "file": "gson/src/main/java/com/google/gson/internal/Streams.java",
+    "line": 160,
+    "character": 20,
+    "name": "toString",
+    "category": "method",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/ParameterizedTypeFixtures.java",
+      55
+     ],
+     [
+      "gson/src/test/java/com/google/gson/ParameterizedTypeFixtures.java",
+      57
+     ],
+     [
+      "gson/src/test/java/com/google/gson/PrimitiveTypeAdapter.java",
+      36
+     ],
+     [
+      "gson/src/test/java/com/google/gson/PrimitiveTypeAdapter.java",
+      38
+     ],
+     [
+      "gson/src/test/java/com/google/gson/PrimitiveTypeAdapter.java",
+      45
+     ],
+     [
+      "gson/src/test/java/com/google/gson/PrimitiveTypeAdapter.java",
+      54
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ArrayTest.java",
+      206
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/InheritanceTest.java",
+      289
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReadersWritersTest.java",
+      187
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+      528
+     ],
+     [
+      "proto/src/main/java/com/google/gson/protobuf/LegacyProtoTypeAdapterFactory.java",
+      575
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/Main.java",
+      75
+     ]
+    ]
+   },
+   {
+    "id": "references-java-007",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+    "line": 69,
+    "character": 29,
+    "name": "getAnnotation",
+    "category": "method",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+      78
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JsonAdapterAnnotationTypeAdapterFactory.java",
+      193
+     ]
+    ]
+   },
+   {
+    "id": "references-java-008",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+    "line": 76,
+    "character": 21,
+    "name": "read",
+    "category": "method",
+    "expect": [
+     [
+      "extras/src/main/java/com/google/gson/interceptors/InterceptorFactory.java",
+      60
+     ],
+     [
+      "extras/src/main/java/com/google/gson/typeadapters/PostConstructAdapterFactory.java",
+      58
+     ],
+     [
+      "extras/src/main/java/com/google/gson/typeadapters/RuntimeTypeAdapterFactory.java",
+      266
+     ],
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      141
+     ],
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      1102
+     ],
+     [
+      "gson/src/main/java/com/google/gson/Gson.java",
+      1268
+     ],
+     [
+      "gson/src/main/java/com/google/gson/TypeAdapter.java",
+      212
+     ],
+     [
+      "gson/src/main/java/com/google/gson/TypeAdapter.java",
+      244
+     ],
+     [
+      "gson/src/main/java/com/google/gson/TypeAdapter.java",
+      314
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/Excluder.java",
+      133
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/Streams.java",
+      47
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/ArrayTypeAdapter.java",
+      74
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/CollectionTypeAdapterFactory.java",
+      83
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      125
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      128
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      178
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      181
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      219
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      222
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      354
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      357
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      360
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JdkOptionalTypeAdapters.java",
+      87
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+      188
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+      193
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+      202
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+      207
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+      277
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+      291
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/TreeTypeAdapter.java",
+      88
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/TypeAdapterRuntimeTypeWrapper.java",
+      40
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+      313
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+      383
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+      1092
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/sql/SqlTimestampTypeAdapter.java",
+      52
+     ],
+     [
+      "gson/src/test/java/com/google/gson/ObjectTypeAdapterTest.java",
+      79
+     ],
+     [
+      "gson/src/test/java/com/google/gson/ObjectTypeAdapterTest.java",
+      102
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+      578
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+      625
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+      675
+     ],
+     [
+      "proto/src/main/java/com/google/gson/protobuf/LegacyProtoTypeAdapterFactory.java",
+      294
+     ],
+     [
+      "proto/src/main/java/com/google/gson/protobuf/LegacyProtoTypeAdapterFactory.java",
+      344
+     ],
+     [
+      "proto/src/main/java/com/google/gson/protobuf/LegacyProtoTypeAdapterFactory.java",
+      376
+     ],
+     [
+      "proto/src/main/java/com/google/gson/protobuf/LegacyProtoTypeAdapterFactory.java",
+      381
+     ]
+    ]
+   },
+   {
+    "id": "references-java-009",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+    "line": 106,
+    "character": 14,
+    "name": "endObject",
+    "category": "method",
+    "expect": [
+     [
+      "extras/src/test/java/com/google/gson/interceptors/InterceptorTest.java",
+      127
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      135
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      188
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      229
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      312
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JavaTimeTypeAdapters.java",
+      367
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JdkOptionalTypeAdapters.java",
+      92
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JdkOptionalTypeAdapters.java",
+      129
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JdkOptionalTypeAdapters.java",
+      164
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JdkOptionalTypeAdapters.java",
+      199
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+      125
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+      341
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+      210
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/ObjectTypeAdapter.java",
+      156
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/ReflectiveTypeAdapterFactory.java",
+      548
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+      878
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      316
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+      162
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+      195
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+      200
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+      201
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+      202
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+      210
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+      242
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+      272
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonElementReaderTest.java",
+      278
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonTreeReaderTest.java",
+      80
+     ],
+     [
+      "gson/src/test/java/com/google/gson/internal/bind/JsonTreeReaderTest.java",
+      111
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      83
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      98
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      147
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      316
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      322
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      328
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      389
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      404
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      407
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      425
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      443
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      459
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+      482
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      273
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      282
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      290
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      303
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      317
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      339
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      361
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      405
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      417
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      425
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      467
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      1176
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      1265
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      1271
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      1580
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      1862
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      1901
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2107
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2267
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2327
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2337
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2418
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2420
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2437
+     ],
+     [
+      "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+      2451
+     ],
+     [
+      "metrics/src/main/java/com/google/gson/metrics/BagOfPrimitivesDeserializationBenchmark.java",
+      83
+     ],
+     [
+      "metrics/src/main/java/com/google/gson/metrics/BagOfPrimitivesDeserializationBenchmark.java",
+      118
+     ],
+     [
+      "metrics/src/main/java/com/google/gson/metrics/CollectionsDeserializationBenchmark.java",
+      95
+     ],
+     [
+      "metrics/src/main/java/com/google/gson/metrics/CollectionsDeserializationBenchmark.java",
+      136
+     ],
+     [
+      "metrics/src/main/java/com/google/gson/metrics/ParseBenchmark.java",
+      192
+     ],
+     [
+      "proto/src/main/java/com/google/gson/protobuf/LegacyProtoTypeAdapterFactory.java",
+      234
+     ],
+     [
+      "proto/src/main/java/com/google/gson/protobuf/LegacyProtoTypeAdapterFactory.java",
+      405
+     ],
+     [
+      "test-shrinker/src/main/java/com/example/ClassWithAdapter.java",
+      19
+     ]
+    ]
+   },
+   {
+    "id": "references-java-010",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+    "line": 154,
+    "character": 25,
+    "name": "getKeyAdapter",
+    "category": "method",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/bind/MapTypeAdapterFactory.java",
+      136
+     ]
+    ]
+   },
+   {
+    "id": "references-java-011",
+    "file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+    "line": 132,
+    "character": 22,
+    "name": "appendExecutableParameters",
+    "category": "method",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+      98
+     ],
+     [
+      "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+      125
+     ]
+    ]
+   },
+   {
+    "id": "references-java-012",
+    "file": "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+    "line": 223,
+    "character": 21,
+    "name": "isRecord",
+    "category": "method",
+    "expect": [
+     [
+      "gson/src/main/java/com/google/gson/internal/reflect/ReflectionHelper.java",
+      182
+     ]
+    ]
+   },
+   {
+    "id": "references-java-018",
+    "file": "gson/src/test/java/com/google/gson/common/TestTypes.java",
+    "line": 374,
+    "character": 22,
+    "name": "ClassWithArray",
+    "category": "class",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      36
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      303
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      304
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      316
+     ]
+    ]
+   },
+   {
+    "id": "references-java-022",
+    "file": "gson/src/test/java/com/google/gson/functional/InheritanceTest.java",
+    "line": 225,
+    "character": 12,
+    "name": "listContains",
+    "category": "method",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/InheritanceTest.java",
+      205
+     ]
+    ]
+   },
+   {
+    "id": "references-java-028",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+    "line": 787,
+    "character": 23,
+    "name": "CreatedByJdkUnsafe",
+    "category": "class",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      782
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      786
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      788
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+      800
+     ]
+    ]
+   },
+   {
+    "id": "references-java-031",
+    "file": "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+    "line": 723,
+    "character": 15,
+    "name": "ClassWithStaticFinalField",
+    "category": "class",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      673
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      709
+     ]
+    ]
+   },
+   {
+    "id": "references-java-032",
+    "file": "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+    "line": 742,
+    "character": 15,
+    "name": "ClassWithThrowingConstructor",
+    "category": "class",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      732
+     ],
+     [
+      "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+      739
+     ]
+    ]
+   },
+   {
+    "id": "references-java-036",
+    "file": "gson/src/test/java/com/google/gson/internal/LinkedTreeMapTest.java",
+    "line": 35,
+    "character": 19,
+    "name": "LinkedTreeMapTest",
+    "category": "class",
+    "expect": [
+     [
+      "gson/src/test/java/com/google/gson/internal/LinkedTreeMapSuiteTest.java",
+      20
+     ]
+    ]
+   }
+  ],
+  "completion": [
+   {
+    "id": "completion-java-000",
+    "file": "gson/src/main/java/com/google/gson/FieldNamingPolicy.java",
+    "line": 74,
+    "character": 54,
+    "name": "getName",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-002",
+    "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+    "line": 1049,
+    "character": 51,
+    "name": "isEmpty",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-003",
+    "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+    "line": 1071,
+    "character": 14,
+    "name": "add",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-007",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/JdkOptionalTypeAdapters.java",
+    "line": 174,
+    "character": 26,
+    "name": "orElse",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-009",
+    "file": "gson/src/main/java/com/google/gson/internal/bind/TreeTypeAdapter.java",
+    "line": 72,
+    "character": 9,
+    "name": "skipPastForGetDelegateAdapter",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-010",
+    "file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+    "line": 165,
+    "character": 14,
+    "name": "compile",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-011",
+    "file": "gson/src/test/java/com/google/gson/FieldNamingPolicyTest.java",
+    "line": 99,
+    "character": 11,
+    "name": "doesNotMatch",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-012",
+    "file": "gson/src/test/java/com/google/gson/GsonTest.java",
+    "line": 278,
+    "character": 40,
+    "name": "getRawType",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-014",
+    "file": "gson/src/test/java/com/google/gson/GsonTest.java",
+    "line": 433,
+    "character": 15,
+    "name": "close",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-015",
+    "file": "gson/src/test/java/com/google/gson/GsonTest.java",
+    "line": 534,
+    "character": 54,
+    "name": "NO_ARG_CONSTRUCTOR_VALUE",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-017",
+    "file": "gson/src/test/java/com/google/gson/InnerClassExclusionStrategyTest.java",
+    "line": 62,
+    "character": 25,
+    "name": "getField",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-018",
+    "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+    "line": 57,
+    "character": 19,
+    "name": "INSTANCE",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-019",
+    "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+    "line": 109,
+    "character": 13,
+    "name": "add",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-022",
+    "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+    "line": 225,
+    "character": 14,
+    "name": "add",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-023",
+    "file": "gson/src/test/java/com/google/gson/JsonObjectAsMapSuiteTest.java",
+    "line": 75,
+    "character": 27,
+    "name": "ANY",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-025",
+    "file": "gson/src/test/java/com/google/gson/JsonObjectTest.java",
+    "line": 284,
+    "character": 6,
+    "name": "addProperty",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-027",
+    "file": "gson/src/test/java/com/google/gson/ObjectTypeAdapterTest.java",
+    "line": 76,
+    "character": 39,
+    "name": "MAX_VALUE",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-028",
+    "file": "gson/src/test/java/com/google/gson/functional/CircularReferenceTest.java",
+    "line": 71,
+    "character": 9,
+    "name": "children",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-029",
+    "file": "gson/src/test/java/com/google/gson/functional/CollectionTest.java",
+    "line": 129,
+    "character": 21,
+    "name": "contains",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-030",
+    "file": "gson/src/test/java/com/google/gson/functional/CollectionTest.java",
+    "line": 299,
+    "character": 38,
+    "name": "getExpectedJson",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-031",
+    "file": "gson/src/test/java/com/google/gson/functional/ConcurrencyTest.java",
+    "line": 92,
+    "character": 30,
+    "name": "countDown",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-033",
+    "file": "gson/src/test/java/com/google/gson/functional/CustomSerializerTest.java",
+    "line": 64,
+    "character": 39,
+    "name": "getAsJsonObject",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-035",
+    "file": "gson/src/test/java/com/google/gson/functional/CustomTypeAdaptersTest.java",
+    "line": 253,
+    "character": 13,
+    "name": "create",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-038",
+    "file": "gson/src/test/java/com/google/gson/functional/DefaultTypeAdaptersTest.java",
+    "line": 876,
+    "character": 20,
+    "name": "fromJson",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-039",
+    "file": "gson/src/test/java/com/google/gson/functional/EnumTest.java",
+    "line": 89,
+    "character": 46,
+    "name": "VALUE2",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-041",
+    "file": "gson/src/test/java/com/google/gson/functional/Java17RecordTest.java",
+    "line": 63,
+    "character": 20,
+    "name": "fromJson",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-043",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+    "line": 61,
+    "character": 24,
+    "name": "part",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-044",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+    "line": 201,
+    "character": 11,
+    "name": "user",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-045",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+    "line": 510,
+    "character": 8,
+    "name": "f3",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-046",
+    "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+    "line": 598,
+    "character": 19,
+    "name": "fromJson",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-048",
+    "file": "gson/src/test/java/com/google/gson/functional/MapAsArrayTypeAdapterTest.java",
+    "line": 128,
+    "character": 46,
+    "name": "next",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-050",
+    "file": "gson/src/test/java/com/google/gson/functional/MoreSpecificTypeSerializationTest.java",
+    "line": 83,
+    "character": 21,
+    "name": "contains",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-051",
+    "file": "gson/src/test/java/com/google/gson/functional/MoreSpecificTypeSerializationTest.java",
+    "line": 95,
+    "character": 40,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-053",
+    "file": "gson/src/test/java/com/google/gson/functional/NullObjectAndFieldTest.java",
+    "line": 153,
+    "character": 40,
+    "name": "create",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-055",
+    "file": "gson/src/test/java/com/google/gson/functional/ObjectTest.java",
+    "line": 112,
+    "character": 22,
+    "name": "getExpectedJson",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-056",
+    "file": "gson/src/test/java/com/google/gson/functional/ReadersWritersTest.java",
+    "line": 67,
+    "character": 23,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-057",
+    "file": "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+    "line": 128,
+    "character": 26,
+    "name": "addReflectionAccessFilter",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-058",
+    "file": "gson/src/test/java/com/google/gson/functional/ReflectionAccessFilterTest.java",
+    "line": 313,
+    "character": 40,
+    "name": "BLOCK_INACCESSIBLE",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-059",
+    "file": "gson/src/test/java/com/google/gson/functional/SecurityTest.java",
+    "line": 56,
+    "character": 34,
+    "name": "fromJson",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-062",
+    "file": "gson/src/test/java/com/google/gson/functional/TreeTypeAdaptersTest.java",
+    "line": 65,
+    "character": 55,
+    "name": "getValue",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-063",
+    "file": "gson/src/test/java/com/google/gson/functional/TreeTypeAdaptersTest.java",
+    "line": 67,
+    "character": 21,
+    "name": "contains",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-064",
+    "file": "gson/src/test/java/com/google/gson/functional/TypeHierarchyAdapterTest.java",
+    "line": 109,
+    "character": 52,
+    "name": "ceo",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-065",
+    "file": "gson/src/test/java/com/google/gson/functional/UncategorizedTest.java",
+    "line": 63,
+    "character": 9,
+    "name": "ref",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-066",
+    "file": "gson/src/test/java/com/google/gson/internal/StreamsTest.java",
+    "line": 87,
+    "character": 11,
+    "name": "append",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-070",
+    "file": "gson/src/test/java/com/google/gson/internal/bind/JsonTreeReaderTest.java",
+    "line": 145,
+    "character": 18,
+    "name": "hasMessageThat",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-074",
+    "file": "gson/src/test/java/com/google/gson/reflect/TypeTokenTest.java",
+    "line": 165,
+    "character": 39,
+    "name": "getOwnerType",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-075",
+    "file": "gson/src/test/java/com/google/gson/reflect/TypeTokenTest.java",
+    "line": 166,
+    "character": 53,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-078",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+    "line": 274,
+    "character": 27,
+    "name": "nextName",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-080",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+    "line": 360,
+    "character": 11,
+    "name": "endArray",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-081",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderPathTest.java",
+    "line": 374,
+    "character": 11,
+    "name": "beginObject",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-083",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 148,
+    "character": 36,
+    "name": "STRICT",
+    "category": "member_access",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-086",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 357,
+    "character": 30,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-089",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 1065,
+    "character": 30,
+    "name": "isEqualTo",
+    "category": "member_call",
+    "expect_rank_within": 10
+   },
+   {
+    "id": "completion-java-093",
+    "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+    "line": 1953,
+    "character": 36,
+    "name": "LENIENT",
+    "category": "member_access",
+    "expect_rank_within": 10
+   }
+  ]
+ },
+ "baselines": {
+  "jdtls": {
+   "definition": 147,
+   "references": 19,
+   "completion": 54
+  },
+  "kmp-lsp": {
+   "definition": 136,
+   "references": 5,
+   "completion": 34
+  }
+ }
+}

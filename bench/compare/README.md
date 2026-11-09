@@ -157,6 +157,60 @@ Notes from running it:
   kotlin-server has expired" needs replacing with a newer one.
 - Results of a run: `results/moshi-2026-11-06.md`.
 
+## Integration test: pass/fail, not a comparison
+
+`compare.sh` answers "how does kmp-lsp compare"; `itest.sh` answers "did
+anything break". It grades a run against a *committed fixture* of expected
+answers instead of against another server's live run:
+
+```sh
+JDTLS=/path/to/jdtls JAVA=/path/to/java25 BUILD_JDK=/path/to/jdk21 \
+  bench/compare/itest.sh                       # target → jdtls → kmp-lsp → grade
+```
+
+- Target: `targets/gson.json` — [google/gson](https://github.com/google/gson)
+  pinned at a commit. Java only (no Kotlin file at all, so jdtls owns every
+  query), 211 source files, a Maven build that compiles in well under a
+  minute, and the Java shapes that break resolvers: generic types
+  (`TypeToken<T>`, `TypeAdapter<T>`), heavy overload sets (`Gson.fromJson`,
+  `JsonWriter.value`), anonymous and nested classes, enums, annotations,
+  static imports (`assertThat`), varargs, reflection (`Field`,
+  `Constructor`) and JDK types throughout.
+- Fixture: `cases/gson-java.json`, generated with `--generate` from jdtls's
+  own answers — only the queries jdtls got right become cases, so **jdtls
+  passes 100% by construction** and regenerating can only shrink the set.
+  147 definition, 19 references, 54 completion cases.
+- Grading: *definition* — same target (file, line), with a compiled class
+  accepted against that class's source file; *references* — the in-repo
+  usage set must match exactly; *completion* — the deleted member must rank
+  within the top 10. Every failure prints like a test runner's: the query's
+  file, line and column, the source line it sits on, what was expected
+  there and what the server answered instead (for references: which usages
+  are missing and which are extra; for completion: the rank and the top of
+  the list). `--failures N` sets how many per feature are shown.
+- Every server is held to a baseline recorded in the fixture and the script
+  exits non-zero below it: a ratchet, like `tests/architecture_ratchet.rs`.
+  Raise a baseline with `--update-baseline` when a fix lands; never lower
+  one without saying why.
+- The recorded baseline is the score from an **empty state directory and a
+  dependency cache holding only what the target's own build downloaded** —
+  what CI reproduces. A state that has been run against for a while scores
+  higher (more library sources jars have arrived: `assertThat(..).contains`
+  and `hasMessageThat` resolve, `getActualTypeArguments` finds its usages),
+  so record a baseline from a fresh `--workdir`, not from the directory you
+  have been iterating in.
+
+kmp-lsp's state directory is primed with one throw-away run first: on an
+empty state it indexes dependency jars in the background without reporting
+progress, so the very first questions are asked before their answers exist.
+
+`itest_selfcheck.py` checks the gate itself on a synthetic result: that a
+score below baseline exits non-zero and that a failure names both locations.
+
+Adding a target: a `targets/<name>.json` with `roots`, `sample`, `probes`
+(known cross-file definitions that mark the server ready) and `build`, then
+`itest.sh --target <name> --generate`.
+
 ## Caveats
 
 - The definition/references reference is a compiler-backed *server*, not the
