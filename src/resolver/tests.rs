@@ -2885,6 +2885,38 @@ fn rg_pattern_no_false_positive_on_usage() {
 }
 
 #[test]
+fn rg_pattern_skips_an_extension_receiver_named_like_the_symbol() {
+    if !rg_available() {
+        eprintln!("skipping: rg not available");
+        return;
+    }
+    let string = build_rg_pattern("String");
+    assert!(!rg_matches(
+        &string,
+        "internal fun String.parseIsoDate(): Date {"
+    ));
+    assert!(!rg_matches(
+        &string,
+        "private val String.isBlankish: Boolean"
+    ));
+    let list = build_rg_pattern("List");
+    assert!(!rg_matches(&list, "fun List<Int>.second(): Int = this[1]"));
+    // A real declaration of the name still matches, as does an extension
+    // function's own name.
+    assert!(rg_matches(
+        &build_rg_pattern("parseIsoDate"),
+        "internal fun String.parseIsoDate(): Date {"
+    ));
+    assert!(rg_matches(&build_rg_pattern("load"), "fun load(id: Int) {"));
+    assert!(rg_matches(&build_rg_pattern("count"), "val count: Int = 0"));
+    assert!(rg_matches(&build_rg_pattern("count"), "var count"));
+    assert!(rg_matches(
+        &build_rg_pattern("Box"),
+        "class Box<T>(val value: T)"
+    ));
+}
+
+#[test]
 fn rg_pattern_matches_java_class() {
     if !rg_available() {
         eprintln!("skipping: rg not available");

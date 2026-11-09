@@ -25,6 +25,7 @@ more precise (superclass hierarchy, cross-file resolution) as indexing completes
 | `workspace/symbol` | Fuzzy substring search; supports dot-qualified queries for extension functions |
 | `$/progress` | Spinner while workspace is indexed; non-blocking |
 | `textDocument/didSave` | Re-indexes the saved file so external formatters/codegen are picked up |
+| `workspace/executeCommand` `vscode.java.*` | java-debug's jdtls delegate commands (`startDebugSession`, `resolveMainClass`, `resolveClasspath`, …) — Java and Kotlin/JVM debugging, see [Debugging](debugging.md) |
 
 ## Not yet implemented
 

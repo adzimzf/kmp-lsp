@@ -516,6 +516,14 @@ impl FileData {
     /// `line` in this file's symbol list. Returns `None` if the symbol is
     /// top-level (not inside any class).
     pub(crate) fn containing_class_at(&self, line: u32) -> Option<String> {
+        self.enclosing_classes_at(line)
+            .last()
+            .map(|symbol| symbol.name.clone())
+    }
+
+    /// Every class/interface/object/enum whose declaration spans `line`,
+    /// outermost first. Empty when `line` is outside every class.
+    pub(crate) fn enclosing_classes_at(&self, line: u32) -> Vec<&SymbolEntry> {
         const CLASS_KINDS: &[SymbolKind] = &[
             SymbolKind::CLASS,
             SymbolKind::INTERFACE,
@@ -523,12 +531,22 @@ impl FileData {
             SymbolKind::ENUM,
             SymbolKind::OBJECT,
         ];
-        self.symbols
+        let mut enclosing: Vec<&SymbolEntry> = self
+            .symbols
             .iter()
-            .filter(|s| CLASS_KINDS.contains(&s.kind))
-            .filter(|s| s.range.start.line <= line && line <= s.range.end.line)
-            .min_by_key(|s| s.range.end.line.saturating_sub(s.range.start.line))
-            .map(|s| s.name.clone())
+            .filter(|symbol| CLASS_KINDS.contains(&symbol.kind))
+            .filter(|symbol| symbol.range.start.line <= line && line <= symbol.range.end.line)
+            .collect();
+        enclosing.sort_by_key(|symbol| {
+            std::cmp::Reverse(
+                symbol
+                    .range
+                    .end
+                    .line
+                    .saturating_sub(symbol.range.start.line),
+            )
+        });
+        enclosing
     }
 }
 

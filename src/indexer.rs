@@ -30,7 +30,7 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
 pub(crate) use self::infer::speculative::{
-    lambda_doc_at, receiver_node_for_marker, speculative_doc,
+    java_receiver_node_for_marker, lambda_doc_at, receiver_node_for_marker, speculative_doc,
 };
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
@@ -40,10 +40,10 @@ pub(crate) use self::infer::{
     cst_symbol::{
         classify_cursor, classify_occurrence_at, classify_symbol_at, enclosing_nav_expr_if_member,
         implicit_receiver_of, is_call_callee, is_declaration_site, is_local_declaration_at,
-        is_local_value_reference, local_scope_occurrences, navigation_member_ident,
-        navigation_receiver_node, resolve_identity, resolve_identity_with_io,
-        shape_filter_locations, NavigationSource, NotCodeKind, OccurrenceSite, SymbolAtCursor,
-        SymbolRole,
+        is_local_value_reference, local_scope_occurrences, narrow_java_overloads,
+        navigation_member_ident, navigation_receiver_node, resolve_identity,
+        resolve_identity_with_io, shape_filter_locations, NavigationSource, NotCodeKind,
+        OccurrenceSite, SymbolAtCursor, SymbolRole,
     },
     deps::{
         CallShape, CallableInfo, ExtensionCallable, InferDeps, MemberTypeParameters,
@@ -571,6 +571,15 @@ impl InferDeps for Indexer {
             }
         }
         Vec::new()
+    }
+    fn find_static_method_return_type(
+        &self,
+        class_path: &str,
+        method: &str,
+        arguments: &[self::infer::java_cst::ArgumentType],
+        uri: &Url,
+    ) -> Option<(String, Url)> {
+        self::infer::cst_symbol::static_method_return_type(self, class_path, method, arguments, uri)
     }
     fn find_method_return_type_with_origin_for_type(
         &self,

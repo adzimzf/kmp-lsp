@@ -159,7 +159,9 @@ fn try_cst_resolved_definition(
     let sym = crate::indexer::classify_cursor(indexer, uri, position)?;
     match crate::indexer::resolve_identity(&sym, indexer, uri) {
         crate::indexer::NavigationSource::CstResolved(defs) if !defs.is_empty() => {
-            locs_to_opt_response(defs.0)
+            locs_to_opt_response(crate::indexer::narrow_java_overloads(
+                indexer, uri, position, defs.0,
+            ))
         }
         _ => None,
     }
@@ -326,6 +328,7 @@ pub(crate) async fn find_definition(
         }
     }
     let mut locs = index.find_definition_qualified(&ctx.word, ctx.qualifier.as_deref(), uri);
+    locs = crate::indexer::narrow_java_overloads(index, uri, position, locs);
     // `resolve_qualified` can now return a wrong-arity member alongside its
     // correct-arity extension fallback (`with_supertype_extension_fallback`)
     // — shape-filter here too, same as the branches above.

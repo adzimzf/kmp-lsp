@@ -69,20 +69,16 @@ pub(crate) struct JdkSources {
     pub(crate) origin: JdkOrigin,
 }
 
-/// The JDK sources to index for `indexer`'s project, if any JDK has them.
-pub(crate) fn jdk_sources_for(indexer: &super::Indexer) -> Option<JdkSources> {
-    let switched_off = std::env::var(JDK_SOURCES_SWITCH).is_ok_and(|value| value == "off");
-    if switched_off {
-        log::info!("jdk: not indexing JDK sources ({JDK_SOURCES_SWITCH}=off)");
-        return None;
-    }
+/// The JDK the user configured: the editor's `jdkHome` setting (relative to
+/// the workspace root) or `workspace.json`'s `jdkHome`.
+pub(crate) fn configured_jdk_home(indexer: &super::Indexer) -> Option<PathBuf> {
     let root = indexer.workspace_root.get();
     let editor_setting = indexer
         .configured_jdk_home
         .read()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clone();
-    let configured = match (editor_setting, &root) {
+    match (editor_setting, &root) {
         (Some(home), Some(root)) => Some(crate::workspace_json::resolve_workspace_path(
             &home.to_string_lossy(),
             root,
@@ -90,7 +86,17 @@ pub(crate) fn jdk_sources_for(indexer: &super::Indexer) -> Option<JdkSources> {
         (Some(home), None) => Some(home),
         (None, Some(root)) => crate::workspace_json::load_configured_jdk_home(root),
         (None, None) => None,
-    };
+    }
+}
+
+/// The JDK sources to index for `indexer`'s project, if any JDK has them.
+pub(crate) fn jdk_sources_for(indexer: &super::Indexer) -> Option<JdkSources> {
+    let switched_off = std::env::var(JDK_SOURCES_SWITCH).is_ok_and(|value| value == "off");
+    if switched_off {
+        log::info!("jdk: not indexing JDK sources ({JDK_SOURCES_SWITCH}=off)");
+        return None;
+    }
+    let configured = configured_jdk_home(indexer);
     let found = find_jdk_sources(configured.as_deref(), environment_jdk_homes());
     match &found {
         Some(jdk) => log::info!(
@@ -138,7 +144,7 @@ pub(crate) fn find_jdk_sources(
 type JdkHomeLookup = (JdkOrigin, fn() -> Option<PathBuf>);
 
 /// The environment's JDK homes, in lookup order, each found only when asked.
-fn environment_jdk_homes() -> impl Iterator<Item = (JdkOrigin, PathBuf)> {
+pub(crate) fn environment_jdk_homes() -> impl Iterator<Item = (JdkOrigin, PathBuf)> {
     let lookups: [JdkHomeLookup; 5] = [
         (JdkOrigin::JavaHome, || {
             std::env::var_os("JAVA_HOME").map(PathBuf::from)
@@ -162,6 +168,58 @@ fn environment_jdk_homes() -> impl Iterator<Item = (JdkOrigin, PathBuf)> {
     lookups
         .into_iter()
         .filter_map(|(origin, lookup)| Some((origin, lookup()?)))
+}
+
+/// The JDK's compiled modules to index when no JDK found for the project
+/// ships its sources: the first JDK's `jmods/<module>.jmod` for each indexed
+/// module (a JMOD holds the module's class files — what jdtls reads). Empty
+/// when some JDK has sources (those are indexed instead, with their docs and
+/// parameter names) or no JDK ships JMODs (a JRE, or a JDK 24+ built
+/// without them).
+pub(crate) fn jdk_compiled_modules_for(indexer: &super::Indexer) -> Vec<PathBuf> {
+    let switched_off = std::env::var(JDK_SOURCES_SWITCH).is_ok_and(|value| value == "off");
+    if switched_off {
+        return Vec::new();
+    }
+    let configured = configured_jdk_home(indexer);
+    let found = find_jdk_compiled_modules(configured.as_deref(), environment_jdk_homes());
+    if let Some((home, modules)) = &found {
+        log::info!(
+            "jdk: no JDK sources — indexing the {} compiled modules of {}",
+            modules.len(),
+            home.display()
+        );
+    }
+    found.map(|(_, modules)| modules).unwrap_or_default()
+}
+
+/// [`jdk_compiled_modules_for`]'s lookup: `None` when any of the JDKs has
+/// sources, else the first JDK home with JMODs and those JMODs.
+pub(crate) fn find_jdk_compiled_modules(
+    configured: Option<&Path>,
+    environment: impl IntoIterator<Item = (JdkOrigin, PathBuf)>,
+) -> Option<(PathBuf, Vec<PathBuf>)> {
+    let homes: Vec<PathBuf> = configured
+        .map(Path::to_path_buf)
+        .into_iter()
+        .chain(environment.into_iter().map(|(_, home)| home))
+        .collect();
+    if homes.iter().any(|home| sources_archive(home).is_some()) {
+        return None;
+    }
+    homes.into_iter().find_map(|home| {
+        let modules = compiled_modules(&home);
+        (!modules.is_empty()).then_some((home, modules))
+    })
+}
+
+/// `home`'s JMODs for the indexed modules.
+fn compiled_modules(home: &Path) -> Vec<PathBuf> {
+    INDEXED_MODULES
+        .iter()
+        .map(|module| home.join("jmods").join(format!("{module}.jmod")))
+        .filter(|jmod| jmod.is_file())
+        .collect()
 }
 
 /// `home`'s sources archive, when it ships one (a dangling `src.zip`

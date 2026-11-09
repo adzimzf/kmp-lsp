@@ -680,12 +680,18 @@ fn index_compiled_jars_phase(
         Vec::new()
     };
     let gradle_count = gradle_paths.len();
-    let paths = project_compiled_jar_paths(
+    let mut paths = project_compiled_jar_paths(
         indexer.workspace_root.get(),
         workspace_uses_gradle_cache,
         gradle_paths,
         init_jar_specs,
     );
+    // A JDK without `src.zip` still has its API: its compiled modules.
+    if workspace_uses_gradle_cache {
+        paths.extend(crate::indexer::jdk_sources::jdk_compiled_modules_for(
+            indexer,
+        ));
+    }
 
     if !generation_ok() {
         return None;

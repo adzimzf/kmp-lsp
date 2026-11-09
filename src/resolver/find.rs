@@ -278,13 +278,36 @@ pub(crate) fn find_all_names_scoped_to_container(
         );
     };
 
+    // A nested class's (or interface's, enum's) member is that class's, not
+    // the container's: `StringSubject.CaseInsensitiveStringComparison.isEqualTo`
+    // is no member of `StringSubject`. An `object` in between (a Kotlin
+    // companion) still counts as the container's: `Foo.bar` reaches it.
+    let nested_types: Vec<tower_lsp::lsp_types::Range> = file_data
+        .symbols
+        .iter()
+        .filter(|symbol| {
+            matches!(
+                symbol.kind,
+                tower_lsp::lsp_types::SymbolKind::CLASS
+                    | tower_lsp::lsp_types::SymbolKind::INTERFACE
+                    | tower_lsp::lsp_types::SymbolKind::ENUM
+                    | tower_lsp::lsp_types::SymbolKind::STRUCT
+            ) && symbol.range != container_symbol.range
+                && range_encloses(container_symbol.range, symbol.range)
+        })
+        .map(|symbol| symbol.range)
+        .collect();
     let contained: Vec<Location> = file_data
         .symbols
         .iter()
         .filter(|symbol| {
+            let in_nested_type = nested_types
+                .iter()
+                .any(|nested| *nested != symbol.range && range_encloses(*nested, symbol.range));
             symbol.name == name
                 && symbol.range != container_symbol.range
                 && range_encloses(container_symbol.range, symbol.range)
+                && !in_nested_type
         })
         .map(|found| Location {
             uri: container.uri.clone(),

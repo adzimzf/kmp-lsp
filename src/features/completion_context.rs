@@ -3,8 +3,9 @@ use tower_lsp::lsp_types::{Position, Url};
 use crate::features::completion::param_names_from_sig;
 use crate::features::traits::{LiveTreeAccess, SignatureIndex};
 use crate::indexer::{
-    cursor_node_at, find_this_context, lambda_doc_at, receiver_node_for_marker, speculative_doc,
-    split_params_at_depth_zero, CstQuery, Indexer, LambdaScopeInfo, Resolution, ThisContext,
+    cursor_node_at, find_this_context, java_receiver_node_for_marker, lambda_doc_at,
+    receiver_node_for_marker, speculative_doc, split_params_at_depth_zero, CstQuery, Indexer,
+    LambdaScopeInfo, Resolution, ThisContext,
 };
 use crate::queries::{KIND_CALL_EXPR, KIND_SIMPLE_IDENT, KIND_SUPER_EXPR, KIND_THIS_EXPR};
 use crate::resolver::complete::DotReceiver;
@@ -109,6 +110,9 @@ pub(crate) fn derive_dot_receiver(
         utf16_col: position.character as usize,
     };
     let (doc, marker_byte) = speculative_doc(&base, lang, cursor)?;
+    if crate::types::Language::from_path(uri.path()) == crate::types::Language::Java {
+        return java_dot_receiver(index, uri, &doc, marker_byte);
+    }
     let node = receiver_node_for_marker(&doc, marker_byte)?;
     let text = node.utf8_text(&doc.bytes).ok()?.to_owned();
 
@@ -139,6 +143,41 @@ pub(crate) fn derive_dot_receiver(
             Resolution::Resolved(resolved_type) => Some(resolved_type.as_type_str().to_owned()),
             _ => None,
         }
+    };
+    Some(DotReceiver::Expr {
+        text,
+        is_call,
+        resolved,
+    })
+}
+
+/// [`derive_dot_receiver`] for a Java file: the receiver is typed from the
+/// Java tree right away — Java has no smart casts for a later fallback to
+/// honour, and the Kotlin text fallbacks don't read Java declarations.
+fn java_dot_receiver(
+    index: &Indexer,
+    uri: &Url,
+    doc: &crate::indexer::LiveDoc,
+    marker_byte: usize,
+) -> Option<DotReceiver> {
+    const JAVA_SUPER: &str = "super";
+    const JAVA_METHOD_INVOCATION: &str = "method_invocation";
+    let node = java_receiver_node_for_marker(doc, marker_byte)?;
+    if node.kind() == JAVA_SUPER {
+        return Some(DotReceiver::Super);
+    }
+    let is_call = node.kind() == JAVA_METHOD_INVOCATION;
+    let text = if is_call {
+        node.child_by_field_name("name")?
+    } else {
+        node
+    }
+    .utf8_text(&doc.bytes)
+    .ok()?
+    .to_owned();
+    let resolved = match CstQuery::new(node, doc, index, uri).expr_type() {
+        Resolution::Resolved(resolved_type) => Some(resolved_type.as_type_str().to_owned()),
+        _ => None,
     };
     Some(DotReceiver::Expr {
         text,

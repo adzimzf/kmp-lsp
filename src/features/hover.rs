@@ -29,6 +29,9 @@ pub(crate) fn compute_hover<W: WorkspaceRead>(
     uri: &Url,
     position: Position,
 ) -> Option<Hover> {
+    if let Some(hover) = java_resolved_hover(workspace, uri, position) {
+        return Some(hover);
+    }
     if let Some(hover) = contextual_lambda_hover(workspace, ctx, uri, position) {
         return Some(hover);
     }
@@ -39,6 +42,38 @@ pub(crate) fn compute_hover<W: WorkspaceRead>(
         return Some(hover);
     }
     regular_symbol_hover(workspace, ctx, uri, position).or_else(|| jar_loading_hint(workspace))
+}
+
+/// Hover for a Java identifier the CST resolves on its own — a member of a
+/// typed receiver, or a declaration — through the same identity
+/// go-to-definition uses, with overloads narrowed by the call's argument
+/// types. `None` when that leaves no single target (the text-based paths
+/// below then get their turn).
+fn java_resolved_hover<W: WorkspaceRead>(
+    workspace: &W,
+    uri: &Url,
+    position: Position,
+) -> Option<Hover> {
+    let indexer = workspace.as_indexer()?;
+    if crate::Language::from_path(uri.path()) != crate::Language::Java {
+        return None;
+    }
+    let symbol = crate::indexer::classify_cursor(indexer, uri, position)?;
+    let crate::indexer::NavigationSource::CstResolved(definitions) =
+        crate::indexer::resolve_identity(&symbol, indexer, uri)
+    else {
+        return None;
+    };
+    let locations = crate::indexer::narrow_java_overloads(indexer, uri, position, definitions.0);
+    let location = pick_unambiguous_location(call_shape_ctx(workspace, uri, position), locations)?;
+    let info = enrich_at_location(
+        workspace,
+        &location,
+        &symbol.name,
+        hover_substitution_context(uri, position.line),
+        &ResolveOptions::hover(),
+    )?;
+    Some(make_markdown_hover(format_symbol_hover(&info, uri.path())))
 }
 
 fn contextual_lambda_hover<W: WorkspaceRead>(

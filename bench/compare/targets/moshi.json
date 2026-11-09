@@ -1,0 +1,38 @@
+{
+  "name": "moshi",
+  "git": "https://github.com/square/moshi",
+  "commit": "889013ec2edb8d8034902662a1dc8c4f3b3f8111",
+  "roots": [
+    "moshi/src",
+    "moshi-adapters/src",
+    "moshi-kotlin/src",
+    "moshi-kotlin-codegen/src",
+    "moshi-kotlin-tests/src",
+    "examples/src"
+  ],
+  "seed": 7,
+  "sample": {
+    "definition": 150,
+    "references": 40,
+    "completion": 100
+  },
+  "probes": [
+    {
+      "language": "kotlin",
+      "file": "moshi-kotlin/src/main/java/com/squareup/moshi/kotlin/reflect/KotlinJsonAdapterFactory.kt",
+      "line": 68,
+      "name": "JsonAdapter",
+      "expect_file": "moshi/src/main/java/com/squareup/moshi/JsonAdapter.kt",
+      "expect_line": 37
+    },
+    {
+      "language": "java",
+      "file": "moshi/src/test/java/com/squareup/moshi/MoshiTest.java",
+      "line": 291,
+      "name": "newReader",
+      "expect_file": "moshi/src/test/java/com/squareup/moshi/TestUtil.java",
+      "expect_line": 24
+    }
+  ],
+  "_lines": "probe lines are 1-based; query files use 0-based LSP positions"
+}

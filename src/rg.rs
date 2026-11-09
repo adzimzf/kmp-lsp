@@ -228,8 +228,12 @@ pub(crate) fn build_rg_pattern(name: &str) -> String {
     // Kotlin: standard keywords + `enum class` + extension function receiver
     // Java:   `enum NAME` (Java enums have no `class` after `enum`)
     // Swift:  struct, protocol, extension, let (in addition to shared keywords)
+    //
+    // After `fun`/`val`/`var` the name must not be followed by `.` or `<`:
+    // `fun String.parseIsoDate()` / `val List<T>.second` declare an
+    // extension ON `String` / `List`, not something named `String` / `List`.
     format!(
-        r"(?:(?:class|struct|interface|object|protocol|fun|func|val|var|let|typealias|enum\s+class)\s+|fun\s+\w[\w.]*\.|(?:public|private|protected|fileprivate|open|internal|static|abstract|final|\s)+(?:enum|class|struct|protocol)\s+|extension\s+){safe}\b"
+        r"(?:(?:class|struct|interface|object|protocol|func|let|typealias|enum\s+class)\s+|fun\s+\w[\w.]*\.|(?:public|private|protected|fileprivate|open|internal|static|abstract|final|\s)+(?:enum|class|struct|protocol)\s+|extension\s+){safe}\b|(?:fun|val|var)\s+{safe}(?:[^\w.<]|$)"
     )
 }
 

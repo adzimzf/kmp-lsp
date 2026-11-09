@@ -12,6 +12,17 @@ impl Backend {
         &self,
         params: ExecuteCommandParams,
     ) -> Result<Option<serde_json::Value>> {
+        use crate::debug::commands::CommandOutcome;
+        match self.debug.execute(&params.command, &params.arguments).await {
+            CommandOutcome::Answered(value) => return Ok(Some(value)),
+            CommandOutcome::Failed(reason) => {
+                log::warn!("{}: {reason}", params.command);
+                let mut error = tower_lsp::jsonrpc::Error::internal_error();
+                error.message = format!("kmp-lsp: {reason}").into();
+                return Err(error);
+            }
+            CommandOutcome::NotDebugCommand => {}
+        }
         match params.command.as_str() {
             "kmp-lsp/reindex" => self.handle_reindex_command().await,
             "kmp-lsp/clearCache" => self.handle_clear_cache_command(params).await,

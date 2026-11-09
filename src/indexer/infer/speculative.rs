@@ -147,6 +147,27 @@ pub(crate) fn receiver_node_for_marker(
     None
 }
 
+/// Java counterpart of [`receiver_node_for_marker`]: the receiver of the
+/// field access / method call / misparsed qualified type whose member is the
+/// marker.
+pub(crate) fn java_receiver_node_for_marker(
+    doc: &LiveDoc,
+    marker_byte: usize,
+) -> Option<tree_sitter::Node<'_>> {
+    let marker_end = marker_byte + COMPLETION_MARKER.len();
+    let marker = doc
+        .tree
+        .root_node()
+        .descendant_for_byte_range(marker_byte, marker_end)?;
+    // The identifier may run on past the marker: completing inside an
+    // existing name (`reader.|nextName()` → `reader.kmpLspRulezznextName()`).
+    let covers_marker = marker.start_byte() <= marker_byte && marker.end_byte() >= marker_end;
+    if !covers_marker {
+        return None;
+    }
+    super::java_cst::java_member_receiver(marker)
+}
+
 /// Upper bound on closing braces appended during broken-syntax brace repair
 /// in [`repaired_doc_at`].
 const MAX_BRACE_REPAIRS: usize = 8;

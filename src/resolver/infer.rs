@@ -1740,6 +1740,16 @@ fn find_method_return_type_declared_scoped(
             if symbol.container.as_deref() != Some(type_base) {
                 continue;
             }
+            if crate::Language::from_path(loc.uri.path()) == crate::Language::Java {
+                if let Some(type_name) = java_method_return_type(symbol, &file_data.lines) {
+                    return Some(DeclaredReturn {
+                        type_name,
+                        declared_in: Some(loc.uri.clone()),
+                        nullability: ReturnNullability::Unknown,
+                    });
+                }
+                continue;
+            }
             // Try detail first; fall back to source lines when detail is truncated.
             let mut nullability = extract_return_nullability_from_detail(&symbol.detail);
             let declared_type = extract_return_type_from_detail(&symbol.detail)
@@ -1763,6 +1773,22 @@ fn find_method_return_type_declared_scoped(
         }
         None
     })
+}
+
+/// A Java method's return type, written before its name (`List<T> items()`),
+/// from the indexed `detail` or — when that was cut short — the declaration's
+/// own lines. `None` for `void` and for a constructor.
+pub(crate) fn java_method_return_type(
+    method: &crate::types::SymbolEntry,
+    lines: &[String],
+) -> Option<String> {
+    const VOID: &str = "void";
+    let declared = if method.detail.contains('\u{2026}') {
+        crate::rg::declared_type_from_raw_lines(lines, method.range, SymbolKind::METHOD)
+    } else {
+        crate::rg::declared_type_from_detail(&method.detail, SymbolKind::METHOD)
+    }?;
+    (declared != VOID).then_some(declared)
 }
 
 /// What a collected function `signature` says about the function's body.
