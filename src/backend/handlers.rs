@@ -100,7 +100,10 @@ impl Backend {
         let uri = &params.text_document.uri;
         let range = params.range;
         let compute_started = std::time::Instant::now();
-        let hints = compute_inlay_hints(&self.indexer, uri, range);
+        let mut hints = compute_inlay_hints(&self.indexer, uri, range);
+        hints.extend(
+            crate::features::parameter_hints::java_parameter_hints(&self.indexer, uri, range).await,
+        );
         let compute_ms = compute_started.elapsed().as_millis();
         if compute_ms > crate::backend::panic_guard::SLOW_THRESHOLD_MS {
             log::warn!(

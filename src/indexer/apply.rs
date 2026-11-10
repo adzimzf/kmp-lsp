@@ -145,7 +145,9 @@ pub(super) fn hash_str(s: &str) -> u64 {
 
 // ─── Pure functions ───────────────────────────────────────────────────────────
 
-/// Extract supertype relationships (for `goToImplementation`) from a parsed file.
+/// Extract supertype relationships (for `goToImplementation`) from a parsed file:
+/// declared classes at their name, anonymous classes at their supertype's name
+/// in the `new` expression.
 pub(crate) fn derive_supertypes(uri: &Url, data: &FileData) -> Vec<(String, Location)> {
     let class_kinds = [
         SymbolKind::CLASS,
@@ -167,6 +169,13 @@ pub(crate) fn derive_supertypes(uri: &Url, data: &FileData) -> Vec<(String, Loca
         for (_, super_name, _) in data.supers.iter().filter(|(l, _, _)| *l == start_line) {
             supertypes.push((super_name.clone(), class_loc.clone()));
         }
+    }
+    for anonymous in &data.anonymous_classes {
+        let reported_at = Location {
+            uri: uri.clone(),
+            range: anonymous.type_name,
+        };
+        supertypes.push((anonymous.supertype.clone(), reported_at));
     }
     supertypes
 }
@@ -366,7 +375,6 @@ impl LibraryBatch {
         uri_str: &str,
         path: &std::path::Path,
         entry: &FileCacheEntry,
-        class_kinds: &[SymbolKind],
         workspace_root: &std::path::Path,
     ) {
         let is_library = !path.starts_with(workspace_root);
@@ -419,21 +427,8 @@ impl LibraryBatch {
                 .push(uri_str.to_string());
         }
 
-        for sym in &file_data.symbols {
-            if !class_kinds.contains(&sym.kind) {
-                continue;
-            }
-            let start_line = sym.selection_start();
-            let class_loc = Location {
-                uri: uri.clone(),
-                range: sym.selection_range,
-            };
-            for (_, super_name, _) in file_data.supers.iter().filter(|(l, _, _)| *l == start_line) {
-                self.subtypes
-                    .entry(super_name.clone())
-                    .or_default()
-                    .push(class_loc.clone());
-            }
+        for (super_name, class_loc) in derive_supertypes(uri, &file_data) {
+            self.subtypes.entry(super_name).or_default().push(class_loc);
         }
 
         for sym in &file_data.symbols {
@@ -889,13 +884,6 @@ impl Indexer {
     /// Called in a loop from `index_source_paths`; the chunk HashMap is consumed
     /// and dropped after each call so only one chunk sits in memory at a time.
     fn restore_library_chunk(&self, chunk: HashMap<String, FileCacheEntry>, workspace_root: &Path) {
-        let class_kinds = [
-            SymbolKind::CLASS,
-            SymbolKind::INTERFACE,
-            SymbolKind::STRUCT,
-            SymbolKind::ENUM,
-            SymbolKind::OBJECT,
-        ];
         let mut batch = LibraryBatch::with_capacity(chunk.len());
         for (path_str, entry) in &chunk {
             let Ok(uri) = Url::from_file_path(path_str) else {
@@ -907,7 +895,6 @@ impl Indexer {
                 &uri_str,
                 Path::new(path_str.as_str()),
                 entry,
-                &class_kinds,
                 workspace_root,
             );
         }

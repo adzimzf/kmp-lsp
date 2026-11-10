@@ -37,7 +37,9 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 ///      `qualified_keys` — older caches would replay the colliding key.
 /// v35: an `operator fun` extension (`State<T>.getValue`) records its
 ///      receiver — older caches stored it empty.
-pub(crate) const CACHE_VERSION: u32 = 35;
+/// v36: Java files record their anonymous classes (`FileData::anonymous_classes`)
+///      — older caches would miss them as implementations.
+pub(crate) const CACHE_VERSION: u32 = 36;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
