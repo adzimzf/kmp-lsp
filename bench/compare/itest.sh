@@ -93,9 +93,10 @@ run() {
         --jdtls "$JDTLS" --java "${JAVA:-java}" --ready-timeout 900 ;;
     kmp-lsp)
       [ -x "$KMP_LSP" ] || die "no kmp-lsp at $KMP_LSP (cargo build --release)"
-      # On an empty state directory kmp-lsp indexes dependency jars in the
-      # background and reports no progress for that phase, so the first run
-      # asks some questions before their answers exist. Prime the state.
+      # Prime the state: the graded run then starts from the dependency
+      # manifest and jar caches a first run leaves behind, as an editor
+      # session after the first one does. (The library phase reports
+      # `kmp-lsp/libraries` progress, so neither run asks before it ends.)
       if [ ! -d "$WORKDIR/itest-state/kmp-lsp" ]; then
         python3 "$SCRIPT_DIR/run.py" --server kmp-lsp --repo "$REPO" --target "$TARGET_JSON" \
           --queries "$QUERIES" --state "$WORKDIR/itest-state/kmp-lsp" --out "$out.priming" \

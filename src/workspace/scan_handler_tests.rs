@@ -350,3 +350,62 @@ fn module_r_class_jar_is_included_when_workspace_uses_gradle_cache() {
         "core/common's R.jar must be included; got {paths:?}"
     );
 }
+
+/// Records every `$/progress` call, in order.
+#[derive(Default)]
+struct RecordingReporter {
+    events: std::sync::Mutex<Vec<String>>,
+}
+
+impl crate::indexer::ProgressReporter for RecordingReporter {
+    async fn begin(&self, token: &tower_lsp::lsp_types::NumberOrString, _message: &str) {
+        self.events.lock().unwrap().push(format!("begin {token:?}"));
+    }
+    async fn report(&self, _: &tower_lsp::lsp_types::NumberOrString, _: usize, _: usize) {}
+    async fn end(&self, token: &tower_lsp::lsp_types::NumberOrString, _message: &str) {
+        self.events.lock().unwrap().push(format!("end {token:?}"));
+    }
+}
+
+/// The library phase is reported from before its work starts until after it
+/// ends: a client that waits for progress to go quiet must not ask while
+/// the JDK and dependency jars are still being indexed.
+#[tokio::test]
+async fn library_phase_is_reported_as_progress_around_its_work() {
+    let reporter = Arc::new(RecordingReporter::default());
+    let (scan_done_tx, _scan_done_rx) = mpsc::unbounded_channel();
+    let (jar_done_tx, _jar_done_rx) = mpsc::unbounded_channel();
+    let handler = ScanHandler::new(
+        Arc::new(Indexer::new()),
+        Arc::clone(&reporter),
+        Arc::new(RwLock::new(State::Uninitialized)),
+        scan_done_tx,
+        jar_done_tx,
+    );
+    let (finished_tx, finished_rx) = tokio::sync::oneshot::channel();
+    let work_reporter = Arc::clone(&reporter);
+    handler.spawn_reporting_library_progress(move || {
+        work_reporter.events.lock().unwrap().push("work".to_owned());
+        let _ = finished_tx.send(());
+    });
+    finished_rx.await.unwrap();
+    // The end follows the work on the spawning task.
+    for _ in 0..100 {
+        if reporter.events.lock().unwrap().len() == 3 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    let token = format!(
+        "{:?}",
+        tower_lsp::lsp_types::NumberOrString::String(super::LIBRARY_PROGRESS_TOKEN.to_owned())
+    );
+    assert_eq!(
+        *reporter.events.lock().unwrap(),
+        vec![
+            format!("begin {token}"),
+            "work".to_owned(),
+            format!("end {token}")
+        ]
+    );
+}

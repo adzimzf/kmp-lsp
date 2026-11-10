@@ -28,7 +28,7 @@ use crate::resolver::api::Definitions;
 use crate::resolver::jvm_interop::{self, PropertyAccess};
 use crate::semantic_tokens::is_named_argument_label;
 use crate::types::CursorPos;
-use tower_lsp::lsp_types::{Location, Position, Url};
+use tower_lsp::lsp_types::{Location, Position, SymbolKind, Url};
 
 use super::deps::InferDeps as _;
 use super::speculative::ResolutionDoc;
@@ -779,9 +779,13 @@ pub(crate) fn narrow_java_overloads(
         line: position.line as usize,
         utf16_col: position.character as usize,
     };
-    let Some(invocation) = super::cst_lambda::cursor_node_at(&doc, cursor)
-        .and_then(super::java_cst::invocation_of_method_name)
-    else {
+    let Some(cursor_node) = super::cst_lambda::cursor_node_at(&doc, cursor) else {
+        return locations;
+    };
+    if let Some(creation) = super::java_cst::object_creation_of_type_name(cursor_node) {
+        return constructors_fitting_creation(indexer, uri, creation, &doc.bytes, locations);
+    }
+    let Some(invocation) = super::java_cst::invocation_of_method_name(cursor_node) else {
         return locations;
     };
     let arguments = super::java_cst::java_argument_types(invocation, &doc.bytes, indexer, uri);
@@ -799,6 +803,84 @@ pub(crate) fn narrow_java_overloads(
     best
 }
 
+/// The declaration of the Java type parameter under `position`
+/// (`V` in `Node<K, V>` → the `V` of the enclosing `class Map<K, V>`), or
+/// `None` when the cursor isn't on a type name bound by an enclosing type
+/// parameter.
+pub(crate) fn java_type_parameter_definition(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Location> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let name_node = super::cst_lambda::cursor_node_at(&doc, cursor)?;
+    let declared = super::java_cst::type_parameter_declaration(name_node, &doc.bytes)?;
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    node_to_location(uri, declared, text)
+}
+
+/// At `new Writer(..)`, the constructors of the class in `locations` that
+/// the creation's arguments fit best, as javac picks one. A class that
+/// declares no constructor (its implicit one has no declaration) keeps the
+/// class itself.
+fn constructors_fitting_creation(
+    indexer: &Indexer,
+    uri: &Url,
+    creation: Node<'_>,
+    bytes: &[u8],
+    locations: Vec<Location>,
+) -> Vec<Location> {
+    let constructors = declared_constructors(indexer, &locations);
+    if constructors.is_empty() {
+        return locations;
+    }
+    let arguments = super::java_cst::java_argument_types(creation, bytes, indexer, uri);
+    best_fitting_overloads(indexer, &arguments, constructors)
+}
+
+/// The constructors declared by the classes at `locations`, next to each
+/// class in its own file.
+fn declared_constructors(indexer: &Indexer, locations: &[Location]) -> Vec<Location> {
+    let mut constructors: Vec<Location> = Vec::new();
+    for location in locations {
+        let Some(file) = indexer
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| indexer.jar_files.get(location.uri.as_str()))
+        else {
+            continue;
+        };
+        let Some(class) = file.symbols.iter().find(|symbol| {
+            symbol.selection_range == location.range && symbol.kind == SymbolKind::CLASS
+        }) else {
+            continue;
+        };
+        let nested_container = class
+            .container
+            .as_ref()
+            .map(|outer| format!("{outer}.{}", class.name));
+        let declared_by_class = |container: &str| {
+            container == class.name || Some(container) == nested_container.as_deref()
+        };
+        for symbol in file.symbols.iter() {
+            let is_its_constructor = symbol.kind == SymbolKind::CONSTRUCTOR
+                && symbol.name == class.name
+                && symbol.container.as_deref().is_some_and(declared_by_class);
+            if is_its_constructor {
+                constructors.push(Location::new(location.uri.clone(), symbol.selection_range));
+            }
+        }
+    }
+    constructors
+}
+
 /// The overloads among `locations` whose parameters `arguments` fit best,
 /// one per distinct Java signature; all of them when none fits.
 fn best_fitting_overloads(
@@ -806,13 +888,14 @@ fn best_fitting_overloads(
     arguments: &[super::java_cst::ArgumentType],
     locations: Vec<Location>,
 ) -> Vec<Location> {
+    let hierarchy = IndexedHierarchy { indexer };
     let scored: Vec<ScoredOverload> = locations
         .into_iter()
         .map(|location| {
             let parameters = declared_params(indexer, &location)
                 .map(|params| super::java_cst::parameter_type_keys(&params));
             let score = parameters.as_ref().map_or(Some(0), |parameters| {
-                super::java_cst::overload_fit_score(arguments, parameters)
+                super::java_cst::overload_fit_score(arguments, parameters, &hierarchy)
             });
             ScoredOverload {
                 score,
@@ -842,6 +925,30 @@ fn best_fitting_overloads(
         }
     }
     kept.into_iter().map(|overload| overload.location).collect()
+}
+
+/// The indexed class hierarchy.
+struct IndexedHierarchy<'index> {
+    indexer: &'index Indexer,
+}
+
+impl super::java_cst::ClassHierarchy for IndexedHierarchy<'_> {
+    fn extends(&self, class: &str, anchor: &Url, supertype: &str) -> bool {
+        use crate::resolver::{ReceiverTypeAgreement, Resolver as _};
+        // The supertype walk starts in the file that declares `class`.
+        let declarations = self
+            .indexer
+            .find_definition_qualified_index_only(class, None, anchor);
+        declarations.iter().any(|declaration| {
+            let agreement = self.indexer.receiver_type_agreement(
+                class,
+                declaration.uri.as_str(),
+                supertype,
+                crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+            );
+            agreement == ReceiverTypeAgreement::Inherited
+        })
+    }
 }
 
 /// See [`InferDeps::find_static_method_return_type`]: `method` is looked

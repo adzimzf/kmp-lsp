@@ -399,13 +399,22 @@ fn parameter_keys_read_java_and_kotlin_parameter_lists() {
     assert!(parameter_type_keys("").is_empty());
 }
 
+/// No hierarchy at hand: no class is known to extend another.
+struct UnknownHierarchy;
+
+impl ClassHierarchy for UnknownHierarchy {
+    fn extends(&self, _class: &str, _anchor: &Url, _supertype: &str) -> bool {
+        false
+    }
+}
+
 #[test]
 fn exact_beats_widening_beats_catch_all_and_closed_classes_rule_out() {
     let double = [ArgumentType::Known("double".into())];
     let string = [ArgumentType::Known("String".into())];
     let int = [ArgumentType::Known("int".into())];
     let score = |arguments: &[ArgumentType], parameter: &str| {
-        overload_fit_score(arguments, &[parameter.to_owned()])
+        overload_fit_score(arguments, &[parameter.to_owned()], &UnknownHierarchy)
     };
     assert!(score(&double, "double") > score(&double, "Number"));
     assert_eq!(score(&double, "String"), None);
@@ -429,6 +438,10 @@ fn argument_types_read_literals_and_typed_locals() {
     let invocation = invocation_of_method_name(name).unwrap();
     let types = java_argument_types(invocation, &doc.bytes, &TestDeps::new(), &uri());
     let known = |key: &str| ArgumentType::Known(key.to_owned());
+    let declared = |key: &str| ArgumentType::Declared {
+        key: key.to_owned(),
+        anchor: uri(),
+    };
     assert_eq!(
         types,
         vec![
@@ -439,9 +452,18 @@ fn argument_types_read_literals_and_typed_locals() {
             known("boolean"),
             ArgumentType::Null,
             known("int"),
-            known("String"),
-            known("JsonReader"),
+            declared("String"),
+            declared("JsonReader"),
         ]
+    );
+}
+
+#[test]
+fn class_literal_is_a_class_of_its_type() {
+    let source = "class Caller {\n  boolean run(Class<?> other) {\n    return Factory.class.isAssignableFrom(other);\n  }\n}\n";
+    assert_eq!(
+        receiver_type_of(source, &TestDeps::new(), "isAssignableFrom", 0).as_deref(),
+        Some("Class")
     );
 }
 

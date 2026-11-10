@@ -263,6 +263,53 @@ fn maven_output_pairs_jars_with_their_sources() {
 }
 
 #[test]
+fn maven_failure_in_one_module_keeps_the_other_modules_dependencies() {
+    // gson's shape: `gson` resolves; `test-jpms` depends on the
+    // never-installed `gson` SNAPSHOT and fails the whole run.
+    let listed = maven::parse_output(concat!(
+        "The following files have been resolved:\n",
+        "   com.google.truth:truth:jar:1.4.5:test:/m2/com/google/truth/truth/1.4.5/truth-1.4.5.jar -- module truth (auto)\n",
+        "   junit:junit:jar:4.13.2:test:/m2/junit/junit/4.13.2/junit-4.13.2.jar -- module junit [auto]\n",
+    ));
+    let failure =
+        "[ERROR] Failed to execute goal on project test-jpms: Could not resolve dependencies";
+    let resolved = maven::resolved_from(
+        listed,
+        maven::ModulesResolved::Some {
+            failure: failure.to_owned(),
+        },
+    )
+    .expect("the modules that resolved still count");
+    let coordinates: Vec<&str> = resolved
+        .dependencies
+        .iter()
+        .map(|dependency| dependency.coordinate.as_str())
+        .collect();
+    assert_eq!(
+        coordinates,
+        ["com.google.truth:truth:1.4.5", "junit:junit:4.13.2"]
+    );
+    assert!(
+        resolved.incomplete_sources,
+        "a partial result is retried later"
+    );
+
+    let nothing_listed = maven::resolved_from(
+        Vec::new(),
+        maven::ModulesResolved::Some {
+            failure: failure.to_owned(),
+        },
+    );
+    match nothing_listed {
+        Err(BuildToolFailure::Failed(message)) => assert_eq!(message, failure),
+        other => panic!("a failed run that listed nothing is a failure: {other:?}"),
+    }
+
+    let complete = maven::resolved_from(Vec::new(), maven::ModulesResolved::All).unwrap();
+    assert!(!complete.incomplete_sources);
+}
+
+#[test]
 fn maven_output_accepts_windows_paths() {
     let parsed = maven::parse_output(
         "   com.acme:textkit:jar:1.0.0:compile:C:\\Users\\me\\.m2\\repository\\com\\acme\\textkit\\1.0.0\\textkit-1.0.0.jar\n",

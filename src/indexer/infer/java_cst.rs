@@ -32,9 +32,13 @@ use super::deps::{CallShape, InferDeps};
 
 const IDENTIFIER: &str = "identifier";
 const TYPE_IDENTIFIER: &str = "type_identifier";
+const GENERIC_TYPE: &str = "generic_type";
+const SCOPED_TYPE_IDENTIFIER: &str = "scoped_type_identifier";
+const TYPE_PARAMETERS: &str = "type_parameters";
 const METHOD_INVOCATION: &str = "method_invocation";
 const FIELD_ACCESS: &str = "field_access";
 const OBJECT_CREATION: &str = "object_creation_expression";
+const CLASS_LITERAL: &str = "class_literal";
 const CAST_EXPRESSION: &str = "cast_expression";
 const PARENTHESIZED_EXPRESSION: &str = "parenthesized_expression";
 const ASSIGNMENT_EXPRESSION: &str = "assignment_expression";
@@ -677,6 +681,11 @@ fn expr_type_at_depth(
             here(without_diamond(&created))
         }
         CAST_EXPRESSION => here(node.child_by_field_name("type")?.utf8_text_owned(bytes)?),
+        // `Foo.class` is a `Class<Foo>`.
+        CLASS_LITERAL => {
+            let named = node.named_child(0)?.utf8_text_owned(bytes)?;
+            here(format!("Class<{named}>"))
+        }
         PARENTHESIZED_EXPRESSION => {
             expr_type_at_depth(node.named_child(0)?, bytes, deps, uri, depth + 1)
         }
@@ -899,6 +908,9 @@ pub(crate) enum ArgumentType {
     Null,
     /// A type key ([`overload_type_key`]): `int`, `double`, `String`, `JsonReader`, `Foo[]`.
     Known(String),
+    /// An expression's type key, with the file whose scope its name resolves
+    /// in: where the class's supertypes can be looked up from.
+    Declared { key: String, anchor: Url },
     /// Not inferred: fits anything, prefers nothing.
     Unknown,
 }
@@ -912,6 +924,11 @@ enum Fit {
     Possible,
     /// `Object` / `Number`-like catch-alls and boxing.
     Loose,
+    /// The argument's class is known to extend or implement the parameter's:
+    /// more specific than a catch-all, so `assertThat(Throwable)` beats
+    /// `assertThat(Object)` for an exception, as javac's most specific
+    /// method rule has it.
+    Subclass,
     /// Primitive widening: `1` for a `long` parameter.
     Widening,
     Exact,
@@ -922,11 +939,22 @@ impl Fit {
         match self {
             Fit::Impossible | Fit::Possible => 0,
             Fit::Loose => 1,
-            Fit::Widening => 2,
+            Fit::Subclass | Fit::Widening => 2,
             Fit::Exact => 3,
         }
     }
 }
+
+/// Whether one class extends or implements another, for overload scoring:
+/// both are type keys ([`overload_type_key`]); `class` is named in the scope
+/// of `anchor`. `false` means "not known to", never "known not to".
+pub(crate) trait ClassHierarchy {
+    fn extends(&self, class: &str, anchor: &Url, supertype: &str) -> bool;
+}
+
+/// What an overload whose parameter count equals the argument count scores
+/// before any argument is compared.
+const ARITY_MATCH: u32 = 1;
 
 /// Java's primitive widening order (JLS 5.1.2), `char` aside.
 const NUMERIC_WIDENING: [&str; 6] = ["byte", "short", "int", "long", "float", "double"];
@@ -984,12 +1012,26 @@ fn is_primitive_key(key: &str) -> bool {
     NUMERIC_WIDENING.contains(&key) || key == "boolean" || key == "char"
 }
 
-fn fit(argument: &ArgumentType, parameter: &str) -> Fit {
+/// Whether `argument` is an expression of a class known to extend or
+/// implement `parameter`.
+fn argument_class_extends(
+    argument: &ArgumentType,
+    parameter: &str,
+    hierarchy: &impl ClassHierarchy,
+) -> bool {
+    match argument {
+        ArgumentType::Declared { key, anchor } => hierarchy.extends(key, anchor, parameter),
+        _ => false,
+    }
+}
+
+fn fit(argument: &ArgumentType, parameter: &str, hierarchy: &impl ClassHierarchy) -> Fit {
     let known = match argument {
         ArgumentType::Unknown => return Fit::Possible,
         ArgumentType::Null if is_primitive_key(parameter) => return Fit::Impossible,
         ArgumentType::Null => return Fit::Possible,
         ArgumentType::Known(known) => known.as_str(),
+        ArgumentType::Declared { key, .. } => key.as_str(),
     };
     if known == parameter {
         return Fit::Exact;
@@ -1018,6 +1060,8 @@ fn fit(argument: &ArgumentType, parameter: &str) -> Fit {
     // Two other classes: the argument's may extend the parameter's.
     if is_primitive_key(parameter) {
         Fit::Impossible
+    } else if argument_class_extends(argument, parameter, hierarchy) {
+        Fit::Subclass
     } else {
         Fit::Possible
     }
@@ -1025,13 +1069,20 @@ fn fit(argument: &ArgumentType, parameter: &str) -> Fit {
 
 /// How well arguments of `arguments` fit parameters of type keys
 /// `parameters`; `None` when some argument can't be passed at all.
-pub(crate) fn overload_fit_score(arguments: &[ArgumentType], parameters: &[String]) -> Option<u32> {
+pub(crate) fn overload_fit_score(
+    arguments: &[ArgumentType],
+    parameters: &[String],
+    hierarchy: &impl ClassHierarchy,
+) -> Option<u32> {
     if arguments.len() != parameters.len() {
         return Some(0);
     }
-    let mut score = 0;
+    // Matching the argument count already beats a candidate that would need
+    // varargs or default values: `new Writer()` is `Writer()`, not
+    // `Writer(String)`, even with nothing known about any argument.
+    let mut score = ARITY_MATCH;
     for (argument, parameter) in arguments.iter().zip(parameters) {
-        let argument_fit = fit(argument, parameter);
+        let argument_fit = fit(argument, parameter, hierarchy);
         if argument_fit == Fit::Impossible {
             return None;
         }
@@ -1080,14 +1131,92 @@ pub(crate) fn invocation_of_method_name(name_node: Node<'_>) -> Option<Node<'_>>
     is_its_name.then_some(parent)
 }
 
-/// The types of `invocation`'s arguments, in order.
+/// The `new …(…)` expression whose created type is named by `name_node`
+/// (`new Writer(..)`, `new Token<String>() {}`), or `None` when the type
+/// name is used anywhere else.
+pub(crate) fn object_creation_of_type_name(name_node: Node<'_>) -> Option<Node<'_>> {
+    if name_node.kind() != TYPE_IDENTIFIER {
+        return None;
+    }
+    let parent = name_node.parent()?;
+    let names_a_generic_type =
+        parent.kind() == GENERIC_TYPE && parent.named_child(0) == Some(name_node);
+    let created_type = if names_a_generic_type {
+        parent
+    } else {
+        name_node
+    };
+    let creation = created_type.parent()?;
+    let is_the_created_type =
+        creation.kind() == OBJECT_CREATION && is_field_named(creation, "type", created_type);
+    is_the_created_type.then_some(creation)
+}
+
+/// The type parameter that the type name `name_node` refers to: the
+/// innermost enclosing method, constructor or class declaring one of that
+/// name (`V` in `Node<K, V> left` → the `V` of `class LinkedTreeMap<K, V>`).
+/// `None` when no enclosing declaration has such a type parameter, or the
+/// name is a later segment of a qualified type (`Map.Entry`).
+pub(crate) fn type_parameter_declaration<'tree>(
+    name_node: Node<'tree>,
+    bytes: &[u8],
+) -> Option<Node<'tree>> {
+    if name_node.kind() != TYPE_IDENTIFIER {
+        return None;
+    }
+    let parent = name_node.parent()?;
+    let is_qualified_segment =
+        parent.kind() == SCOPED_TYPE_IDENTIFIER && parent.named_child(0) != Some(name_node);
+    if is_qualified_segment {
+        return None;
+    }
+    let name = name_node.utf8_text(bytes).ok()?;
+    let mut scope = parent;
+    loop {
+        let declares_type_parameters = is_class_like_declaration(scope.kind())
+            || matches!(scope.kind(), METHOD_DECLARATION | CONSTRUCTOR_DECLARATION);
+        if declares_type_parameters {
+            if let Some(declared) = declared_type_parameter(scope, name, bytes) {
+                return Some(declared);
+            }
+        }
+        scope = scope.parent()?;
+    }
+}
+
+/// The name node of `declaration`'s own type parameter called `name`.
+fn declared_type_parameter<'tree>(
+    declaration: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<Node<'tree>> {
+    let mut cursor = declaration.walk();
+    let parameters = declaration
+        .named_children(&mut cursor)
+        .find(|child| child.kind() == TYPE_PARAMETERS)?;
+    let mut cursor = parameters.walk();
+    let found = parameters
+        .named_children(&mut cursor)
+        .filter(|parameter| parameter.kind() == TYPE_PARAMETER)
+        .filter_map(|parameter| {
+            let mut cursor = parameter.walk();
+            let parameter_name = parameter
+                .named_children(&mut cursor)
+                .find(|child| child.kind() == TYPE_IDENTIFIER);
+            parameter_name
+        })
+        .find(|parameter_name| parameter_name.utf8_text(bytes).ok() == Some(name));
+    found
+}
+
+/// The types of a call's or an object creation's arguments, in order.
 pub(crate) fn java_argument_types(
-    invocation: Node<'_>,
+    call: Node<'_>,
     bytes: &[u8],
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Vec<ArgumentType> {
-    let Some(arguments) = invocation.child_by_field_name("arguments") else {
+    let Some(arguments) = call.child_by_field_name("arguments") else {
         return Vec::new();
     };
     let mut cursor = arguments.walk();
@@ -1127,14 +1256,17 @@ fn argument_type(
         "true" | "false" => known("boolean"),
         "character_literal" => known("char"),
         "null_literal" => ArgumentType::Null,
-        "class_literal" => known("Class"),
+        CLASS_LITERAL => known("Class"),
         "unary_expression" => argument
             .child_by_field_name("operand")
             .map_or(ArgumentType::Unknown, |operand| {
                 argument_type(operand, bytes, deps, uri)
             }),
         _ => match java_expr_type(argument, bytes, deps, uri) {
-            Some((type_text, _)) => ArgumentType::Known(overload_type_key(&type_text)),
+            Some((type_text, anchor)) => ArgumentType::Declared {
+                key: overload_type_key(&type_text),
+                anchor,
+            },
             None => ArgumentType::Unknown,
         },
     }
