@@ -4,6 +4,7 @@ use super::cursor::CursorContext;
 use super::Backend;
 use crate::features::definition as def;
 use crate::features::implementation as imp;
+use crate::features::type_definition as type_def;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 impl Backend {
@@ -20,6 +21,22 @@ impl Backend {
         };
 
         let response = def::find_definition(&ctx, &self.indexer, uri, position).await;
+        Ok(self.rewrite_jar_targets_off_thread(response).await)
+    }
+
+    pub(super) async fn goto_type_definition_impl(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let position_params = params.text_document_position_params;
+        let uri = &position_params.text_document.uri;
+        let position = position_params.position;
+
+        let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
+            return Ok(None);
+        };
+
+        let response = type_def::find_type_definition(&ctx, &self.indexer, uri, position).await;
         Ok(self.rewrite_jar_targets_off_thread(response).await)
     }
 

@@ -238,6 +238,10 @@ pub(crate) async fn find_definition(
     if let Some(declared) = crate::indexer::java_type_parameter_definition(index, uri, position) {
         return Some(GotoDefinitionResponse::Scalar(declared));
     }
+    // So is a Java local or parameter: a same-named member elsewhere is not it.
+    if let Some(declared) = crate::indexer::java_local_definition(index, uri, position) {
+        return Some(GotoDefinitionResponse::Scalar(declared));
+    }
 
     // CST-resolved path first: precise for declarations and receiver-typed
     // member references. Falls through to the string-first path below for

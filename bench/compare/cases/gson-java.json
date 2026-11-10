@@ -22595,7 +22595,7 @@
    "completion": 35,
    "hover": 144,
    "declaration": 0,
-   "typeDefinition": 0,
+   "typeDefinition": 62,
    "implementation": 0,
    "documentHighlight": 24,
    "documentSymbol": 24,
