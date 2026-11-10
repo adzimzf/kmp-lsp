@@ -233,6 +233,12 @@ pub(crate) async fn find_definition(
     uri: &Url,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
+    // A Java type parameter is bound by an enclosing declaration: no
+    // by-name lookup can tell it from a same-named class elsewhere.
+    if let Some(declared) = crate::indexer::java_type_parameter_definition(index, uri, position) {
+        return Some(GotoDefinitionResponse::Scalar(declared));
+    }
+
     // CST-resolved path first: precise for declarations and receiver-typed
     // member references. Falls through to the string-first path below for
     // everything the CST can't narrow (locals, untyped receivers, keywords).

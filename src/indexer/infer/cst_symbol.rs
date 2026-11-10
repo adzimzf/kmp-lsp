@@ -803,6 +803,29 @@ pub(crate) fn narrow_java_overloads(
     best
 }
 
+/// The declaration of the Java type parameter under `position`
+/// (`V` in `Node<K, V>` → the `V` of the enclosing `class Map<K, V>`), or
+/// `None` when the cursor isn't on a type name bound by an enclosing type
+/// parameter.
+pub(crate) fn java_type_parameter_definition(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Location> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let name_node = super::cst_lambda::cursor_node_at(&doc, cursor)?;
+    let declared = super::java_cst::type_parameter_declaration(name_node, &doc.bytes)?;
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    node_to_location(uri, declared, text)
+}
+
 /// At `new Writer(..)`, the constructors of the class in `locations` that
 /// the creation's arguments fit best, as javac picks one. A class that
 /// declares no constructor (its implicit one has no declaration) keeps the
@@ -865,13 +888,14 @@ fn best_fitting_overloads(
     arguments: &[super::java_cst::ArgumentType],
     locations: Vec<Location>,
 ) -> Vec<Location> {
+    let hierarchy = IndexedHierarchy { indexer };
     let scored: Vec<ScoredOverload> = locations
         .into_iter()
         .map(|location| {
             let parameters = declared_params(indexer, &location)
                 .map(|params| super::java_cst::parameter_type_keys(&params));
             let score = parameters.as_ref().map_or(Some(0), |parameters| {
-                super::java_cst::overload_fit_score(arguments, parameters)
+                super::java_cst::overload_fit_score(arguments, parameters, &hierarchy)
             });
             ScoredOverload {
                 score,
@@ -901,6 +925,30 @@ fn best_fitting_overloads(
         }
     }
     kept.into_iter().map(|overload| overload.location).collect()
+}
+
+/// The indexed class hierarchy.
+struct IndexedHierarchy<'index> {
+    indexer: &'index Indexer,
+}
+
+impl super::java_cst::ClassHierarchy for IndexedHierarchy<'_> {
+    fn extends(&self, class: &str, anchor: &Url, supertype: &str) -> bool {
+        use crate::resolver::{ReceiverTypeAgreement, Resolver as _};
+        // The supertype walk starts in the file that declares `class`.
+        let declarations = self
+            .indexer
+            .find_definition_qualified_index_only(class, None, anchor);
+        declarations.iter().any(|declaration| {
+            let agreement = self.indexer.receiver_type_agreement(
+                class,
+                declaration.uri.as_str(),
+                supertype,
+                crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+            );
+            agreement == ReceiverTypeAgreement::Inherited
+        })
+    }
 }
 
 /// See [`InferDeps::find_static_method_return_type`]: `method` is looked

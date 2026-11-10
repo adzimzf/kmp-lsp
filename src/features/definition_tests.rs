@@ -583,3 +583,112 @@ async fn java_member_of_a_class_is_not_its_nested_classs_member() {
     };
     assert_eq!(uris, vec![("/t/Subject.java".to_owned(), 1)]);
 }
+
+/// `assertThat(e)` on an exception picks `assertThat(Throwable)` — more
+/// specific than `assertThat(Object)` — so the chain continues on its
+/// `ThrowableSubject`.
+#[tokio::test]
+async fn java_overload_prefers_the_parameter_the_argument_class_extends() {
+    let idx = Indexer::new();
+    let files = [
+        (
+            "file:///t/com/example/truth/Subject.java",
+            "package com.example.truth;\n\
+             public class Subject {\n\
+             \x20 public void isEqualTo(Object expected) {}\n\
+             }\n",
+        ),
+        (
+            "file:///t/com/example/truth/ThrowableSubject.java",
+            "package com.example.truth;\n\
+             public class ThrowableSubject extends Subject {\n\
+             \x20 public StringSubject hasMessageThat() { return null; }\n\
+             }\n",
+        ),
+        (
+            "file:///t/com/example/truth/Truth.java",
+            "package com.example.truth;\n\
+             public final class Truth {\n\
+             \x20 public static Subject assertThat(Object actual) { return null; }\n\
+             \x20 public static ThrowableSubject assertThat(Throwable actual) { return null; }\n\
+             }\n",
+        ),
+        (
+            "file:///t/com/example/app/Failure.java",
+            "package com.example.app;\n\
+             public class Failure extends Problem {}\n",
+        ),
+        (
+            "file:///t/java/lang/Throwable.java",
+            "package java.lang;\n\
+             public class Throwable {}\n",
+        ),
+        (
+            "file:///t/com/example/app/Problem.java",
+            "package com.example.app;\n\
+             public class Problem extends Throwable {}\n",
+        ),
+    ];
+    for (uri, text) in files {
+        idx.index_content(&Url::parse(uri).unwrap(), text);
+    }
+    let caller_uri = Url::parse("file:///t/com/example/app/A.java").unwrap();
+    let caller = "package com.example.app;\n\
+                  import static com.example.truth.Truth.assertThat;\n\
+                  class A {\n\
+                  \x20 void f(Failure e) {\n\
+                  \x20   assertThat(e).hasMessageThat();\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 4, "assertThat").await,
+        vec![3]
+    );
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 4, "hasMessageThat").await,
+        vec![2]
+    );
+}
+
+/// A Java type parameter goes to its declaration in the enclosing class or
+/// method — never to a same-named class elsewhere.
+#[tokio::test]
+async fn java_type_parameter_goes_to_its_declaration() {
+    let idx = Indexer::new();
+    let elsewhere_uri = Url::parse("file:///t/other/V.java").unwrap();
+    idx.index_content(&elsewhere_uri, "package other;\npublic class V {}\n");
+    let box_uri = Url::parse("file:///t/app/Box.java").unwrap();
+    let source = "package app;\n\
+                  public class Box<K, V extends Comparable<V>> {\n\
+                  \x20 Node<K, V> root;\n\
+                  \x20 <V> V swap(V value) {\n\
+                  \x20   return value;\n\
+                  \x20 }\n\
+                  \x20 void put(K key, V value) {\n\
+                  \x20   Node<K, V> left = root;\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&box_uri, source);
+    idx.store_live_tree(&box_uri, source);
+    // Field and local types: the class's own `V` (line 1).
+    assert_eq!(
+        definition_lines(&idx, &box_uri, source, 2, "V>").await,
+        vec![1]
+    );
+    assert_eq!(
+        definition_lines(&idx, &box_uri, source, 7, "V>").await,
+        vec![1]
+    );
+    // The bound's own `V` refers to the parameter it bounds.
+    assert_eq!(
+        definition_lines(&idx, &box_uri, source, 1, "V>>").await,
+        vec![1]
+    );
+    // The method's `<V>` shadows the class's (line 3).
+    assert_eq!(
+        definition_lines(&idx, &box_uri, source, 3, "V value").await,
+        vec![3]
+    );
+}
