@@ -481,3 +481,25 @@ fn decompiled_files_are_packaged_as_a_sources_jar() {
     names.sort();
     assert_eq!(names, vec!["com/acme/Greeter.java", "com/acme/Util.kt"]);
 }
+
+#[test]
+fn maven_reactor_retry_runs_the_compile_phase_without_compiling() {
+    use maven::SiblingModules;
+    let output = Path::new("/tmp/deps.txt");
+
+    let plain = maven::dependency_goal_arguments(output, SiblingModules::FromRepository);
+    let reactor = maven::dependency_goal_arguments(output, SiblingModules::FromReactor);
+
+    assert!(!plain.iter().any(|argument| argument == "compile"));
+    // The phase must come before the dependency goals, so the reactor has
+    // every sibling's output in place when they resolve.
+    let compile = reactor.iter().position(|argument| argument == "compile");
+    let list = reactor
+        .iter()
+        .position(|argument| argument.ends_with(":list"));
+    assert!(compile.is_some() && compile < list, "{reactor:?}");
+    assert!(reactor
+        .iter()
+        .any(|argument| argument == "-Dmaven.main.skip=true"));
+    assert!(reactor.iter().any(|argument| argument == "--fail-at-end"));
+}

@@ -15,20 +15,70 @@ pub(crate) fn resolve(
     launcher: &Path,
     output_file: &Path,
 ) -> Result<Resolved, BuildToolFailure> {
+    let first = run_dependency_goals(root, launcher, output_file, SiblingModules::FromRepository)?;
+    let ModulesResolved::Some { .. } = &first else {
+        return finish(output_file, first);
+    };
+    // A module depending on a sibling's SNAPSHOT that was never installed
+    // can't resolve from the local repository. Run again with the `compile`
+    // phase in the session, which lets Maven's reactor serve each sibling
+    // from its own build output instead.
+    let first_output = std::fs::read_to_string(output_file).unwrap_or_default();
+    let _ = std::fs::remove_file(output_file);
+    match run_dependency_goals(root, launcher, output_file, SiblingModules::FromReactor) {
+        Ok(ModulesResolved::All) => finish(output_file, ModulesResolved::All),
+        _ => {
+            let _ = std::fs::write(output_file, first_output);
+            finish(output_file, first)
+        }
+    }
+}
+
+/// Where a reactor module's dependency on a sibling module is resolved from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SiblingModules {
+    /// The local repository, as a plain `dependency:list` run does: only a
+    /// sibling that was installed there resolves.
+    FromRepository,
+    /// The reactor: the `compile` phase joins the session (with compilation
+    /// itself skipped), so Maven serves each sibling from its build output.
+    FromReactor,
+}
+
+pub(crate) fn dependency_goal_arguments(
+    output_file: &Path,
+    siblings: SiblingModules,
+) -> Vec<String> {
+    // One module that can't resolve must not hide every other module's
+    // dependencies: `--fail-at-end` keeps going past it.
+    let mut arguments: Vec<String> = ["--batch-mode", "--quiet", "--fail-at-end"]
+        .map(str::to_owned)
+        .to_vec();
+    if siblings == SiblingModules::FromReactor {
+        arguments.push("-Dmaven.main.skip=true".to_owned());
+        arguments.push("compile".to_owned());
+    }
+    arguments.extend([
+        format!("{DEPENDENCY_PLUGIN}:sources"),
+        format!("{DEPENDENCY_PLUGIN}:list"),
+        "-DoutputAbsoluteArtifactFilename=true".to_owned(),
+        format!("-DoutputFile={}", output_file.display()),
+        // Every module of a multi-module build appends to the same file.
+        "-DappendOutput=true".to_owned(),
+    ]);
+    arguments
+}
+
+fn run_dependency_goals(
+    root: &Path,
+    launcher: &Path,
+    output_file: &Path,
+    siblings: SiblingModules,
+) -> Result<ModulesResolved, BuildToolFailure> {
     let mut command = launch(launcher);
     command
         .current_dir(root)
-        // One module that can't resolve must not hide every other module's
-        // dependencies: a reactor module depending on a sibling's SNAPSHOT
-        // that was never installed fails these goals (no `package` phase
-        // runs), while the modules that matter resolve fine.
-        .args(["--batch-mode", "--quiet", "--fail-at-end"])
-        .arg(format!("{DEPENDENCY_PLUGIN}:sources"))
-        .arg(format!("{DEPENDENCY_PLUGIN}:list"))
-        .arg("-DoutputAbsoluteArtifactFilename=true")
-        .arg(format!("-DoutputFile={}", output_file.display()))
-        // Every module of a multi-module build appends to the same file.
-        .arg("-DappendOutput=true");
+        .args(dependency_goal_arguments(output_file, siblings));
     let run = run_build_tool(
         command,
         &format!(
@@ -36,11 +86,14 @@ pub(crate) fn resolve(
             launcher.display()
         ),
     );
-    let modules = match run {
-        Ok(()) => ModulesResolved::All,
-        Err(BuildToolFailure::Failed(message)) => ModulesResolved::Some { failure: message },
-        Err(not_found @ BuildToolFailure::NotFound(_)) => return Err(not_found),
-    };
+    match run {
+        Ok(()) => Ok(ModulesResolved::All),
+        Err(BuildToolFailure::Failed(message)) => Ok(ModulesResolved::Some { failure: message }),
+        Err(not_found @ BuildToolFailure::NotFound(_)) => Err(not_found),
+    }
+}
+
+fn finish(output_file: &Path, modules: ModulesResolved) -> Result<Resolved, BuildToolFailure> {
     let text = std::fs::read_to_string(output_file).unwrap_or_default();
     resolved_from(parse_output(&text), modules)
 }
