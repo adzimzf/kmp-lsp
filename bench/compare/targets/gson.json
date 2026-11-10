@@ -7,7 +7,9 @@
     "-pl",
     "gson",
     "-am",
-    "test-compile"
+    "-DskipTests",
+    "-Dmoditect.skip=true",
+    "install"
   ],
   "roots": [
     "gson/src/main/java",
@@ -35,6 +37,14 @@
       "name": "fromJson",
       "expect_file": "gson/src/main/java/com/google/gson/Gson.java",
       "expect_line": 850
+    },
+    {
+      "language": "java",
+      "file": "gson/src/main/java/com/google/gson/internal/LazilyParsedNumber.java",
+      "line": 59,
+      "name": "Long",
+      "expect_class": "Long",
+      "_why": "the JDK is indexed in the background and reports no progress: until a JDK type resolves, a third of the queries have no answer yet"
     }
   ],
   "_lines": "probe lines are 1-based; query files use 0-based LSP positions"

@@ -24,6 +24,7 @@ import sys
 import time
 
 from lsp import LanguageServer, LspError, RequestTimeout
+from score import Repo, normalize_target
 from servers import SERVERS
 
 
@@ -95,6 +96,22 @@ def timed(server, method, params, timeout):
         return {"result": None, "seconds": None, "error": str(error)}
 
 
+def probe_satisfied(repo, probe, answer):
+    """Does this probe's definition answer land where the target says?
+
+    `expect_file`/`expect_line`: that file, within three lines of that line.
+    `expect_class`: a library class of that name — the JDK and the
+    dependencies are indexed in the background without reporting progress,
+    so a probe on `Long` or `Map` is what tells a client they are there."""
+    found = locations(answer["result"])
+    if "expect_class" in probe:
+        return any(normalize_target(repo, location, probe["name"])
+                   == ("external", probe["expect_class"]) for location in found)
+    expected_uri = uri_of(repo.root, probe["expect_file"])
+    return any(location["uri"] == expected_uri
+               and abs(location["line"] - (probe["expect_line"] - 1)) <= 3
+               for location in found)
+
 def wait_until_ready(server, documents, repo, probes, timeout):
     """Seconds since start when every probe answers correctly, or None."""
     for probe in probes:
@@ -107,12 +124,9 @@ def wait_until_ready(server, documents, repo, probes, timeout):
             line_text = documents.texts[probe["file"]].split("\n")[probe["line"] - 1]
             character = line_text.index(probe["name"])
             answer = timed(server, "textDocument/definition", {
-                "textDocument": {"uri": uri_of(repo, probe["file"])},
+                "textDocument": {"uri": uri_of(repo.root, probe["file"])},
                 "position": {"line": probe["line"] - 1, "character": character}}, timeout=30)
-            expected_uri = uri_of(repo, probe["expect_file"])
-            hit = any(location["uri"] == expected_uri and abs(location["line"] - (probe["expect_line"] - 1)) <= 3
-                      for location in locations(answer["result"]))
-            if not hit:
+            if not probe_satisfied(repo, probe, answer):
                 still.append(probe)
         pending = still
         if pending:
@@ -203,7 +217,8 @@ def main():
 
         documents = Documents(server, repo)
         probes = [probe for probe in target["probes"] if probe["language"] in languages]
-        record["phases"]["ready"] = wait_until_ready(server, documents, repo, probes, arguments.ready_timeout)
+        record["phases"]["ready"] = wait_until_ready(server, documents, Repo(repo), probes,
+                                                     arguments.ready_timeout)
         record["rss_at_ready_kib"] = server.rss_kib()
         if record["phases"]["ready"] is None:
             record["error"] = "never ready"

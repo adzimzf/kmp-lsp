@@ -203,6 +203,18 @@ JDTLS=/path/to/jdtls JAVA=/path/to/java25 BUILD_JDK=/path/to/jdk21 \
 kmp-lsp's state directory is primed with one throw-away run first: on an
 empty state it indexes dependency jars in the background without reporting
 progress, so the very first questions are asked before their answers exist.
+For the same reason one readiness probe asks for a *JDK* type (`Long`) via
+`expect_class` rather than a file in the repository: until the JDK is
+indexed, a third of the queries have no answer yet, and a run that starts
+before that measures the indexer's clock, not the resolver.
+
+The target's build step runs `install`, not `test-compile`: gson's root pom
+has a module depending on gson's own SNAPSHOT, and until that artifact is in
+the local repository, resolving the project's dependencies fails — for
+kmp-lsp's dependency sync as much as for jdtls's importer, and a server
+whose sync failed indexes neither the JDK nor the libraries. That is the
+shape to watch for when adding a target: a build the servers can actually
+resolve, with its own artifacts installed.
 
 `itest_selfcheck.py` checks the gate itself on a synthetic result: that a
 score below baseline exits non-zero and that a failure names both locations.
