@@ -495,3 +495,98 @@ fn a_sources_jar_entry_resolves_names_through_its_own_imports() {
     assert!(!super::super::has_own_imports(&compiled_stub));
     assert!(super::super::has_own_imports(&uri()));
 }
+
+// ─── parameter-name hints ────────────────────────────────────────────────────
+
+fn parameter_names(params: &str) -> Option<Vec<(String, bool)>> {
+    super::declared_parameters(params).map(|parameters| {
+        parameters
+            .into_iter()
+            .map(|parameter| (parameter.name, parameter.is_varargs))
+            .collect()
+    })
+}
+
+#[test]
+fn declared_parameters_read_java_and_kotlin_parameter_text() {
+    let named = |name: &str, is_varargs: bool| (name.to_owned(), is_varargs);
+    assert_eq!(
+        parameter_names("final @Nullable Map<K, V> map, int... counts"),
+        Some(vec![named("map", false), named("counts", true)])
+    );
+    assert_eq!(
+        parameter_names("name: String? = null, vararg counts: Int"),
+        Some(vec![named("name", false), named("counts", true)])
+    );
+    assert_eq!(parameter_names(""), Some(Vec::new()));
+}
+
+/// A compiled class without parameter names names nothing: no hint is
+/// better than `p0:`.
+#[test]
+fn declared_parameters_reject_synthetic_names() {
+    assert_eq!(parameter_names("p0: Int, p1: String"), None);
+    assert_eq!(parameter_names("int arg0"), None);
+    assert_eq!(
+        parameter_names("int p, String args"),
+        Some(vec![("p".to_owned(), false), ("args".to_owned(), false)])
+    );
+}
+
+#[test]
+fn parameter_for_argument_follows_varargs_and_arity() {
+    let format_and_args = super::declared_parameters("String format, Object... args").unwrap();
+    let name_of = |count: usize, index: usize| {
+        super::parameter_for_argument(&format_and_args, count, index)
+            .map(|parameter| parameter.name.clone())
+    };
+    assert_eq!(name_of(3, 0).as_deref(), Some("format"));
+    assert_eq!(name_of(3, 1).as_deref(), Some("args"));
+    assert_eq!(
+        name_of(3, 2),
+        None,
+        "a later varargs argument is not named again"
+    );
+    assert_eq!(
+        name_of(0, 0),
+        None,
+        "too few arguments for this declaration"
+    );
+
+    let one = super::declared_parameters("int count").unwrap();
+    assert!(super::parameter_for_argument(&one, 2, 0).is_none());
+}
+
+#[test]
+fn literal_argument_calls_list_each_call_with_its_literals() {
+    let src = "class A {\n\
+               \x20 A() { this(1, name); }\n\
+               \x20 void f(B b, int x) { b.go(x, \"s\", null, A.class, -1); new C(true); }\n\
+               }\n";
+    let doc = java_doc(src);
+    let calls = super::literal_argument_calls(doc.tree.root_node(), 0..=3);
+    let summary: Vec<(usize, usize, Vec<usize>)> = calls
+        .iter()
+        .map(|call| {
+            (
+                call.callee.row,
+                call.callee.column,
+                call.literals.iter().map(|literal| literal.index).collect(),
+            )
+        })
+        .collect();
+    let line_2 = src.lines().nth(2).unwrap();
+    assert_eq!(
+        summary,
+        vec![
+            (
+                1,
+                src.lines().nth(1).unwrap().find("this").unwrap(),
+                vec![0]
+            ),
+            (2, line_2.find("go").unwrap(), vec![1, 2, 3]),
+            (2, line_2.find("C(").unwrap(), vec![0]),
+        ]
+    );
+    assert!(super::literal_argument_calls(doc.tree.root_node(), 3..=3).is_empty());
+}

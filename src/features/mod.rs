@@ -27,6 +27,7 @@ pub(crate) mod java_references;
 pub(crate) mod missing_import_diagnostics;
 pub(crate) mod nullable_call_diagnostics;
 pub(crate) mod on_type_formatting;
+pub(crate) mod parameter_hints;
 pub(crate) mod references;
 pub(crate) mod references_verify;
 pub(crate) mod rename;

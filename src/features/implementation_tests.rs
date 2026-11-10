@@ -216,3 +216,88 @@ async fn goto_implementation_from_a_call_site_finds_overrides() {
         files
     );
 }
+
+/// Lines of every location in `response`, sorted.
+fn response_lines(response: Option<GotoDefinitionResponse>) -> Vec<u32> {
+    let mut lines: Vec<u32> = match response {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location.range.start.line],
+        Some(GotoDefinitionResponse::Array(locations)) => locations
+            .iter()
+            .map(|location| location.range.start.line)
+            .collect(),
+        Some(GotoDefinitionResponse::Link(links)) => links
+            .iter()
+            .map(|link| link.target_selection_range.start.line)
+            .collect(),
+        None => Vec::new(),
+    };
+    lines.sort_unstable();
+    lines
+}
+
+/// A Java anonymous class (`new Iter<K>() { .. }`) implements its supertype
+/// like a named subclass does: goto-implementation on the type lists each
+/// one at its `new` line, and on an abstract method each anonymous override.
+/// A plain `new Other()` with no body is no implementation.
+#[tokio::test]
+async fn java_anonymous_classes_are_implementations() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let src = "class Tree<K> {\n\
+               \x20 private abstract class Iter<T> {\n\
+               \x20   abstract T next();\n\
+               \x20 }\n\
+               \x20 Iter<K> keys() {\n\
+               \x20   return new Iter<K>() {\n\
+               \x20     @Override\n\
+               \x20     K next() { return null; }\n\
+               \x20   };\n\
+               \x20 }\n\
+               \x20 Iter<String> names() {\n\
+               \x20   return new Iter<String>() {\n\
+               \x20     @Override\n\
+               \x20     String next() { return \"\"; }\n\
+               \x20   };\n\
+               \x20 }\n\
+               \x20 Object plain() { return new Object(); }\n\
+               }\n";
+    let (_, uri) = write(root, "Tree.java", src);
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&uri, src);
+
+    let types = find_implementation("Iter", &idx, &uri, 1).await;
+    assert_eq!(response_lines(types), vec![5, 11]);
+
+    let methods = find_implementation("next", &idx, &uri, 2).await;
+    assert_eq!(response_lines(methods), vec![7, 13]);
+}
+
+/// The nested subclasses of `RecordHelper` override `isRecord`; the outer
+/// class's own static `isRecord` (same file, same name) is not an override.
+#[tokio::test]
+async fn java_override_of_a_nested_class_excludes_the_outer_classs_same_named_method() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let src = "public final class ReflectionHelper {\n\
+               \x20 public static boolean isRecord(Class<?> raw) { return HELPER.isRecord(raw); }\n\
+               \x20 private abstract static class RecordHelper {\n\
+               \x20   abstract boolean isRecord(Class<?> clazz);\n\
+               \x20 }\n\
+               \x20 private static final class Supported extends RecordHelper {\n\
+               \x20   @Override\n\
+               \x20   boolean isRecord(Class<?> raw) { return true; }\n\
+               \x20 }\n\
+               \x20 private static final class NotSupported extends RecordHelper {\n\
+               \x20   @Override\n\
+               \x20   boolean isRecord(Class<?> clazz) { return false; }\n\
+               \x20 }\n\
+               }\n";
+    let (_, uri) = write(root, "ReflectionHelper.java", src);
+    let idx = Indexer::new();
+    idx.workspace_root.set(root.to_path_buf());
+    idx.index_content(&uri, src);
+
+    let response = find_implementation("isRecord", &idx, &uri, 3).await;
+    assert_eq!(response_lines(response), vec![7, 11]);
+}

@@ -465,7 +465,7 @@ fn in_range(line: u32, range: Range) -> bool {
 
 /// Convert a tree-sitter `Point` (row, byte-column) to an LSP `Position`
 /// (0-based line, UTF-16 code-unit column).
-fn ts_pos_to_lsp(pos: tree_sitter::Point, starts: &[usize], bytes: &[u8]) -> Position {
+pub(crate) fn ts_pos_to_lsp(pos: tree_sitter::Point, starts: &[usize], bytes: &[u8]) -> Position {
     Position::new(
         pos.row as u32,
         ts_byte_col_to_utf16(bytes, starts, pos.row, pos.column) as u32,

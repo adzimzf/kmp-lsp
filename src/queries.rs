@@ -308,6 +308,8 @@ pub(crate) const KIND_SUPERCLASS: &str = "superclass";
 pub(crate) const KIND_SUPER_INTERFACES: &str = "super_interfaces";
 pub(crate) const KIND_EXTENDS_INTERFACES: &str = "extends_interfaces";
 pub(crate) const KIND_TYPE_LIST: &str = "type_list";
+pub(crate) const KIND_OBJECT_CREATION: &str = "object_creation_expression";
+pub(crate) const KIND_GENERIC_TYPE: &str = "generic_type";
 
 // Swift-specific
 pub(crate) const KIND_PROTOCOL_DECL: &str = "protocol_declaration";

@@ -785,6 +785,10 @@ pub(crate) fn narrow_java_overloads(
     if let Some(creation) = super::java_cst::object_creation_of_type_name(cursor_node) {
         return constructors_fitting_creation(indexer, uri, creation, &doc.bytes, locations);
     }
+    // `this(..)` / `super(..)` names the class whose constructor it calls.
+    if let Some(invocation) = super::java_cst::constructor_invocation_of_keyword(cursor_node) {
+        return constructors_fitting_creation(indexer, uri, invocation, &doc.bytes, locations);
+    }
     let Some(invocation) = super::java_cst::invocation_of_method_name(cursor_node) else {
         return locations;
     };
@@ -924,7 +928,8 @@ fn constructors_fitting_creation(
 }
 
 /// The constructors declared by the classes at `locations`, next to each
-/// class in its own file.
+/// class in its own file. A location that already is a constructor stands
+/// for every constructor of its class: the lookup answered with one of them.
 fn declared_constructors(indexer: &Indexer, locations: &[Location]) -> Vec<Location> {
     let mut constructors: Vec<Location> = Vec::new();
     for location in locations {
@@ -935,6 +940,17 @@ fn declared_constructors(indexer: &Indexer, locations: &[Location]) -> Vec<Locat
         else {
             continue;
         };
+        let is_a_constructor = file.symbols.iter().any(|symbol| {
+            symbol.selection_range == location.range && symbol.kind == SymbolKind::CONSTRUCTOR
+        });
+        if is_a_constructor {
+            for sibling in with_sibling_overloads(indexer, vec![location.clone()]) {
+                if !constructors.contains(&sibling) {
+                    constructors.push(sibling);
+                }
+            }
+            continue;
+        }
         let Some(class) = file.symbols.iter().find(|symbol| {
             symbol.selection_range == location.range && symbol.kind == SymbolKind::CLASS
         }) else {
@@ -970,8 +986,7 @@ fn best_fitting_overloads(
     let scored: Vec<ScoredOverload> = locations
         .into_iter()
         .map(|location| {
-            let parameters = declared_params(indexer, &location)
-                .map(|params| super::java_cst::parameter_type_keys(&params));
+            let parameters = declared_parameter_keys(indexer, &location);
             let score = parameters.as_ref().map_or(Some(0), |parameters| {
                 super::java_cst::overload_fit_score(arguments, parameters, &hierarchy)
             });
@@ -1115,6 +1130,53 @@ struct ScoredOverload {
     /// Its parameter type keys, when its declaration is indexed.
     parameters: Option<Vec<String>>,
     location: Location,
+}
+
+/// The parameters of the method or constructor declared at `location`, by
+/// name, or `None` when its declaration isn't indexed or a parameter's name
+/// can't be read.
+pub(crate) fn declared_parameters_at(
+    indexer: &Indexer,
+    location: &Location,
+) -> Option<Vec<super::java_cst::DeclaredParameter>> {
+    super::java_cst::declared_parameters(&declared_params(indexer, location)?)
+}
+
+/// The parameter type keys of the declaration at `location`, with each type
+/// variable in scope there erased to `Object`, as javac erases it: `add(E e)`
+/// of `List<E>` takes a `String`, which no class named `E` would.
+fn declared_parameter_keys(indexer: &Indexer, location: &Location) -> Option<Vec<String>> {
+    let file = indexer
+        .files
+        .get(location.uri.as_str())
+        .or_else(|| indexer.jar_files.get(location.uri.as_str()))?;
+    let declaration = file
+        .symbols
+        .iter()
+        .find(|symbol| symbol.selection_range == location.range)?;
+    let enclosing = file.enclosing_classes_at(declaration.range.start.line);
+    let type_variables: Vec<&str> = enclosing
+        .iter()
+        .chain(std::iter::once(&declaration))
+        .flat_map(|symbol| symbol.type_params())
+        .map(String::as_str)
+        .collect();
+    let keys = super::java_cst::parameter_type_keys(&declaration.params)
+        .into_iter()
+        .map(|key| erase_type_variable(key, &type_variables))
+        .collect();
+    Some(keys)
+}
+
+/// `key` with a type variable of `type_variables` erased to `Object`
+/// (`T[]` → `Object[]`).
+fn erase_type_variable(key: String, type_variables: &[&str]) -> String {
+    let element = key.trim_end_matches("[]");
+    if type_variables.contains(&element) {
+        format!("Object{}", &key[element.len()..])
+    } else {
+        key
+    }
 }
 
 /// The indexed parameter text of the declaration at `location`.

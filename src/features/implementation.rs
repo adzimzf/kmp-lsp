@@ -11,13 +11,13 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, SymbolKind, Url};
+use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Range, SymbolKind, Url};
 
 use crate::features::definition::locs_to_opt_response;
 use crate::features::traits::{DocumentAccess, SearchAccess, SymbolIndex};
 use crate::indexer::{classify_cursor, Indexer, SymbolRole};
 use crate::rg;
-use crate::types::FileData;
+use crate::types::{FileData, SymbolEntry};
 
 /// Throttle counters for the join-panic warnings below — see
 /// [`crate::util::throttled_warn`]. A panic here means goto-implementation
@@ -177,24 +177,97 @@ fn declaring_class_of_method(
         .and_then(|s| s.container)
 }
 
+/// Where a subtype found by [`SymbolIndex::subtypes_of`] declares its own
+/// members, inside its file.
+enum SubtypeBody<'data> {
+    /// A declared class: its members name it as their container.
+    Named(&'data SymbolEntry),
+    /// A Java anonymous class: its members lie inside its body, though their
+    /// container is the named class around it.
+    Anonymous(Range),
+    /// The subtype's declaration is not in its file's data: every member of
+    /// the file may be its.
+    Unlocated,
+}
+
+impl<'data> SubtypeBody<'data> {
+    fn of(data: &'data FileData, subtype: &Location) -> Self {
+        if let Some(class) = data
+            .symbols
+            .iter()
+            .find(|symbol| symbol.selection_range == subtype.range)
+        {
+            return SubtypeBody::Named(class);
+        }
+        match data.anonymous_class_at(subtype.range) {
+            Some(anonymous) => SubtypeBody::Anonymous(anonymous.body),
+            None => SubtypeBody::Unlocated,
+        }
+    }
+
+    /// Whether `member` (a symbol of the same file) is declared by this
+    /// subtype itself, not by an enclosing or a nested class.
+    fn declares(&self, member: &SymbolEntry, data: &FileData) -> bool {
+        match self {
+            SubtypeBody::Named(class) => {
+                member.container.as_deref() == Some(class.name.as_str())
+                    && range_contains(class.range, member.range)
+            }
+            SubtypeBody::Anonymous(body) => {
+                let in_nested_class = data.symbols.iter().any(|symbol| {
+                    is_class_kind(symbol.kind)
+                        && range_contains(*body, symbol.range)
+                        && range_contains(symbol.range, member.range)
+                });
+                range_contains(*body, member.range) && !in_nested_class
+            }
+            SubtypeBody::Unlocated => true,
+        }
+    }
+}
+
+fn is_class_kind(kind: SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::CLASS
+            | SymbolKind::INTERFACE
+            | SymbolKind::STRUCT
+            | SymbolKind::ENUM
+            | SymbolKind::OBJECT
+    )
+}
+
+fn range_contains(outer: Range, inner: Range) -> bool {
+    outer.start <= inner.start && inner.end <= outer.end
+}
+
 /// Collect `override fun method_name` (Kotlin) or same-named method (Java)
-/// locations within `data` for a confirmed subtype.
+/// locations that the subtype at `subtype` declares itself — not a
+/// same-named method of the class around it (`ReflectionHelper.isRecord`
+/// next to its nested `RecordHelper` subclasses) or of another class in the
+/// file.
 ///
 /// For Kotlin, `detail` must contain `"override"` to exclude same-named
 /// non-overriding overloads. For Java, `@Override` lives on the preceding line
-/// and is not in the indexed detail, so all same-named methods in a confirmed
+/// and is not in the indexed detail, so all same-named methods of a confirmed
 /// subtype are included.
-fn method_overrides_in(method_name: &str, data: &Arc<FileData>, uri: &Url) -> Vec<Location> {
-    let lang = crate::Language::from_path(uri.path());
+fn method_overrides_in(
+    method_name: &str,
+    data: &Arc<FileData>,
+    subtype: &Location,
+) -> Vec<Location> {
+    let lang = crate::Language::from_path(subtype.uri.path());
+    let body = SubtypeBody::of(data, subtype);
     data.symbols
         .iter()
         .filter(|s| {
             s.name == method_name
                 && matches!(s.kind, SymbolKind::FUNCTION | SymbolKind::METHOD)
                 && lang.detail_is_override(&s.detail)
+                && body.declares(s, data)
         })
         .map(|s| Location {
-            uri: uri.clone(),
+            uri: subtype.uri.clone(),
             range: s.selection_range,
         })
         .collect()
@@ -233,7 +306,7 @@ async fn find_method_implementations(
             }
 
             // Collect all override sites for the method in this file.
-            for loc in method_overrides_in(method_name, &data, &class_loc.uri) {
+            for loc in method_overrides_in(method_name, &data, &class_loc) {
                 if !override_locs
                     .iter()
                     .any(|l| l.uri == loc.uri && l.range == loc.range)

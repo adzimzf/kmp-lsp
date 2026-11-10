@@ -1015,6 +1015,18 @@ const CATCH_ALL_TYPES: [&str; 2] = ["Object", "Any"];
 /// Reference types a boxed primitive or a string also is.
 const PRIMITIVE_SUPERTYPES: [&str; 4] = ["Number", "Comparable", "Serializable", "CharSequence"];
 
+/// The interfaces `java.lang.Class` — a final JDK class — implements: what
+/// a class literal (`Boolean.class`) is passed as besides `Class` itself,
+/// whether or not the JDK is indexed.
+const CLASS_SUPERTYPES: [&str; 6] = [
+    "Type",
+    "GenericDeclaration",
+    "AnnotatedElement",
+    "Serializable",
+    "Constable",
+    "TypeDescriptor",
+];
+
 /// A type as overload selection compares it: no annotations, modifiers,
 /// type arguments, package or nullability, Kotlin and boxed spellings folded
 /// into the Java primitive (`Int`, `Integer` → `int`), varargs as an array.
@@ -1108,9 +1120,10 @@ fn fit(argument: &ArgumentType, parameter: &str, hierarchy: &impl ClassHierarchy
         };
     }
     // Two other classes: the argument's may extend the parameter's.
+    let is_class_supertype = known == "Class" && CLASS_SUPERTYPES.contains(&parameter);
     if is_primitive_key(parameter) {
         Fit::Impossible
-    } else if argument_class_extends(argument, parameter, hierarchy) {
+    } else if is_class_supertype || argument_class_extends(argument, parameter, hierarchy) {
         Fit::Subclass
     } else {
         Fit::Possible
@@ -1200,6 +1213,15 @@ pub(crate) fn object_creation_of_type_name(name_node: Node<'_>) -> Option<Node<'
     let is_the_created_type =
         creation.kind() == OBJECT_CREATION && is_field_named(creation, "type", created_type);
     is_the_created_type.then_some(creation)
+}
+
+/// The `this(..)` / `super(..)` constructor call whose keyword is
+/// `keyword_node`.
+pub(crate) fn constructor_invocation_of_keyword(keyword_node: Node<'_>) -> Option<Node<'_>> {
+    let parent = keyword_node.parent()?;
+    let is_its_keyword = parent.kind() == EXPLICIT_CONSTRUCTOR_INVOCATION
+        && is_field_named(parent, "constructor", keyword_node);
+    is_its_keyword.then_some(parent)
 }
 
 /// What the type of the declaration named by `name_node` is, as
@@ -1453,6 +1475,215 @@ fn argument_type(
             },
             None => ArgumentType::Unknown,
         },
+    }
+}
+
+// ─── parameter-name hints ────────────────────────────────────────────────────
+
+/// A call whose literal arguments get parameter-name hints, as jdtls's
+/// default (`literals`) shows them: `a.add(1)` → `a.add(number: 1)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LiteralArgumentCall {
+    /// Where go-to-definition finds the callee: the method's name, the
+    /// created type's name, or the `this` / `super` of a constructor call.
+    pub(crate) callee: tree_sitter::Point,
+    /// How many arguments the call passes.
+    pub(crate) argument_count: usize,
+    /// The call's literal arguments, in order.
+    pub(crate) literals: Vec<LiteralArgument>,
+}
+
+/// One literal argument of a [`LiteralArgumentCall`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LiteralArgument {
+    /// Its position among the call's arguments, from 0.
+    pub(crate) index: usize,
+    /// Where it starts: the hint goes right before it.
+    pub(crate) start: tree_sitter::Point,
+}
+
+const EXPLICIT_CONSTRUCTOR_INVOCATION: &str = "explicit_constructor_invocation";
+
+/// Every method call, `new T(..)` and `this(..)` / `super(..)` under `root`
+/// that passes a literal on a row in `rows`, with only those literals.
+pub(crate) fn literal_argument_calls(
+    root: Node<'_>,
+    rows: std::ops::RangeInclusive<usize>,
+) -> Vec<LiteralArgumentCall> {
+    let mut calls = Vec::new();
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        let outside =
+            node.end_position().row < *rows.start() || node.start_position().row > *rows.end();
+        if outside {
+            continue;
+        }
+        if let Some(call) = literal_argument_call(node, &rows) {
+            calls.push(call);
+        }
+        let mut cursor = node.walk();
+        stack.extend(node.named_children(&mut cursor));
+    }
+    calls.sort_by_key(|call| call.callee);
+    calls
+}
+
+fn literal_argument_call(
+    node: Node<'_>,
+    rows: &std::ops::RangeInclusive<usize>,
+) -> Option<LiteralArgumentCall> {
+    let callee = match node.kind() {
+        METHOD_INVOCATION => node.child_by_field_name("name")?,
+        OBJECT_CREATION => created_type_name(node)?,
+        EXPLICIT_CONSTRUCTOR_INVOCATION => node.child_by_field_name("constructor")?,
+        _ => return None,
+    };
+    let arguments = node.child_by_field_name("arguments")?;
+    let mut cursor = arguments.walk();
+    let passed: Vec<Node<'_>> = arguments
+        .named_children(&mut cursor)
+        .filter(|argument| !argument.is_extra())
+        .collect();
+    let literals: Vec<LiteralArgument> = passed
+        .iter()
+        .enumerate()
+        .filter(|(_, argument)| {
+            is_hinted_literal(**argument) && rows.contains(&argument.start_position().row)
+        })
+        .map(|(index, argument)| LiteralArgument {
+            index,
+            start: argument.start_position(),
+        })
+        .collect();
+    if literals.is_empty() {
+        return None;
+    }
+    Some(LiteralArgumentCall {
+        callee: callee.start_position(),
+        argument_count: passed.len(),
+        literals,
+    })
+}
+
+/// The simple type name a `new` expression creates (`Token` of
+/// `new Token<String>()`), or `None` for a qualified one (`new Outer.Inner()`),
+/// which go-to-definition is not asked at.
+fn created_type_name(creation: Node<'_>) -> Option<Node<'_>> {
+    let created_type = creation.child_by_field_name("type")?;
+    let name = if created_type.kind() == GENERIC_TYPE {
+        created_type.named_child(0)?
+    } else {
+        created_type
+    };
+    (name.kind() == TYPE_IDENTIFIER).then_some(name)
+}
+
+/// A literal as jdtls hints one: numbers, strings, characters, booleans,
+/// `null` and class literals. A negated number (`-1`) is an expression.
+fn is_hinted_literal(argument: Node<'_>) -> bool {
+    matches!(
+        argument.kind(),
+        "decimal_integer_literal"
+            | "hex_integer_literal"
+            | "octal_integer_literal"
+            | "binary_integer_literal"
+            | "decimal_floating_point_literal"
+            | "hex_floating_point_literal"
+            | "true"
+            | "false"
+            | "character_literal"
+            | STRING_LITERAL
+            | "null_literal"
+            | CLASS_LITERAL
+    )
+}
+
+/// One declared parameter, as a parameter-name hint needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DeclaredParameter {
+    pub(crate) name: String,
+    /// `String... parts` (Java) or `vararg parts: String` (Kotlin).
+    pub(crate) is_varargs: bool,
+}
+
+/// The parameters of a declaration's indexed parameter text — Java's
+/// `final @Nullable String name, int... counts` or Kotlin's
+/// `name: String?, vararg counts: Int`. `None` when a parameter has no
+/// readable name.
+pub(crate) fn declared_parameters(params: &str) -> Option<Vec<DeclaredParameter>> {
+    let params = params.trim().trim_start_matches('(').trim_end_matches(')');
+    if params.trim().is_empty() {
+        return Some(Vec::new());
+    }
+    crate::indexer::split_params_at_depth_zero(params)
+        .into_iter()
+        .map(declared_parameter_of)
+        .collect()
+}
+
+fn declared_parameter_of(parameter: &str) -> Option<DeclaredParameter> {
+    let parameter = parameter.trim();
+    let (name, is_varargs) = match parameter.split_once(':') {
+        Some((modifiers_and_name, _type_and_default)) => {
+            let mut words = modifiers_and_name.split_whitespace();
+            let name = words.next_back()?;
+            let is_varargs = modifiers_and_name
+                .split_whitespace()
+                .any(|word| word == "vararg");
+            (name, is_varargs)
+        }
+        None => {
+            let (type_text, name) = parameter.rsplit_once(char::is_whitespace)?;
+            (name, type_text.trim_end().ends_with("..."))
+        }
+    };
+    let is_identifier = name
+        .chars()
+        .all(|char| char.is_alphanumeric() || char == '_' || char == '$');
+    let readable = is_identifier && !name.is_empty() && !is_synthetic_parameter_name(name);
+    readable.then(|| DeclaredParameter {
+        name: name.to_owned(),
+        is_varargs,
+    })
+}
+
+/// `p0`, `arg1`: the names a compiled class without parameter names gets
+/// (the sidecar's and javac's placeholders), which name nothing.
+fn is_synthetic_parameter_name(name: &str) -> bool {
+    ["p", "arg"].iter().any(|prefix| {
+        name.strip_prefix(prefix).is_some_and(|digits| {
+            !digits.is_empty() && digits.chars().all(|char| char.is_ascii_digit())
+        })
+    })
+}
+
+/// The parameter an argument at `index` of a call passing `argument_count`
+/// arguments is bound to, as a hint names it: `None` for the second and
+/// later arguments of a varargs parameter, and when the parameters can't
+/// take that many arguments (the call resolved to another overload).
+pub(crate) fn parameter_for_argument(
+    parameters: &[DeclaredParameter],
+    argument_count: usize,
+    index: usize,
+) -> Option<&DeclaredParameter> {
+    let takes_varargs = parameters.last().is_some_and(|last| last.is_varargs);
+    let fixed = if takes_varargs {
+        parameters.len() - 1
+    } else {
+        parameters.len()
+    };
+    let count_fits = if takes_varargs {
+        argument_count >= fixed
+    } else {
+        argument_count == fixed
+    };
+    if !count_fits {
+        return None;
+    }
+    if index < fixed || (takes_varargs && index == fixed) {
+        parameters.get(index)
+    } else {
+        None
     }
 }
 

@@ -17,10 +17,10 @@ more precise (superclass hierarchy, cross-file resolution) as indexing completes
 | `textDocument/signatureHelp` | Active function signature + highlighted parameter as you type |
 | `textDocument/rename` | Renames symbol across all files via `WorkspaceEdit`; index updated via file watcher |
 | `textDocument/foldingRange` | Brace-based region folds + consecutive comment block folds |
-| `textDocument/inlayHint` | Type hints for lambda `it`, named lambda params, `this`, untyped `val`/`var` |
+| `textDocument/inlayHint` | Type hints for lambda `it`, named lambda params, `this`, untyped `val`/`var`; Java parameter names on literal arguments (`add(number: 1)`) |
 | `textDocument/semanticTokens/full` | Two-phase: Phase 1 CST classification + Phase 2 cross-file resolution. Kotlin, Java, Swift |
 | `textDocument/publishDiagnostics` | Syntax errors from tree-sitter (ERROR/MISSING nodes) — not type checking |
-| `textDocument/implementation` | Transitive subtype lookup (interface → all implementing classes, BFS) |
+| `textDocument/implementation` | Transitive subtype lookup (interface → all implementing classes, BFS; Java anonymous classes included) |
 | `textDocument/documentHighlight` | Highlights all in-file occurrences; declaration sites marked WRITE, usages READ |
 | `workspace/symbol` | Fuzzy substring search; supports dot-qualified queries for extension functions |
 | `$/progress` | Spinner while workspace is indexed; non-blocking |

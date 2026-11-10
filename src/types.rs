@@ -457,6 +457,28 @@ pub(crate) struct SyntaxError {
     pub message: String,
 }
 
+/// A Java anonymous class, `new Supertype<..>(..) { .. }`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct AnonymousClass {
+    /// The supertype as `FileData::supers` names it: no type arguments.
+    pub supertype: String,
+    /// The supertype's name in the `new` expression — where the anonymous
+    /// class is reported, as it has no name of its own.
+    pub type_name: Range,
+    /// The class body, `{ .. }`: what the anonymous class declares.
+    pub body: Range,
+}
+
+impl FileData {
+    /// The anonymous class reported at `type_name` (see
+    /// [`AnonymousClass::type_name`]), if one is.
+    pub(crate) fn anonymous_class_at(&self, type_name: Range) -> Option<&AnonymousClass> {
+        self.anonymous_classes
+            .iter()
+            .find(|anonymous| anonymous.type_name == type_name)
+    }
+}
+
 /// All data we keep in memory for one source file.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct FileData {
@@ -481,6 +503,10 @@ pub(crate) struct FileData {
     /// - `type_args` are the concrete type arguments (e.g. `["Event", "Effect", "State"]`)
     #[serde(default)]
     pub supers: Vec<(u32, String, Vec<String>)>,
+    /// Java anonymous classes (`new Supertype<..>(..) { .. }`): subtypes with
+    /// no declaration symbol of their own, so `supers` cannot hold them.
+    #[serde(default)]
+    pub anonymous_classes: Vec<AnonymousClass>,
     /// RHS-inferred types for unannotated properties, extracted from the CST at parse time.
     /// Each entry is `(declaration_line, var_name, inferred_type)`.
     /// Used as the primary type inference path for indexed files, avoiding fragile string

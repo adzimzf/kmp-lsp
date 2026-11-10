@@ -12,23 +12,26 @@ use crate::queries::{
     KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_COMPUTED_PROPERTY, KIND_CTOR_DECL,
     KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES,
     KIND_EXTENSION_KW, KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUNCTION_TYPE,
-    KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_IDENTIFIER, KIND_IMPORT_ALIAS,
-    KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
-    KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL, KIND_JAVA_ENHANCED_FOR,
-    KIND_JAVA_LOCAL_VAR_DECL, KIND_LAMBDA_LIT, KIND_LPAREN, KIND_METHOD_DECL, KIND_MODIFIERS,
-    KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_DECL,
-    KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR,
-    KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_PROTOCOL_FUNC_DECL,
-    KIND_RECEIVER_TYPE, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
-    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
-    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
-    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
+    KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_GENERIC_TYPE, KIND_IDENTIFIER,
+    KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR,
+    KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL,
+    KIND_JAVA_ENHANCED_FOR, KIND_JAVA_LOCAL_VAR_DECL, KIND_LAMBDA_LIT, KIND_LPAREN,
+    KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR,
+    KIND_NULLABLE_TYPE, KIND_OBJECT_CREATION, KIND_OBJECT_DECL, KIND_PACKAGE_DECL,
+    KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR, KIND_PROP_DECL,
+    KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_PROTOCOL_FUNC_DECL, KIND_RECEIVER_TYPE,
+    KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE,
+    KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE,
+    KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT,
+    KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
 /// (pattern_index, symbol_name, full_range, selection_range, type_params)
 type BestMatch = (usize, String, Range, Range, Vec<String>);
-use crate::types::{pack_cold_fields, FileData, ImportEntry, SymbolEntry, SyntaxError, Visibility};
+use crate::types::{
+    pack_cold_fields, AnonymousClass, FileData, ImportEntry, SymbolEntry, SyntaxError, Visibility,
+};
 
 type MatchEntry = (usize, [Option<(String, Range, Range, Vec<String>)>; 2]);
 
@@ -898,6 +901,25 @@ fn first_identifier(node: &Node, bytes: &[u8]) -> Option<(String, Range)> {
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+
+/// The anonymous class `creation` declares (`new Supertype<..>(..) { .. }`),
+/// or `None` for a plain `new Supertype(..)`.
+fn java_anonymous_class(creation: &Node, bytes: &[u8]) -> Option<AnonymousClass> {
+    let body = creation.first_child_of_kind(KIND_CLASS_BODY)?;
+    let created_type = creation.child_by_field_name("type")?;
+    let supertype = created_type.java_first_type_name(bytes)?;
+    // `Token<String>` is reported at `Token`, like a named class at its name.
+    let type_name = if created_type.kind() == KIND_GENERIC_TYPE {
+        created_type.named_child(0)?
+    } else {
+        created_type
+    };
+    Some(AnonymousClass {
+        supertype,
+        type_name: ts_to_lsp(type_name.range()),
+        body: ts_to_lsp(body.range()),
+    })
+}
 
 fn ts_to_lsp(r: tree_sitter::Range) -> Range {
     Range {
@@ -2516,6 +2538,10 @@ impl crate::types::FileData {
                 for (name, type_args) in ext.java_type_list(bytes) {
                     self.supers.push((name_line, name, type_args));
                 }
+            }
+        } else if kind == KIND_OBJECT_CREATION {
+            if let Some(anonymous) = java_anonymous_class(node, bytes) {
+                self.anonymous_classes.push(anonymous);
             }
         }
     }
