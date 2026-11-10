@@ -1478,7 +1478,27 @@ pub(crate) fn declared_type_from_raw_lines(
             break;
         }
     }
-    declared_type_from_detail(&joined, kind)
+    declared_type_from_detail(declaration_head(&joined), kind)
+}
+
+/// `text` up to the `{` that opens the declaration's body, when it has one:
+/// a `{` outside any parentheses. The body's own calls must not be read as
+/// the declaration's parameter list (`setLenient() { return
+/// setStrictness(LENIENT); }` would otherwise yield the type `return`),
+/// while an annotation's array argument (`@SuppressWarnings({"a"})`) or a
+/// Kotlin default lambda (`block: () -> Unit = {}`) sits inside parentheses
+/// and is kept.
+fn declaration_head(text: &str) -> &str {
+    let mut depth = 0usize;
+    for (byte_index, character) in text.char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            '{' if depth == 0 => return text[..byte_index].trim_end(),
+            _ => {}
+        }
+    }
+    text
 }
 
 /// Java method detail shape: the whitespace-delimited token immediately
@@ -2257,6 +2277,23 @@ pub(crate) fn rg_word_search(name: &str, root: &Path, source_paths: &[String]) -
         .word_regexp()
         .with_pattern(regex_escape(name))
         .locations()
+}
+
+/// Every whole-word occurrence of `name` under `root` (or `source_paths`),
+/// with the text of its line — several per line when the name repeats.
+///
+/// The column of each location is the occurrence's **byte** offset in that
+/// line, as `rg --column` reports it.
+pub(crate) fn rg_word_occurrences(
+    name: &str,
+    root: &Path,
+    source_paths: &[String],
+) -> Vec<(Location, String)> {
+    RgSearch::scoped(source_paths, root)
+        .word_regexp()
+        .every_match()
+        .with_pattern(regex_escape(name))
+        .locations_with_content()
 }
 
 fn parse_rg_line_with_content_rooted(line: &str, root: &Path) -> Option<(Location, String)> {

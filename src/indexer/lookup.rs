@@ -242,6 +242,87 @@ impl Indexer {
         }
     }
 
+    /// Of `candidates` for a bare (receiver-less) name used at `position` in
+    /// `uri`, the ones Java binds it to: members of the innermost class
+    /// enclosing `position` that has any, else of the next class out. A
+    /// method of a class *nested* in the caller's is not in scope there, even
+    /// though it is declared in the same file. Candidates are returned
+    /// unchanged when no enclosing class declares one of them (inherited or
+    /// imported targets), or when `uri` isn't a Java file.
+    pub(crate) fn narrow_to_enclosing_java_class(
+        &self,
+        uri: &Url,
+        position: Position,
+        candidates: Vec<Location>,
+    ) -> Vec<Location> {
+        if candidates.len() < 2 || crate::Language::from_path(uri.path()) != crate::Language::Java {
+            return candidates;
+        }
+        let Some(file_data) = self.files.get(uri.as_str()) else {
+            return candidates;
+        };
+        let is_type = |symbol: &&SymbolEntry| {
+            matches!(
+                symbol.kind,
+                SymbolKind::CLASS
+                    | SymbolKind::INTERFACE
+                    | SymbolKind::ENUM
+                    | SymbolKind::STRUCT
+                    | SymbolKind::OBJECT
+            )
+        };
+        let mut enclosing: Vec<&SymbolEntry> = file_data
+            .symbols
+            .iter()
+            .filter(is_type)
+            .filter(|symbol| symbol.range.start <= position && position <= symbol.range.end)
+            .collect();
+        // Innermost first: a nested class starts after the class around it.
+        enclosing.sort_by_key(|symbol| std::cmp::Reverse(symbol.range.start));
+        let container_of = |candidate: &Location| -> Option<String> {
+            if candidate.uri != *uri {
+                return None;
+            }
+            file_data
+                .symbols
+                .iter()
+                .find(|symbol| symbol.selection_range == candidate.range)
+                .and_then(|symbol| symbol.container.clone())
+        };
+        for class in enclosing {
+            let members: Vec<Location> = candidates
+                .iter()
+                .filter(|candidate| container_of(candidate).as_deref() == Some(class.name.as_str()))
+                .cloned()
+                .collect();
+            if !members.is_empty() {
+                return members;
+            }
+        }
+        candidates
+    }
+
+    /// The symbol named `name` declared on `location`'s line, in a workspace
+    /// or JAR file. Matched by line and name, like [`Self::member_owner_at`].
+    pub(crate) fn symbol_declared_at(
+        &self,
+        name: &str,
+        location: &Location,
+    ) -> Option<SymbolEntry> {
+        let file_data = self
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| self.jar_files.get(location.uri.as_str()))?;
+        file_data
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == name
+                    && symbol.selection_range.start.line == location.range.start.line
+            })
+            .cloned()
+    }
+
     /// Who owns the declaration of `name` at `location`, in a workspace or
     /// JAR file.
     ///
