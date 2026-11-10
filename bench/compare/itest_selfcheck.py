@@ -87,3 +87,20 @@ arguments.update_baseline = False
 assert itest.check(arguments) == 1, "a features.py feature below baseline must exit non-zero"
 
 print("ok: features.py features are gated the same way")
+
+# A usage the reference is known to miss (`reference_misses`) is neither
+# required nor counted as extra; any other extra usage still fails.
+fixture["cases"]["references"] = [case("usages", 1, "call", {"expect": [["src/Caller.java", 2]]})]
+fixture["reference_misses"] = {"references": {"usages": [
+    {"file": "src/Target.java", "line": 0, "why": "selfcheck: the reference misses it"}]}}
+result["answers"]["references"] = [{"id": "usages", "locations": [
+    location("src/Caller.java", 2), location("src/Target.java", 0)]}]
+passed, asked, failures = itest.score(itest.Repo(str(REPO)), fixture, result)["references"]
+assert (passed, asked) == (1, 1), [failure.render(itest.Repo(str(REPO))) for failure in failures]
+
+result["answers"]["references"][0]["locations"].append(location("src/Target.java", 2))
+passed, asked, failures = itest.score(itest.Repo(str(REPO)), fixture, result)["references"]
+assert (passed, asked) == (0, 1), (passed, asked)
+assert "extra    src/Target.java:3" in "\n".join(failures[0].render(itest.Repo(str(REPO))))
+
+print("ok: a known reference miss is ungraded, any other extra usage still fails")

@@ -189,6 +189,14 @@ JDTLS=/path/to/jdtls JAVA=/path/to/java25 BUILD_JDK=/path/to/jdk21 \
   there and what the server answered instead (for references: which usages
   are missing and which are extra; for completion: the rank and the top of
   the list). `--failures N` sets how many per feature are shown.
+- Known reference misses: `reference_misses` in the fixture lists, per
+  case, usages the reference server provably misses, each with the reason
+  (jdtls finds no usage inside an anonymous class created with a diamond,
+  `new TypeAdapter<>() {…}`, nor in a method that declares a local
+  `record`). Those lines are ungraded — neither required nor counted as
+  extra — so the reference still passes 100% and a server that finds them
+  is not penalized. The list is written by hand and kept by `--generate`;
+  add an entry only with a reason that holds for every usage it covers.
 - Every server is held to a baseline recorded in the fixture and the script
   exits non-zero below it: a ratchet, like `tests/architecture_ratchet.rs`.
   Raise a baseline with `--update-baseline` when a fix lands; never lower

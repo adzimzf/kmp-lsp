@@ -144,6 +144,8 @@ def generate(arguments):
     cases = fixture.get("cases", {})
     sources = fixture.get("sources", {feature: reference for feature in BASE_FEATURES})
     reference_baseline = fixture.get("baselines", {}).get(reference, {})
+    # Written by hand, never generated: kept as they are.
+    known_misses = fixture.get("reference_misses", {})
 
     for name in selected_features(arguments.features):
         feature = extra.BY_NAME.get(name)
@@ -178,6 +180,8 @@ def generate(arguments):
         "cases": ordered,
         "baselines": baselines,
     }
+    if known_misses:
+        fixture["reference_misses"] = known_misses
     with open(arguments.out, "w") as handle:
         json.dump(fixture, handle, indent=1)
     print(f"{arguments.out}: " + ", ".join(f"{len(ordered[name])} {name}" for name in ordered))
@@ -227,9 +231,11 @@ def definition_failure(repo, case, answer):
         return None
     return Failure(case, "definition", places(expected), places(mine))
 
-def references_failure(repo, case, answer):
-    expected = {tuple(usage) for usage in case["expect"]}
-    mine = in_repo_usages(repo, answer, case)
+def references_failure(repo, case, answer, ungraded=frozenset()):
+    """`ungraded`: usages the reference server is known to miss (the
+    fixture's `reference_misses`) — neither required nor counted as extra."""
+    expected = {tuple(usage) for usage in case["expect"]} - ungraded
+    mine = in_repo_usages(repo, answer, case) - ungraded
     if mine == expected:
         return None
     missing, extra = expected - mine, mine - expected
@@ -253,12 +259,12 @@ def completion_failure(case, answer):
                    f"rank {rank}" if rank else f"absent from {answer['total']} items",
                    [f"top      {top}"])
 
-def grade(repo, feature, case, answer):
+def grade(repo, feature, case, answer, ungraded=frozenset()):
     """The case's Failure, or None when the answer is right."""
     if feature == "definition":
         return definition_failure(repo, case, answer)
     if feature == "references":
-        return references_failure(repo, case, answer)
+        return references_failure(repo, case, answer, ungraded)
     if feature == "completion":
         return completion_failure(case, answer)
     verdict = extra.BY_NAME[feature].grade(case, answer, repo)
@@ -266,6 +272,14 @@ def grade(repo, feature, case, answer):
         return None
     expected, actual, detail = verdict
     return Failure(case, feature, expected, actual, detail)
+
+def reference_misses(fixture, feature):
+    """case id → the (file, line) usages the reference server is known to
+    miss there, from the fixture's `reference_misses` (each entry says why)."""
+    misses = {}
+    for case_id, entries in fixture.get("reference_misses", {}).get(feature, {}).items():
+        misses[case_id] = frozenset((entry["file"], entry["line"]) for entry in entries)
+    return misses
 
 def answer_id(feature, case):
     return extra.BY_NAME[feature].answer_id(case) if feature in extra.BY_NAME else case["id"]
@@ -277,6 +291,7 @@ def score(repo, fixture, result):
         if feature not in fixture["cases"]:
             continue
         cases = fixture["cases"][feature]
+        misses = reference_misses(fixture, feature)
         answers = answers_by_id(result, feature)
         passed, failures = 0, []
         for case in cases:
@@ -285,7 +300,7 @@ def score(repo, fixture, result):
                 failures.append(Failure(case, feature, "an answer",
                                         answer.get("error") if answer else "the query was not asked"))
                 continue
-            failure = grade(repo, feature, case, answer)
+            failure = grade(repo, feature, case, answer, misses.get(case["id"], frozenset()))
             if failure is None:
                 passed += 1
             else:

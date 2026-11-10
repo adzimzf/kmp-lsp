@@ -22558,6 +22558,76 @@
    }
   ]
  },
+ "reference_misses": {
+  "references": {
+   "references-java-001": [
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/Java17RecordTest.java",
+     "line": 109,
+     "why": "in a method that declares a local `record`: jdtls finds no usage in that method"
+    },
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/Java17RecordTest.java",
+     "line": 360,
+     "why": "in a method that declares a local `record`: jdtls finds no usage in that method"
+    },
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/Java17RecordTest.java",
+     "line": 383,
+     "why": "in a method that declares a local `record`: jdtls finds no usage in that method"
+    },
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/Java17RecordTest.java",
+     "line": 418,
+     "why": "in a method that declares a local `record`: jdtls finds no usage in that method"
+    }
+   ],
+   "references-java-008": [
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/DelegateTypeAdapterTest.java",
+     "line": 90,
+     "why": "anonymous class created with a diamond (`new TypeAdapter<>() {\u2026}`): jdtls finds no usage inside its body"
+    },
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+     "line": 421,
+     "why": "anonymous class created with a diamond (`new TypeAdapter<>() {\u2026}`): jdtls finds no usage inside its body"
+    },
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+     "line": 477,
+     "why": "anonymous class created with a diamond (`new TypeAdapter<>() {\u2026}`): jdtls finds no usage inside its body"
+    },
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+     "line": 663,
+     "why": "anonymous class created with a diamond (`new TypeAdapter<>() {\u2026}`): jdtls finds no usage inside its body"
+    }
+   ],
+   "references-java-009": [
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+     "line": 422,
+     "why": "anonymous class created with a diamond (`new TypeAdapter<>() {\u2026}`): jdtls finds no usage inside its body"
+    },
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+     "line": 478,
+     "why": "anonymous class created with a diamond (`new TypeAdapter<>() {\u2026}`): jdtls finds no usage inside its body"
+    },
+    {
+     "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnClassesTest.java",
+     "line": 664,
+     "why": "anonymous class created with a diamond (`new TypeAdapter<>() {\u2026}`): jdtls finds no usage inside its body"
+    },
+    {
+     "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+     "line": 1159,
+     "why": "a call inside the lambda argument of `e = assertThrows(\u2026)`: jdtls misses it (the same call outside the lambda, line 1177, it finds)"
+    }
+   ]
+  }
+ },
  "baselines": {
   "jdtls": {
    "definition": 147,
@@ -22591,7 +22661,7 @@
   },
   "kmp-lsp": {
    "definition": 147,
-   "references": 6,
+   "references": 19,
    "completion": 35,
    "hover": 144,
    "declaration": 0,
