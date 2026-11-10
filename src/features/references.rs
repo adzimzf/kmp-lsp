@@ -86,7 +86,7 @@ pub(crate) async fn find_references_with_qualifier(
 ///   copies extracted from the jar, so the editor can open them.
 ///
 /// Every occurrence counts only when it resolves back to the declaration.
-async fn beyond_rg_reference_locations(
+pub(crate) async fn beyond_rg_reference_locations(
     index: &Indexer,
     uri: &Url,
     position: Position,
