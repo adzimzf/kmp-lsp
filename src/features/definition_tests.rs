@@ -693,6 +693,42 @@ async fn java_type_parameter_goes_to_its_declaration() {
     );
 }
 
+/// A Java local or parameter is found by its scope, never by name: a
+/// same-named method, a field it shadows and a later, inner-block local
+/// of the same name are all decoys.
+#[tokio::test]
+async fn java_local_and_parameter_go_to_their_own_declarations() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Box.java").unwrap();
+    let source = "class Box {\n\
+                  \x20 Object engine;\n\
+                  \x20 Object engine() { return null; }\n\
+                  \x20 void run(Object engine) {\n\
+                  \x20   Object first = engine;\n\
+                  \x20   {\n\
+                  \x20     Object engine2 = first;\n\
+                  \x20   }\n\
+                  \x20   Object again = first;\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&uri, source);
+    idx.store_live_tree(&uri, source);
+    // The parameter (line 3), not the field (1) or the method (2).
+    assert_eq!(
+        definition_lines(&idx, &uri, source, 4, "engine;").await,
+        vec![3]
+    );
+    // The local declared on line 4.
+    assert_eq!(
+        definition_lines(&idx, &uri, source, 6, "first").await,
+        vec![4]
+    );
+    assert_eq!(
+        definition_lines(&idx, &uri, source, 8, "first").await,
+        vec![4]
+    );
+}
+
 /// A bare call inside a class binds to the class's own method (`this.read`),
 /// never to a same-named method of a class nested in it: `TypeAdapter.fromJson`
 /// calls its own abstract `read`, not `NullSafeTypeAdapter.read` declared
