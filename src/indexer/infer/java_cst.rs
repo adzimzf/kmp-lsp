@@ -10,7 +10,7 @@
 //! - what an identifier is ([`classify_java_identifier`]): a declaration, an
 //!   import segment, a member reference with its receiver's type, or a bare
 //!   reference;
-//! - which declaration binds a name at a use site ([`java_local_binding_at`]):
+//! - which declaration binds a name at a use site ([`java_local_at`]):
 //!   a local variable, a parameter, a `for`/`catch`/resource variable;
 //! - the type of an expression ([`java_expr_type`]): identifiers, `this`,
 //!   `new T(..)`, casts, string literals, and member chains (`a.b().c`), with
@@ -79,6 +79,8 @@ const INTERFACE_DECLARATION: &str = "interface_declaration";
 const ENUM_DECLARATION: &str = "enum_declaration";
 const RECORD_DECLARATION: &str = "record_declaration";
 const ANNOTATION_TYPE_DECLARATION: &str = "annotation_type_declaration";
+const ARRAY_TYPE: &str = "array_type";
+const ANNOTATED_TYPE: &str = "annotated_type";
 const LINE_COMMENT: &str = "line_comment";
 const BLOCK_COMMENT: &str = "block_comment";
 
@@ -323,13 +325,21 @@ pub(crate) fn is_java_local_declaration(node: Node<'_>) -> bool {
 /// Whether a bare Java identifier reads a local value (a local variable or
 /// a parameter) rather than a member.
 pub(crate) fn is_java_local_value_reference(node: Node<'_>, bytes: &[u8]) -> bool {
-    node.kind() == IDENTIFIER
-        && member_access_of(node).is_none()
-        && !is_bare_method_name(node)
-        && !matches!(
-            java_local_binding_at(node, bytes),
-            JavaLocalBinding::NotLocal
-        )
+    java_local_value_declaration(node, bytes).is_some()
+}
+
+/// The name node declaring the local variable or parameter that the bare
+/// identifier `node` reads, or `None` when `node` reads a member.
+pub(crate) fn java_local_value_declaration<'tree>(
+    node: Node<'tree>,
+    bytes: &[u8],
+) -> Option<Node<'tree>> {
+    let reads_a_value =
+        node.kind() == IDENTIFIER && member_access_of(node).is_none() && !is_bare_method_name(node);
+    if !reads_a_value {
+        return None;
+    }
+    java_local_at(node, bytes).map(|local| local.declared_name)
 }
 
 fn is_bare_method_name(node: Node<'_>) -> bool {
@@ -371,38 +381,72 @@ pub(crate) enum JavaLocalBinding<'tree> {
     NotLocal,
 }
 
-/// The declaration binding the identifier `use_site` in its scope, nearest
-/// first: earlier locals of each enclosing block, then `for`/`catch`/
-/// resource variables, then the enclosing method's or lambda's parameters.
-/// A class body ends the walk — past it the name is a member.
+/// A local or parameter that binds a name at a use site.
+pub(crate) struct JavaLocal<'tree> {
+    /// The name node in the binding declaration (`user` in `User user = ..`).
+    pub(crate) declared_name: Node<'tree>,
+    pub(crate) binding: JavaLocalBinding<'tree>,
+}
+
+impl<'tree> JavaLocal<'tree> {
+    fn new(declared_name: Node<'tree>, binding: JavaLocalBinding<'tree>) -> Self {
+        Self {
+            declared_name,
+            binding,
+        }
+    }
+}
+
+/// How the declaration binding the identifier `use_site` types it — see
+/// [`java_local_at`]; [`JavaLocalBinding::NotLocal`] when no local binds it.
 pub(crate) fn java_local_binding_at<'tree>(
     use_site: Node<'tree>,
     bytes: &[u8],
 ) -> JavaLocalBinding<'tree> {
-    let Some(name) = use_site.utf8_text_owned(bytes) else {
-        return JavaLocalBinding::NotLocal;
-    };
+    java_local_at(use_site, bytes).map_or(JavaLocalBinding::NotLocal, |local| local.binding)
+}
+
+/// The declaration binding the identifier `use_site` in its scope, nearest
+/// first: earlier locals of each enclosing block, then `for`/`catch`/
+/// resource variables, then the enclosing method's or lambda's parameters.
+/// A class body ends the walk — past it the name is a member (`None`).
+pub(crate) fn java_local_at<'tree>(
+    use_site: Node<'tree>,
+    bytes: &[u8],
+) -> Option<JavaLocal<'tree>> {
+    let name = use_site.utf8_text_owned(bytes)?;
     let mut inner = use_site;
     while let Some(scope) = inner.parent() {
         let kind = scope.kind();
         if is_class_like_body(kind) || kind == PROGRAM {
-            return JavaLocalBinding::NotLocal;
+            return None;
         }
-        if let Some(binding) = binding_in_scope(scope, inner, use_site.start_byte(), &name, bytes) {
-            return binding;
+        if let Some(local) = local_in_scope(scope, inner, use_site.start_byte(), &name, bytes) {
+            return Some(local);
         }
         inner = scope;
     }
-    JavaLocalBinding::NotLocal
+    None
 }
 
-fn binding_in_scope<'tree>(
+/// The name field of `declaration` when it reads `name`.
+fn declared_name_node<'tree>(
+    declaration: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<Node<'tree>> {
+    declaration
+        .child_by_field_name("name")
+        .filter(|declared| declared.utf8_text(bytes).ok() == Some(name))
+}
+
+fn local_in_scope<'tree>(
     scope: Node<'tree>,
     inner: Node<'tree>,
     use_start: usize,
     name: &str,
     bytes: &[u8],
-) -> Option<JavaLocalBinding<'tree>> {
+) -> Option<JavaLocal<'tree>> {
     match scope.kind() {
         BLOCK | CONSTRUCTOR_BODY | SWITCH_BLOCK_GROUP => {
             earlier_local_declaration(scope, use_start, name, bytes)
@@ -418,34 +462,27 @@ fn binding_in_scope<'tree>(
                 .find_map(|declaration| declared_local(declaration, use_start, name, bytes))
         }
         ENHANCED_FOR => {
-            let declares_it = scope
-                .child_by_field_name("name")
-                .and_then(|declared| declared.utf8_text(bytes).ok())
-                == Some(name);
+            let declared_name = declared_name_node(scope, name, bytes)?;
             let in_body = scope
                 .child_by_field_name("body")
                 .is_some_and(|body| body.id() == inner.id());
-            (declares_it && in_body).then(|| typed_binding_of(scope, bytes))
+            in_body.then(|| JavaLocal::new(declared_name, typed_binding_of(scope, bytes)))
         }
         CATCH_CLAUSE => {
             let parameter = scope.first_child_of_kind(CATCH_FORMAL_PARAMETER)?;
-            let declares_it = parameter
-                .child_by_field_name("name")
-                .and_then(|declared| declared.utf8_text(bytes).ok())
-                == Some(name);
-            declares_it.then(|| {
-                parameter
-                    .first_child_of_kind("catch_type")
-                    .and_then(|catch_type| catch_type.utf8_text_owned(bytes))
-                    .map_or(JavaLocalBinding::Untyped, |catch_type| {
-                        // A multi-catch `A | B` has no single type.
-                        if catch_type.contains('|') {
-                            JavaLocalBinding::Untyped
-                        } else {
-                            JavaLocalBinding::Typed(catch_type)
-                        }
-                    })
-            })
+            let declared_name = declared_name_node(parameter, name, bytes)?;
+            let binding = parameter
+                .first_child_of_kind("catch_type")
+                .and_then(|catch_type| catch_type.utf8_text_owned(bytes))
+                .map_or(JavaLocalBinding::Untyped, |catch_type| {
+                    // A multi-catch `A | B` has no single type.
+                    if catch_type.contains('|') {
+                        JavaLocalBinding::Untyped
+                    } else {
+                        JavaLocalBinding::Typed(catch_type)
+                    }
+                });
+            Some(JavaLocal::new(declared_name, binding))
         }
         RESOURCE_SPECIFICATION | "try_with_resources_statement" => {
             let specification = if scope.kind() == RESOURCE_SPECIFICATION {
@@ -456,18 +493,18 @@ fn binding_in_scope<'tree>(
             specification
                 .children_of_kind(RESOURCE)
                 .into_iter()
-                .find(|resource| {
-                    resource
-                        .child_by_field_name("name")
-                        .and_then(|declared| declared.utf8_text(bytes).ok())
-                        == Some(name)
+                .find_map(|resource| {
+                    let declared_name = declared_name_node(resource, name, bytes)?;
+                    Some(JavaLocal::new(
+                        declared_name,
+                        typed_binding_of(resource, bytes),
+                    ))
                 })
-                .map(|resource| typed_binding_of(resource, bytes))
         }
         METHOD_DECLARATION | CONSTRUCTOR_DECLARATION => {
-            parameter_binding(scope.child_by_field_name("parameters")?, name, bytes)
+            declared_parameter(scope.child_by_field_name("parameters")?, name, bytes)
         }
-        LAMBDA_EXPRESSION => lambda_parameter_binding(scope, name, bytes),
+        LAMBDA_EXPRESSION => lambda_parameter(scope, name, bytes),
         _ => None,
     }
 }
@@ -480,7 +517,7 @@ fn earlier_local_declaration<'tree>(
     use_start: usize,
     name: &str,
     bytes: &[u8],
-) -> Option<JavaLocalBinding<'tree>> {
+) -> Option<JavaLocal<'tree>> {
     let mut nearest = None;
     let mut cursor = block.walk();
     for statement in block.named_children(&mut cursor) {
@@ -488,8 +525,8 @@ fn earlier_local_declaration<'tree>(
             break;
         }
         if statement.kind() == LOCAL_VARIABLE_DECLARATION {
-            if let Some(binding) = declared_local(statement, use_start, name, bytes) {
-                nearest = Some(binding);
+            if let Some(local) = declared_local(statement, use_start, name, bytes) {
+                nearest = Some(local);
             }
         }
     }
@@ -503,7 +540,7 @@ fn declared_local<'tree>(
     use_start: usize,
     name: &str,
     bytes: &[u8],
-) -> Option<JavaLocalBinding<'tree>> {
+) -> Option<JavaLocal<'tree>> {
     let type_text = declaration
         .child_by_field_name("type")
         .and_then(|type_node| type_node.utf8_text_owned(bytes))?;
@@ -511,13 +548,13 @@ fn declared_local<'tree>(
         .children_of_kind(VARIABLE_DECLARATOR)
         .into_iter()
         .filter(|declarator| declarator.end_byte() <= use_start)
-        .find(|declarator| {
-            declarator
-                .child_by_field_name("name")
-                .and_then(|declared| declared.utf8_text(bytes).ok())
-                == Some(name)
+        .find_map(|declarator| {
+            let declared_name = declared_name_node(declarator, name, bytes)?;
+            Some(JavaLocal::new(
+                declared_name,
+                binding_of_written_type(&type_text, declarator),
+            ))
         })
-        .map(|declarator| binding_of_written_type(&type_text, declarator))
 }
 
 fn binding_of_written_type<'tree>(
@@ -558,64 +595,60 @@ fn typed_binding_of<'tree>(declaration: Node<'tree>, bytes: &[u8]) -> JavaLocalB
     JavaLocalBinding::Typed(type_text)
 }
 
-fn parameter_binding<'tree>(
+fn declared_parameter<'tree>(
     parameters: Node<'tree>,
     name: &str,
     bytes: &[u8],
-) -> Option<JavaLocalBinding<'tree>> {
+) -> Option<JavaLocal<'tree>> {
     let mut cursor = parameters.walk();
     let found = parameters
         .named_children(&mut cursor)
-        .find_map(|parameter| {
-            match parameter.kind() {
-                FORMAL_PARAMETER => {
-                    let declares_it = parameter
-                        .child_by_field_name("name")
-                        .and_then(|declared| declared.utf8_text(bytes).ok())
-                        == Some(name);
-                    declares_it.then(|| typed_binding_of(parameter, bytes))
-                }
-                SPREAD_PARAMETER => {
-                    let declares_it = parameter
-                        .first_child_of_kind(VARIABLE_DECLARATOR)
-                        .and_then(|declarator| declarator.child_by_field_name("name"))
-                        .and_then(|declared| declared.utf8_text(bytes).ok())
-                        == Some(name);
-                    // `T... values` is a `T[]` inside the method.
-                    declares_it.then(|| {
-                        parameter
-                            .named_child(0)
-                            .filter(|element| element.kind() != VARIABLE_DECLARATOR)
-                            .and_then(|element| element.utf8_text_owned(bytes))
-                            .map_or(JavaLocalBinding::Untyped, |element| {
-                                JavaLocalBinding::Typed(format!("{element}[]"))
-                            })
-                    })
-                }
-                _ => None,
+        .find_map(|parameter| match parameter.kind() {
+            FORMAL_PARAMETER => {
+                let declared_name = declared_name_node(parameter, name, bytes)?;
+                Some(JavaLocal::new(
+                    declared_name,
+                    typed_binding_of(parameter, bytes),
+                ))
             }
+            SPREAD_PARAMETER => {
+                let declared_name = parameter
+                    .first_child_of_kind(VARIABLE_DECLARATOR)
+                    .and_then(|declarator| declared_name_node(declarator, name, bytes))?;
+                // `T... values` is a `T[]` inside the method.
+                let binding = parameter
+                    .named_child(0)
+                    .filter(|element| element.kind() != VARIABLE_DECLARATOR)
+                    .and_then(|element| element.utf8_text_owned(bytes))
+                    .map_or(JavaLocalBinding::Untyped, |element| {
+                        JavaLocalBinding::Typed(format!("{element}[]"))
+                    });
+                Some(JavaLocal::new(declared_name, binding))
+            }
+            _ => None,
         });
     found
 }
 
-fn lambda_parameter_binding<'tree>(
+fn lambda_parameter<'tree>(
     lambda: Node<'tree>,
     name: &str,
     bytes: &[u8],
-) -> Option<JavaLocalBinding<'tree>> {
+) -> Option<JavaLocal<'tree>> {
     let parameters = lambda.child_by_field_name("parameters")?;
     match parameters.kind() {
         IDENTIFIER => {
-            (parameters.utf8_text(bytes).ok() == Some(name)).then_some(JavaLocalBinding::Untyped)
+            let declares_it = parameters.utf8_text(bytes).ok() == Some(name);
+            declares_it.then(|| JavaLocal::new(parameters, JavaLocalBinding::Untyped))
         }
         INFERRED_PARAMETERS => {
             let mut cursor = parameters.walk();
-            let declares_it = parameters
+            let declared_name = parameters
                 .named_children(&mut cursor)
-                .any(|parameter| parameter.utf8_text(bytes).ok() == Some(name));
-            declares_it.then_some(JavaLocalBinding::Untyped)
+                .find(|parameter| parameter.utf8_text(bytes).ok() == Some(name))?;
+            Some(JavaLocal::new(declared_name, JavaLocalBinding::Untyped))
         }
-        FORMAL_PARAMETERS => parameter_binding(parameters, name, bytes),
+        FORMAL_PARAMETERS => declared_parameter(parameters, name, bytes),
         _ => None,
     }
 }
@@ -1150,6 +1183,140 @@ pub(crate) fn object_creation_of_type_name(name_node: Node<'_>) -> Option<Node<'
     let is_the_created_type =
         creation.kind() == OBJECT_CREATION && is_field_named(creation, "type", created_type);
     is_the_created_type.then_some(creation)
+}
+
+/// What the type of the declaration named by `name_node` is, as
+/// go-to-type-definition needs it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JavaDeclaredType<'tree> {
+    /// The name declares a type — a class, interface, enum, record,
+    /// annotation or type parameter: it is its own type definition.
+    IsType,
+    /// The declaration's type is written in the source: the name node of
+    /// that type (`Entry` in `Map.Entry<K, V>[] entries`).
+    Written(Node<'tree>),
+    /// The declaration's type is the type declaring it — an enum constant,
+    /// a constructor: the name node of that type.
+    Enclosing(Node<'tree>),
+    /// The declaration has no type to go to: a primitive, `void`, `var`, an
+    /// untyped lambda parameter.
+    Untyped,
+}
+
+/// The type of the declaration whose name is `name_node`, or `None` when
+/// `name_node` doesn't name a declaration.
+pub(crate) fn java_declared_type<'tree>(
+    name_node: Node<'tree>,
+    bytes: &[u8],
+) -> Option<JavaDeclaredType<'tree>> {
+    let parent = name_node.parent()?;
+    let is_name = is_field_named(parent, "name", name_node);
+    let parent_kind = parent.kind();
+    if is_class_like_declaration(parent_kind) {
+        return is_name.then_some(JavaDeclaredType::IsType);
+    }
+    if parent_kind == TYPE_PARAMETER {
+        let is_its_name = parent.named_child(0) == Some(name_node);
+        return is_its_name.then_some(JavaDeclaredType::IsType);
+    }
+    if !is_name {
+        return lambda_parameter_name(name_node, parent).then_some(JavaDeclaredType::Untyped);
+    }
+    let declared = match parent_kind {
+        METHOD_DECLARATION
+        | FORMAL_PARAMETER
+        | CATCH_FORMAL_PARAMETER
+        | ENHANCED_FOR
+        | RESOURCE => written_type(parent, bytes),
+        VARIABLE_DECLARATOR => variable_declarator_type(parent, bytes),
+        CONSTRUCTOR_DECLARATION | COMPACT_CONSTRUCTOR | ENUM_CONSTANT => {
+            enclosing_type_name(parent)
+        }
+        _ => return None,
+    };
+    Some(declared)
+}
+
+/// Whether `name_node` is a parameter of a lambda without written types
+/// (`x -> ..`, `(x, y) -> ..`).
+fn lambda_parameter_name(name_node: Node<'_>, parent: Node<'_>) -> bool {
+    parent.kind() == INFERRED_PARAMETERS
+        || (parent.kind() == LAMBDA_EXPRESSION && is_field_named(parent, "parameters", name_node))
+}
+
+/// The type written in `declaration`'s `type` field (a field, local,
+/// parameter or method's return type).
+fn written_type<'tree>(declaration: Node<'tree>, bytes: &[u8]) -> JavaDeclaredType<'tree> {
+    declaration
+        .child_by_field_name("type")
+        .and_then(|type_node| type_name_node(type_node, bytes))
+        .map_or(JavaDeclaredType::Untyped, JavaDeclaredType::Written)
+}
+
+/// The type of a variable declarator: the `type` of the field or local
+/// declaration around it, or the element type of a varargs parameter.
+fn variable_declarator_type<'tree>(
+    declarator: Node<'tree>,
+    bytes: &[u8],
+) -> JavaDeclaredType<'tree> {
+    let Some(declaration) = declarator.parent() else {
+        return JavaDeclaredType::Untyped;
+    };
+    if declaration.kind() == SPREAD_PARAMETER {
+        return declaration
+            .named_child(0)
+            .filter(|element| element.kind() != VARIABLE_DECLARATOR)
+            .and_then(|element| type_name_node(element, bytes))
+            .map_or(JavaDeclaredType::Untyped, JavaDeclaredType::Written);
+    }
+    written_type(declaration, bytes)
+}
+
+/// The name of the class, enum or record that declares `member`.
+fn enclosing_type_name(member: Node<'_>) -> JavaDeclaredType<'_> {
+    let mut scope = member.parent();
+    while let Some(node) = scope {
+        if is_class_like_declaration(node.kind()) {
+            return node
+                .child_by_field_name("name")
+                .map_or(JavaDeclaredType::Untyped, JavaDeclaredType::Enclosing);
+        }
+        scope = node.parent();
+    }
+    JavaDeclaredType::Untyped
+}
+
+/// The node naming the type `type_node` is made of: itself for a simple
+/// name, the last segment of a qualified one, the raw type of a generic one
+/// and the element type of an array. `None` for a primitive, `void` or
+/// `var`.
+fn type_name_node<'tree>(type_node: Node<'tree>, bytes: &[u8]) -> Option<Node<'tree>> {
+    match type_node.kind() {
+        TYPE_IDENTIFIER => {
+            let is_inferred = type_node.utf8_text(bytes).ok() == Some(INFERRED_LOCAL_TYPE);
+            (!is_inferred).then_some(type_node)
+        }
+        SCOPED_TYPE_IDENTIFIER => {
+            let mut cursor = type_node.walk();
+            let segments: Vec<Node<'tree>> = type_node.named_children(&mut cursor).collect();
+            segments
+                .into_iter()
+                .rev()
+                .find(|segment| segment.kind() == TYPE_IDENTIFIER)
+        }
+        GENERIC_TYPE => type_node
+            .named_child(0)
+            .and_then(|raw| type_name_node(raw, bytes)),
+        ARRAY_TYPE => type_node
+            .child_by_field_name("element")
+            .and_then(|element| type_name_node(element, bytes)),
+        ANNOTATED_TYPE => {
+            let mut cursor = type_node.walk();
+            let annotated = type_node.named_children(&mut cursor).last()?;
+            type_name_node(annotated, bytes)
+        }
+        _ => None,
+    }
 }
 
 /// The type parameter that the type name `name_node` refers to: the

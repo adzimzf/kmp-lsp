@@ -34,6 +34,7 @@ pub(crate) mod symbols;
 pub(crate) mod text_utils;
 pub(crate) mod traits;
 mod traits_impl;
+pub(crate) mod type_definition;
 pub(crate) mod unresolved_symbol_diagnostics;
 pub(crate) mod unused_import_diagnostics;
 pub(crate) mod workspace_symbols;

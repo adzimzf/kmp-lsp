@@ -826,6 +826,84 @@ pub(crate) fn java_type_parameter_definition(
     node_to_location(uri, declared, text)
 }
 
+/// The declaration of the Java local variable or parameter that the
+/// identifier under `position` reads, or `None` when it reads a member (or
+/// isn't Java). Scoped like javac: a field of the same name is shadowed.
+pub(crate) fn java_local_definition(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Location> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let use_site = super::cst_lambda::cursor_node_at(&doc, cursor)?;
+    let declared = super::java_cst::java_local_value_declaration(use_site, &doc.bytes)?;
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    node_to_location(uri, declared, text)
+}
+
+/// Where go-to-type-definition goes from the declaration at a definition
+/// site.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TypeDefinitionStep {
+    /// The declaration is a type (or a type parameter): it is the answer.
+    Itself,
+    /// The declaration's type is named in the source here: the definition of
+    /// that name is the answer.
+    TypeNamedAt(Location),
+    /// The declaration's type is declared here (the enum of an enum
+    /// constant, the class of a constructor).
+    DeclaredAt(Location),
+    /// The declaration has no type to go to (primitive, `void`, `var`).
+    Untyped,
+    /// No Java declaration name could be read at the definition site.
+    Unreadable,
+}
+
+/// What the declaration whose name sits at `definition` says about its
+/// type — see [`TypeDefinitionStep`].
+pub(crate) fn type_definition_step(indexer: &Indexer, definition: &Location) -> TypeDefinitionStep {
+    use super::java_cst::JavaDeclaredType;
+    if !super::java_cst::is_java_file(&definition.uri) {
+        return TypeDefinitionStep::Unreadable;
+    }
+    let Some(doc) = indexer.live_doc_or_parse(&definition.uri) else {
+        return TypeDefinitionStep::Unreadable;
+    };
+    let cursor = CursorPos {
+        line: definition.range.start.line as usize,
+        utf16_col: definition.range.start.character as usize,
+    };
+    let Some(name_node) = super::cst_lambda::cursor_node_at(&doc, cursor) else {
+        return TypeDefinitionStep::Unreadable;
+    };
+    let Some(declared) = super::java_cst::java_declared_type(name_node, &doc.bytes) else {
+        return TypeDefinitionStep::Unreadable;
+    };
+    let Ok(text) = std::str::from_utf8(&doc.bytes) else {
+        return TypeDefinitionStep::Unreadable;
+    };
+    let located = |node: Node<'_>| node_to_location(&definition.uri, node, text);
+    match declared {
+        JavaDeclaredType::IsType => TypeDefinitionStep::Itself,
+        JavaDeclaredType::Written(type_name) => located(type_name).map_or(
+            TypeDefinitionStep::Unreadable,
+            TypeDefinitionStep::TypeNamedAt,
+        ),
+        JavaDeclaredType::Enclosing(type_name) => located(type_name).map_or(
+            TypeDefinitionStep::Unreadable,
+            TypeDefinitionStep::DeclaredAt,
+        ),
+        JavaDeclaredType::Untyped => TypeDefinitionStep::Untyped,
+    }
+}
+
 /// At `new Writer(..)`, the constructors of the class in `locations` that
 /// the creation's arguments fit best, as javac picks one. A class that
 /// declares no constructor (its implicit one has no declaration) keeps the

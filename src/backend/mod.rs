@@ -336,6 +336,17 @@ impl LanguageServer for Backend {
         panic_safe("goto_declaration", self.goto_definition_impl(params)).await
     }
 
+    async fn goto_type_definition(
+        &self,
+        params: request::GotoTypeDefinitionParams,
+    ) -> Result<Option<request::GotoTypeDefinitionResponse>> {
+        panic_safe(
+            "goto_type_definition",
+            self.goto_type_definition_impl(params),
+        )
+        .await
+    }
+
     async fn goto_implementation(
         &self,
         params: GotoDefinitionParams,

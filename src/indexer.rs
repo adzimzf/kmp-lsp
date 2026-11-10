@@ -40,10 +40,11 @@ pub(crate) use self::infer::{
     cst_symbol::{
         classify_cursor, classify_occurrence_at, classify_symbol_at, enclosing_nav_expr_if_member,
         implicit_receiver_of, is_call_callee, is_declaration_site, is_local_declaration_at,
-        is_local_value_reference, java_type_parameter_definition, local_scope_occurrences,
-        narrow_java_overloads, navigation_member_ident, navigation_receiver_node, resolve_identity,
-        resolve_identity_with_io, shape_filter_locations, NavigationSource, NotCodeKind,
-        OccurrenceSite, SymbolAtCursor, SymbolRole,
+        is_local_value_reference, java_local_definition, java_type_parameter_definition,
+        local_scope_occurrences, narrow_java_overloads, navigation_member_ident,
+        navigation_receiver_node, resolve_identity, resolve_identity_with_io,
+        shape_filter_locations, type_definition_step, NavigationSource, NotCodeKind,
+        OccurrenceSite, SymbolAtCursor, SymbolRole, TypeDefinitionStep,
     },
     deps::{
         CallShape, CallableInfo, ExtensionCallable, InferDeps, MemberTypeParameters,
