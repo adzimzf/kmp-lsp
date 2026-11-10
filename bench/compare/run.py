@@ -23,32 +23,13 @@ import pathlib
 import sys
 import time
 
-from lsp import LanguageServer, LspError, RequestTimeout
+from features import BY_NAME, FEATURES, Context, locations, text_of, timed, uri_of
+from lsp import LanguageServer
 from servers import SERVERS
-
-
-def uri_of(repo, relative):
-    return pathlib.Path(repo, relative).resolve().as_uri()
 
 
 def language_id(path):
     return "kotlin" if path.endswith(".kt") else "java"
-
-
-def locations(result):
-    """Location | Location[] | LocationLink[] → [{uri, line, character}]."""
-    if result is None:
-        return []
-    if isinstance(result, dict):
-        result = [result]
-    found = []
-    for item in result:
-        uri = item.get("targetUri") or item.get("uri")
-        selection = item.get("targetSelectionRange") or item.get("range") or item.get("targetRange")
-        if uri and selection:
-            start = selection["start"]
-            found.append({"uri": uri, "line": start["line"], "character": start["character"]})
-    return found
 
 
 def completion_labels(result, limit=300):
@@ -83,16 +64,6 @@ class Documents:
         self.server.notify("textDocument/didChange", {
             "textDocument": {"uri": uri_of(self.repo, relative), "version": self.versions[relative]},
             "contentChanges": [{"text": text}]})
-
-
-def timed(server, method, params, timeout):
-    try:
-        result, seconds = server.request(method, params, timeout=timeout)
-        return {"result": result, "seconds": seconds}
-    except RequestTimeout:
-        return {"result": None, "seconds": timeout, "error": "timeout"}
-    except LspError as error:
-        return {"result": None, "seconds": None, "error": str(error)}
 
 
 def wait_until_ready(server, documents, repo, probes, timeout):
@@ -153,7 +124,11 @@ def main():
     parser.add_argument("--settle-quiet", type=float, default=5,
                         help="seconds without $/progress activity that count as settled")
     parser.add_argument("--settle-timeout", type=float, default=900)
+    parser.add_argument("--features", default="base",
+                        help="base (definition, hover, references, completion, documentSymbol), "
+                             "all (also every feature in features.py), or a comma-separated list of those")
     arguments = parser.parse_args()
+    extra = extra_features(arguments.features)
 
     repo = os.path.abspath(arguments.repo)
     target = json.load(open(arguments.target))
@@ -181,10 +156,31 @@ def main():
         "textDocument": {
             "synchronization": {"didSave": True},
             "definition": {"linkSupport": True},
+            "declaration": {"linkSupport": True},
+            "typeDefinition": {"linkSupport": True},
+            "implementation": {"linkSupport": True},
             "references": {},
             "hover": {"contentFormat": ["markdown", "plaintext"]},
             "documentSymbol": {"hierarchicalDocumentSymbolSupport": True},
+            "documentHighlight": {},
             "completion": {"completionItem": {"snippetSupport": False}},
+            "signatureHelp": {"signatureInformation": {"parameterInformation": {"labelOffsetSupport": True},
+                                                       "activeParameterSupport": True},
+                              "contextSupport": True},
+            "codeAction": {"codeActionLiteralSupport": {"codeActionKind": {"valueSet": [
+                "", "quickfix", "refactor", "refactor.extract", "refactor.inline", "refactor.rewrite",
+                "source", "source.organizeImports"]}}},
+            "rename": {"prepareSupport": True},
+            "foldingRange": {"lineFoldingOnly": True},
+            "selectionRange": {},
+            "formatting": {}, "rangeFormatting": {}, "onTypeFormatting": {},
+            "semanticTokens": {"requests": {"full": True, "range": False},
+                               "tokenTypes": [], "tokenModifiers": [], "formats": ["relative"]},
+            "inlayHint": {},
+            "callHierarchy": {}, "typeHierarchy": {},
+            "documentLink": {"tooltipSupport": True},
+            "moniker": {},
+            "diagnostic": {"relatedDocumentSupport": False},
             "publishDiagnostics": {},
         },
     }
@@ -195,6 +191,7 @@ def main():
             "capabilities": capabilities,
             "initializationOptions": config["initialization_options"]}, timeout=300)
         record["phases"]["initialize"] = time.monotonic() - server.started
+        record["capabilities"] = (initialize["result"] or {}).get("capabilities", {})
         if initialize.get("error"):
             record["error"] = f"initialize: {initialize['error']}"
             return
@@ -224,8 +221,9 @@ def main():
             definitions.append({"id": query["id"], "seconds": answer["seconds"], "error": answer.get("error"),
                                 "locations": locations(answer["result"])})
             hover = timed(server, "textDocument/hover", position(query), arguments.request_timeout)
+            text = text_of((hover["result"] or {}).get("contents"))
             hovers.append({"id": query["id"], "seconds": hover["seconds"], "error": hover.get("error"),
-                           "empty": not hover["result"] or not hover["result"].get("contents")})
+                           "empty": not text.strip(), "text": text[:2000]})
         record["answers"]["definition"], record["answers"]["hover"] = definitions, hovers
 
         references = []
@@ -254,15 +252,16 @@ def main():
             documents.change(query["file"], original)
         record["answers"]["completion"] = completions
 
-        symbols = []
-        files = sorted({query["file"] for kind in query_set.values() for query in kind if ask(query)})
-        for relative in files[:arguments.symbols_files]:
-            documents.open(relative)
-            answer = timed(server, "textDocument/documentSymbol",
-                           {"textDocument": {"uri": uri_of(repo, relative)}}, arguments.request_timeout)
-            symbols.append({"file": relative, "seconds": answer["seconds"], "error": answer.get("error"),
-                            "count": len(answer["result"] or [])})
-        record["answers"]["documentSymbol"] = symbols
+        if "documentSymbol" not in extra:
+            ask_document_symbols(server, documents, repo, query_set, ask, arguments, record)
+        asked = {kind: [query for query in queries if ask(query)] for kind, queries in query_set.items()}
+        context = Context(server, documents, repo, asked, arguments.request_timeout, record["capabilities"])
+        for feature in FEATURES:
+            if feature.name in extra and feature.name != "hover":
+                started = time.monotonic()
+                record["answers"][feature.name] = feature.ask(context)
+                print(f"  {feature.name}: {len(record['answers'][feature.name])} asked "
+                      f"in {time.monotonic() - started:.0f}s", file=sys.stderr)
     finally:
         record["peak_rss_kib"] = server.peak_rss_kib
         record["progress"] = server.progress_events[-200:]
@@ -272,6 +271,33 @@ def main():
             json.dump(record, handle, indent=1)
         print(f"{arguments.server} ({record['start']}): ready={record['phases'].get('ready')} "
               f"peak={record['peak_rss_kib'] // 1024} MiB → {arguments.out}", file=sys.stderr)
+
+
+def extra_features(selection):
+    """Names of the features.py features `--features` selects."""
+    if selection == "base":
+        return set()
+    if selection == "all":
+        return set(BY_NAME)
+    names = {name.strip() for name in selection.split(",") if name.strip()}
+    unknown = names - set(BY_NAME) - {"base"}
+    if unknown:
+        raise SystemExit(f"unknown features: {', '.join(sorted(unknown))} (known: {', '.join(BY_NAME)})")
+    return names - {"base"}
+
+
+def ask_document_symbols(server, documents, repo, query_set, ask, arguments, record):
+    """Latency of documentSymbol on the first files the queries touch (the
+    comparison report's column; the integration test asks features.py's)."""
+    symbols = []
+    files = sorted({query["file"] for kind in query_set.values() for query in kind if ask(query)})
+    for relative in files[:arguments.symbols_files]:
+        documents.open(relative)
+        answer = timed(server, "textDocument/documentSymbol",
+                       {"textDocument": {"uri": uri_of(repo, relative)}}, arguments.request_timeout)
+        symbols.append({"file": relative, "seconds": answer["seconds"], "error": answer.get("error"),
+                        "count": len(answer["result"] or [])})
+    record["answers"]["documentSymbol"] = symbols
 
 
 if __name__ == "__main__":

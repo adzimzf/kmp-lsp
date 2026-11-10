@@ -54,7 +54,12 @@ def jdtls(paths, state, gradle_home, options):
         shutil.copytree(os.path.join(home, _jdtls_configuration_name()), configuration)
     settings = {"java": {"import": {"gradle": {"enabled": True, "wrapper": {"enabled": True}},
                                     "maven": {"enabled": True}},
-                         "autobuild": {"enabled": True}}}
+                         "autobuild": {"enabled": True},
+                         # Off by default in jdtls; the integration test asks both.
+                         "signatureHelp": {"enabled": True},
+                         # vscode-java's default; jdtls's own is none.
+                         "inlayHints": {"parameterNames": {"enabled": "literals"}},
+                         "format": {"onType": {"enabled": True}}}}
     return {
         "command": [
             paths.get("java", "java"),

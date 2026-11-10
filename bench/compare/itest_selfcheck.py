@@ -71,3 +71,19 @@ assert itest.check(arguments) == 0
 assert json.load(open(path))["baselines"]["server"]["definition"] == 1
 
 print("ok: failures name the expected and the actual location, and a drop exits 1")
+
+# A features.py feature goes through the same gate: a highlight set that
+# misses an occurrence fails, and the failure names what is missing.
+fixture["cases"]["documentHighlight"] = [case("highlight", 1, "call", {"expect": [[1, 20], [1, 30]]})]
+fixture["baselines"]["server"] = {"documentHighlight": 1}
+result["answers"]["documentHighlight"] = [{"id": "highlight", "positions": [[1, 20]]}]
+report = itest.score(itest.Repo(str(REPO)), fixture, result)
+passed, asked, failures = report["documentHighlight"]
+assert (passed, asked) == (0, 1), (passed, asked)
+assert "missing  2:31" in "\n".join(failures[0].render(itest.Repo(str(REPO)))), failures[0].render(itest.Repo(str(REPO)))
+json.dump(fixture, open(path, "w"))
+json.dump(result, open(path + ".result", "w"))
+arguments.update_baseline = False
+assert itest.check(arguments) == 1, "a features.py feature below baseline must exit non-zero"
+
+print("ok: features.py features are gated the same way")

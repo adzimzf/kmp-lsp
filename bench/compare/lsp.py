@@ -88,6 +88,8 @@ class LanguageServer:
         self.active_progress = set()
         self.progress_events = []
         self.diagnostics = {}
+        self.diagnostics_version = {}
+        self.registrations = []
         self.peak_rss_kib = 0
         self.closed = threading.Event()
         threading.Thread(target=self._read_loop, daemon=True).start()
@@ -144,6 +146,10 @@ class LanguageServer:
             result = {"applied": False}
         elif method == "workspace/workspaceFolders":
             result = None
+        elif method == "client/registerCapability":
+            # Kept: some servers (jdtls) announce features — and the semantic
+            # tokens legend — only this way.
+            self.registrations.extend(message["params"].get("registrations", []))
         self._write({"jsonrpc": "2.0", "id": message["id"], "result": result})
 
     def _setting(self, section):
@@ -165,7 +171,9 @@ class LanguageServer:
                 self.active_progress.discard(token)
             self.progress_events.append((now, token, kind, (params.get("value") or {}).get("title")))
         elif method == "textDocument/publishDiagnostics":
-            self.diagnostics[params.get("uri")] = params.get("diagnostics", [])
+            uri = params.get("uri")
+            self.diagnostics[uri] = params.get("diagnostics", [])
+            self.diagnostics_version[uri] = self.diagnostics_version.get(uri, 0) + 1
 
     def _sample_memory(self):
         while not self.closed.is_set() and self.process.poll() is None:

@@ -17,6 +17,11 @@ lands).
   check — score a result against the fixture, exit 1 below the baseline
     itest.py check --repo R --cases cases/moshi-java.json \
                    --result results/kmp-lsp-cold.json [--update-baseline]
+
+Definition, references and completion are graded here; every other feature
+(hover, rename, call hierarchy, formatting, document links, …) lives in
+`features.py`, which also says where each one's expected answers come from:
+jdtls's own answers, or — for what jdtls does not implement — the sources.
 """
 
 import argparse
@@ -24,9 +29,12 @@ import json
 import os
 import sys
 
+import features as extra
 from score import Repo, label_name, matches_member, normalize_target
 
-FEATURES = ("definition", "references", "completion")
+BASE_FEATURES = ("definition", "references", "completion")
+FEATURES = BASE_FEATURES + tuple(feature.name for feature in extra.FEATURES)
+INLAY_HINT_CASES = 80
 COMPLETION_RANK = 10
 
 def source_class(target):
@@ -77,53 +85,102 @@ def completion_rank(answer, expected):
 def case_of(query, extra):
     return dict({key: query[key] for key in ("id", "file", "line", "character", "name", "category")}, **extra)
 
+def selected_features(selection):
+    if selection == "all":
+        return list(FEATURES)
+    names = [name.strip() for name in selection.split(",") if name.strip()]
+    unknown = set(names) - set(FEATURES)
+    if unknown:
+        raise SystemExit(f"unknown features: {', '.join(sorted(unknown))}")
+    return names
+
+def base_cases(feature, repo, queries, result):
+    """Cases of definition / references / completion from the reference's answers."""
+    cases = []
+    for identifier, answer in answers_by_id(result, feature).items():
+        query = queries.get(identifier)
+        if not query or answer.get("error"):
+            continue
+        if feature == "definition" and answer["locations"]:
+            cases.append(case_of(query, {"expect": definition_targets(repo, answer, query["name"])}))
+        elif feature == "references":
+            usages = in_repo_usages(repo, answer, query)
+            if usages:
+                cases.append(case_of(query, {"expect": sorted(list(usage) for usage in usages)}))
+        elif feature == "completion":
+            rank = completion_rank(answer, query["name"])
+            if rank is not None and rank <= COMPLETION_RANK:
+                cases.append(case_of(query, {"expect_rank_within": COMPLETION_RANK}))
+    return cases
+
+def reference_feature_cases(feature, repo, queries, result):
+    """Cases of a features.py feature jdtls implements, from its answers."""
+    import random
+    cases = []
+    for identifier, answer in answers_by_id(result, feature.name).items():
+        query = queries.get(identifier)
+        if query and not answer.get("error"):
+            # A case keeps only what the grade checks and the reference got
+            # right: the reference passes its own cases by construction.
+            cases.extend(case for case in extra.reference_cases(feature, query, answer, repo)
+                         if feature.grade(case, answer, repo) is None)
+    if isinstance(feature, extra.InlayHint) and len(cases) > INLAY_HINT_CASES:
+        cases = random.Random(7).sample(cases, INLAY_HINT_CASES)
+    return cases
+
 def generate(arguments):
+    """Write (or update) the fixture: the selected features' cases are
+    rebuilt, every other feature's cases and baselines are kept."""
     repo = Repo(arguments.repo)
-    queries = {query["id"]: query
-               for kind in json.load(open(arguments.queries))["queries"].values()
-               for query in kind
-               if query["language"] == arguments.language}
+    query_kinds = {kind: [query for query in queries if query["language"] == arguments.language]
+                   for kind, queries in json.load(open(arguments.queries))["queries"].items()}
+    queries = {query["id"]: query for kind in query_kinds.values() for query in kind}
     result = json.load(open(arguments.result))
-    cases = {feature: [] for feature in FEATURES}
+    reference = result["server"]
+    fixture = {}
+    if os.path.exists(arguments.out):
+        with open(arguments.out) as handle:
+            fixture = json.load(handle)
+    cases = fixture.get("cases", {})
+    sources = fixture.get("sources", {feature: reference for feature in BASE_FEATURES})
+    reference_baseline = fixture.get("baselines", {}).get(reference, {})
 
-    for identifier, answer in answers_by_id(result, "definition").items():
-        query = queries.get(identifier)
-        if not query or answer.get("error") or not answer["locations"]:
-            continue
-        cases["definition"].append(case_of(query, {"expect": definition_targets(repo, answer, query["name"])}))
+    for name in selected_features(arguments.features):
+        feature = extra.BY_NAME.get(name)
+        if feature is None:
+            cases[name] = base_cases(name, repo, queries, result)
+            sources[name] = reference
+        elif feature.reference == "source":
+            cases[name] = feature.source_cases(query_kinds, repo)
+            sources[name] = "source"
+        else:
+            cases[name] = reference_feature_cases(feature, repo, queries, result)
+            sources[name] = reference
+        cases[name].sort(key=lambda case: case["id"])
 
-    for identifier, answer in answers_by_id(result, "references").items():
-        query = queries.get(identifier)
-        if not query or answer.get("error"):
-            continue
-        usages = in_repo_usages(repo, answer, query)
-        if not usages:
-            continue
-        cases["references"].append(case_of(query, {"expect": sorted(list(usage) for usage in usages)}))
-
-    for identifier, answer in answers_by_id(result, "completion").items():
-        query = queries.get(identifier)
-        if not query or answer.get("error"):
-            continue
-        rank = completion_rank(answer, query["name"])
-        if rank is None or rank > COMPLETION_RANK:
-            continue
-        cases["completion"].append(case_of(query, {"expect_rank_within": COMPLETION_RANK}))
-
-    for feature in FEATURES:
-        cases[feature].sort(key=lambda case: case["id"])
+    ordered = {name: cases[name] for name in FEATURES if name in cases}
+    # The reference passes its own cases by construction; on cases from the
+    # sources it is graded like any other server.
+    report = score(repo, {"cases": ordered}, result)
+    for name in ordered:
+        reference_baseline[name] = report[name][0] if sources.get(name) == "source" else len(ordered[name])
+    baselines = fixture.get("baselines", {})
+    baselines[reference] = {name: reference_baseline[name] for name in ordered}
     fixture = {
         "target": result.get("target"),
         "language": arguments.language,
-        "reference": result["server"],
-        "note": "generated from the reference server's own answers: it passes 100% by construction",
+        "reference": reference,
+        "note": "cases of the features the reference server implements are generated from its own answers "
+                "(it passes them 100% by construction); features it does not implement, and formatting, "
+                "are graded against the sources (`sources`, features.py)",
         "completion_rank_within": COMPLETION_RANK,
-        "cases": cases,
-        "baselines": {result["server"]: {feature: len(cases[feature]) for feature in FEATURES}},
+        "sources": {name: sources.get(name, reference) for name in ordered},
+        "cases": ordered,
+        "baselines": baselines,
     }
     with open(arguments.out, "w") as handle:
         json.dump(fixture, handle, indent=1)
-    print(f"{arguments.out}: " + ", ".join(f"{len(cases[feature])} {feature}" for feature in FEATURES))
+    print(f"{arguments.out}: " + ", ".join(f"{len(ordered[name])} {name}" for name in ordered))
 
 class Failure:
     """One failed case, printed the way a test runner would: where the query
@@ -196,25 +253,39 @@ def completion_failure(case, answer):
                    f"rank {rank}" if rank else f"absent from {answer['total']} items",
                    [f"top      {top}"])
 
+def grade(repo, feature, case, answer):
+    """The case's Failure, or None when the answer is right."""
+    if feature == "definition":
+        return definition_failure(repo, case, answer)
+    if feature == "references":
+        return references_failure(repo, case, answer)
+    if feature == "completion":
+        return completion_failure(case, answer)
+    verdict = extra.BY_NAME[feature].grade(case, answer, repo)
+    if verdict is None:
+        return None
+    expected, actual, detail = verdict
+    return Failure(case, feature, expected, actual, detail)
+
+def answer_id(feature, case):
+    return extra.BY_NAME[feature].answer_id(case) if feature in extra.BY_NAME else case["id"]
+
 def score(repo, fixture, result):
-    """feature → (passed, asked, [Failure])."""
+    """feature → (passed, asked, [Failure]), for every feature with cases."""
     report = {}
     for feature in FEATURES:
+        if feature not in fixture["cases"]:
+            continue
         cases = fixture["cases"][feature]
         answers = answers_by_id(result, feature)
         passed, failures = 0, []
         for case in cases:
-            answer = answers.get(case["id"])
+            answer = answers.get(answer_id(feature, case))
             if answer is None or answer.get("error"):
                 failures.append(Failure(case, feature, "an answer",
                                         answer.get("error") if answer else "the query was not asked"))
                 continue
-            if feature == "definition":
-                failure = definition_failure(repo, case, answer)
-            elif feature == "references":
-                failure = references_failure(repo, case, answer)
-            else:
-                failure = completion_failure(case, answer)
+            failure = grade(repo, feature, case, answer)
             if failure is None:
                 passed += 1
             else:
@@ -233,24 +304,51 @@ def check(arguments):
     print(f"{server} on {fixture['target']} ({fixture['language']}), "
           f"cases from {fixture['reference']}\n")
     baseline = fixture.get("baselines", {}).get(server)
+    sources = fixture.get("sources", {})
     failed = []
-    for feature, (passed, asked, failures) in report.items():
-        minimum = (baseline or {}).get(feature)
-        verdict = "no baseline" if minimum is None else ("PASS" if passed >= minimum else "FAIL")
-        if verdict == "FAIL":
-            failed.append(f"{feature}: {passed}/{asked}, baseline {minimum}")
-        print(f"  {feature:12} {passed}/{asked}"
-              + (f" ({100 * passed / asked:.0f}%)" if asked else "")
-              + (f"  baseline {minimum}" if minimum is not None else "")
-              + f"  {verdict}")
-        for failure in failures[:arguments.failures]:
-            print("\n".join(failure.render(repo, indent="    ")))
-        if len(failures) > arguments.failures:
-            print(f"    … {len(failures) - arguments.failures} more failures "
-                  f"(--failures {len(failures)} to see them all)")
+    from_reference = lambda feature: sources.get(feature, fixture["reference"]) == fixture["reference"]
+    groups = [(f"features {fixture['reference']} implements (cases from its answers)", True),
+              (f"graded against the sources (formatting, and standard LSP {fixture['reference']} lacks)", False)]
+    for title, reference_group in groups:
+        members = [feature for feature in report if from_reference(feature) == reference_group]
+        if members:
+            print(f"  ── {title}")
+        for feature in members:
+            print_feature(feature, report[feature], baseline, failed, arguments, repo)
+    print_totals(report)
+    return finish(arguments, fixture, report, server, baseline, failed)
 
-    if arguments.update_baseline:
-        fixture.setdefault("baselines", {})[server] = {feature: report[feature][0] for feature in FEATURES}
+def print_feature(feature, scored, baseline, failed, arguments, repo):
+    """One feature's score against its baseline, then its first failures."""
+    passed, asked, failures = scored
+    minimum = (baseline or {}).get(feature)
+    verdict = "no baseline" if minimum is None else ("PASS" if passed >= minimum else "FAIL")
+    if verdict == "FAIL":
+        failed.append(f"{feature}: {passed}/{asked}, baseline {minimum}")
+    print(f"  {feature:20} {passed:>3}/{asked:<3}"
+          + (f" ({100 * passed / asked:3.0f}%)" if asked else "       ")
+          + (f"  baseline {minimum:<3}" if minimum is not None else "")
+          + f"  {verdict}")
+    for failure in failures[:arguments.failures]:
+        print("\n".join(failure.render(repo, indent="    ")))
+    if len(failures) > arguments.failures:
+        print(f"    … {len(failures) - arguments.failures} more failures "
+              f"(--failures {len(failures)} to see them all)")
+
+def print_totals(report):
+    total_passed = sum(passed for passed, _, _ in report.values())
+    total_asked = sum(asked for _, asked, _ in report.values())
+    print(f"\n  {'total':20} {total_passed:>3}/{total_asked}"
+          + (f" ({100 * total_passed / total_asked:.0f}%)" if total_asked else ""))
+
+def finish(arguments, fixture, report, server, baseline, failed):
+    """Record baselines when asked; else the exit status of the gate."""
+    add_missing = getattr(arguments, "add_missing_baselines", False)
+    if arguments.update_baseline or add_missing:
+        recorded = fixture.setdefault("baselines", {}).setdefault(server, {})
+        for feature in report:
+            if arguments.update_baseline or feature not in recorded:
+                recorded[feature] = report[feature][0]
         with open(arguments.cases, "w") as handle:
             json.dump(fixture, handle, indent=1)
         print(f"\nbaseline for {server} written to {arguments.cases}")
@@ -274,6 +372,8 @@ def main():
     generator.add_argument("--result", required=True, help="run.py result of the reference server")
     generator.add_argument("--language", required=True, choices=["java", "kotlin"])
     generator.add_argument("--out", required=True)
+    generator.add_argument("--features", default="all",
+                           help="features whose cases to (re)build, comma-separated; the rest are kept")
 
     checker = commands.add_parser("check")
     checker.add_argument("--repo", required=True)
@@ -281,6 +381,8 @@ def main():
     checker.add_argument("--result", required=True)
     checker.add_argument("--failures", type=int, default=10, help="failures to list per feature")
     checker.add_argument("--update-baseline", action="store_true")
+    checker.add_argument("--add-missing-baselines", action="store_true",
+                         help="record the score of features without a baseline; leave the others alone")
 
     arguments = parser.parse_args()
     if arguments.command == "generate":
