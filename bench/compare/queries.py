@@ -43,41 +43,46 @@ JAVA_DECLARERS = {"class", "interface", "enum", "record"}
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
-def blank_comments_and_strings(text: str, kotlin: bool) -> str:
-    """`text` with comments and string/char literals replaced by spaces
-    (newlines kept), so offsets and line numbers stay valid."""
-    out = list(text)
+def literal_spans(text: str):
+    """(start, end, kind) of every comment (`comment`) and string/char
+    literal (`string`) in `text`."""
+    spans = []
     i, n = 0, len(text)
-
-    def blank(start, end):
-        for k in range(start, end):
-            if out[k] != "\n":
-                out[k] = " "
-
     while i < n:
         if text.startswith("//", i):
             end = text.find("\n", i)
             end = n if end < 0 else end
-            blank(i, end)
+            spans.append((i, end, "comment"))
             i = end
         elif text.startswith("/*", i):
             end = text.find("*/", i + 2)
             end = n if end < 0 else end + 2
-            blank(i, end)
+            spans.append((i, end, "comment"))
             i = end
         elif text.startswith('"""', i):
             end = text.find('"""', i + 3)
             end = n if end < 0 else end + 3
-            blank(i, end)
+            spans.append((i, end, "string"))
             i = end
         elif text[i] in "\"'":
             quote, j = text[i], i + 1
             while j < n and text[j] != quote and text[j] != "\n":
                 j += 2 if text[j] == "\\" else 1
-            blank(i, min(j + 1, n))
+            spans.append((i, min(j + 1, n), "string"))
             i = j + 1
         else:
             i += 1
+    return spans
+
+
+def blank_comments_and_strings(text: str, kotlin: bool) -> str:
+    """`text` with comments and string/char literals replaced by spaces
+    (newlines kept), so offsets and line numbers stay valid."""
+    out = list(text)
+    for start, end, _ in literal_spans(text):
+        for k in range(start, end):
+            if out[k] != "\n":
+                out[k] = " "
     return "".join(out)
 
 
@@ -227,7 +232,109 @@ def extract(repo, target):
             selected[kind].extend(picked)
     stats = {kind: {language: len(pool) for language, pool in by_language.items()}
              for kind, by_language in candidates.items()}
+    # File-level questions draw from their own generator, so adding them left
+    # the definition/references/completion sample (and every fixture built
+    # from it) exactly as it was.
+    file_candidates = file_level_candidates(repo, files)
+    file_rng = random.Random(target.get("seed", 7) + 1)
+    for kind, by_language in file_candidates.items():
+        selected[kind] = []
+        for language in sorted(by_language):
+            pool = by_language[language]
+            picked = file_rng.sample(pool, min(sizes.get(kind, FILE_LEVEL_SAMPLE[kind]), len(pool)))
+            picked.sort(key=lambda q: (q["file"], q["line"], q["character"]))
+            for number, query in enumerate(picked):
+                query["id"] = f"{kind}-{language}-{number:03d}"
+            selected[kind].extend(picked)
+        stats[kind] = {language: len(pool) for language, pool in by_language.items()}
     return {"repo": os.path.abspath(repo), "files": len(files), "candidates": stats, "queries": selected}
+
+
+# How many of each file-level question a target gets unless its `sample` says.
+FILE_LEVEL_SAMPLE = {"files": 25, "imports": 20, "links": 15}
+
+IMPORT = re.compile(r"^\s*import\s+((?:[a-z_][\w]*\.)+)([A-Z]\w*)\s*;?\s*$")
+LICENSE_URL = "apache.org/licenses"
+URL = re.compile(r"https?://[^\s<>\"'(){}\[\]]+")
+
+
+def top_level_declaration(stream, stem, kotlin):
+    """The token naming the file's own top-level type (`class Gson` in
+    Gson.java), with the keyword that declares it; None for a file without one."""
+    declarers = KOTLIN_DECLARERS if kotlin else JAVA_DECLARERS
+    for index in range(1, len(stream)):
+        if stream[index].text == stem and stream[index - 1].text in declarers:
+            return stream[index], stream[index - 1].text
+    return None
+
+
+def removable_import(text, code, stream, skipped):
+    """(import line, package, simple name, first usage token) of the first
+    single-type import whose type is used in the body: deleting that line
+    leaves a usage the "add import" quick fix must repair."""
+    lines = text.split("\n")
+    for number, line in enumerate(lines):
+        match = IMPORT.match(line)
+        if not match or " static " in f" {line} ":
+            continue
+        package, simple = match.group(1).rstrip("."), match.group(2)
+        for token in stream:
+            if token.line not in skipped and token.text == simple:
+                return number, package, simple, token
+    return None
+
+
+def comment_urls(text):
+    """[line, character, url] of every http(s) URL inside a comment."""
+    line_starts = [0] + [index + 1 for index, char in enumerate(text) if char == "\n"]
+    import bisect
+    found = []
+    for start, end, kind in literal_spans(text):
+        if kind != "comment":
+            continue
+        for match in URL.finditer(text, start, end):
+            url = match.group(0).rstrip(".,;:*")
+            line = bisect.bisect_right(line_starts, match.start()) - 1
+            found.append([line, match.start() - line_starts[line], url])
+    return found
+
+
+def file_level_candidates(repo, files):
+    """Per-file questions: `files` (a file and its top-level type: symbols,
+    folding, diagnostics, formatting, hierarchy), `imports` (an import whose
+    deletion breaks a usage), `links` (a file with URLs in its comments)."""
+    candidates = {"files": {}, "imports": {}, "links": {}}
+    for path in files:
+        kotlin = path.endswith(".kt")
+        language = "kotlin" if kotlin else "java"
+        relative = os.path.relpath(path, repo)
+        stem = os.path.splitext(os.path.basename(path))[0]
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        code = blank_comments_and_strings(text, kotlin)
+        skipped = header_lines(code)
+        stream = tokens(code)
+        declaration = top_level_declaration(stream, stem, kotlin)
+        if declaration:
+            token, declarer = declaration
+            candidates["files"].setdefault(language, []).append(
+                {"file": relative, "language": language, "line": token.line, "character": token.column,
+                 "name": stem, "category": declarer})
+        removable = removable_import(text, code, stream, skipped)
+        if removable:
+            import_line, package, simple, usage = removable
+            candidates["imports"].setdefault(language, []).append(
+                {"file": relative, "language": language, "line": usage.line, "character": usage.column,
+                 "name": simple, "category": "import", "import_line": import_line,
+                 "fqn": f"{package}.{simple}"})
+        urls = comment_urls(text)
+        # Nearly every file carries the same license-header URL; a file is a
+        # link question only when its comments point somewhere else as well.
+        if any(LICENSE_URL not in url for _, _, url in urls):
+            candidates["links"].setdefault(language, []).append(
+                {"file": relative, "language": language, "line": urls[0][0], "character": urls[0][1],
+                 "name": stem, "category": "link", "urls": urls})
+    return candidates
 
 
 def main():

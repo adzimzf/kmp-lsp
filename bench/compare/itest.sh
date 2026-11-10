@@ -11,7 +11,14 @@
 #   --target NAME     targets/NAME.json (default: gson)
 #   --servers LIST    comma-separated subset of jdtls,kmp-lsp (default: both)
 #   --generate        regenerate the fixture from the jdtls run
+#   --generate-features LIST
+#                     with --generate: only these features' cases (comma-
+#                     separated, default all); the others are kept as they are
+#   --features LIST   what the servers are asked (default all: every feature
+#                     in features.py besides definition/references/completion)
 #   --update-baseline record kmp-lsp's score as its new baseline
+#   --add-missing-baselines
+#                     record kmp-lsp's score only for features without a baseline
 #   --workdir DIR     where the clone, caches and results go (default: ~/lsp-compare)
 #
 # Environment:
@@ -28,7 +35,10 @@ TARGET_NAME=gson
 SERVERS=jdtls,kmp-lsp
 WORKDIR="$HOME/lsp-compare"
 GENERATE=0
+GENERATE_FEATURES=all
+FEATURES=all
 UPDATE_BASELINE=0
+ADD_MISSING_BASELINES=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,8 +46,11 @@ while [ $# -gt 0 ]; do
     --servers) SERVERS=$2; shift 2 ;;
     --workdir) WORKDIR=$2; shift 2 ;;
     --generate) GENERATE=1; shift ;;
+    --generate-features) GENERATE_FEATURES=$2; shift 2 ;;
+    --features) FEATURES=$2; shift 2 ;;
     --update-baseline) UPDATE_BASELINE=1; shift ;;
-    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --add-missing-baselines) ADD_MISSING_BASELINES=1; shift ;;
+    -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -90,7 +103,7 @@ run() {
       [ -n "${JDTLS:-}" ] || die "set JDTLS to a jdtls installation"
       python3 "$SCRIPT_DIR/run.py" --server jdtls --repo "$REPO" --target "$TARGET_JSON" \
         --queries "$QUERIES" --state "$WORKDIR/itest-state/jdtls" --out "$out" \
-        --jdtls "$JDTLS" --java "${JAVA:-java}" --ready-timeout 900 ;;
+        --jdtls "$JDTLS" --java "${JAVA:-java}" --ready-timeout 900 --features "$FEATURES" ;;
     kmp-lsp)
       [ -x "$KMP_LSP" ] || die "no kmp-lsp at $KMP_LSP (cargo build --release)"
       # Prime the state: the graded run then starts from the dependency
@@ -100,11 +113,11 @@ run() {
       if [ ! -d "$WORKDIR/itest-state/kmp-lsp" ]; then
         python3 "$SCRIPT_DIR/run.py" --server kmp-lsp --repo "$REPO" --target "$TARGET_JSON" \
           --queries "$QUERIES" --state "$WORKDIR/itest-state/kmp-lsp" --out "$out.priming" \
-          --kmp-lsp "$KMP_LSP"
+          --kmp-lsp "$KMP_LSP" --features base
       fi
       python3 "$SCRIPT_DIR/run.py" --server kmp-lsp --repo "$REPO" --target "$TARGET_JSON" \
         --queries "$QUERIES" --state "$WORKDIR/itest-state/kmp-lsp" --out "$out" \
-        --kmp-lsp "$KMP_LSP" ;;
+        --kmp-lsp "$KMP_LSP" --features "$FEATURES" ;;
     *) die "unknown server: $server" ;;
   esac
 }
@@ -113,7 +126,7 @@ has "$SERVERS" jdtls && run jdtls
 if [ $GENERATE = 1 ]; then
   log "fixture from jdtls"
   python3 "$SCRIPT_DIR/itest.py" generate --queries "$QUERIES" --repo "$REPO" \
-    --result "$RESULTS/jdtls.json" --language java --out "$CASES"
+    --result "$RESULTS/jdtls.json" --language java --out "$CASES" --features "$GENERATE_FEATURES"
 fi
 [ -f "$CASES" ] || die "no fixture at $CASES — run with --generate"
 has "$SERVERS" kmp-lsp && run kmp-lsp
@@ -126,6 +139,7 @@ for server in ${SERVERS//,/ }; do
   # fixture itself.
   update=""
   [ "$server" = kmp-lsp ] && [ $UPDATE_BASELINE = 1 ] && update=--update-baseline
+  [ "$server" = kmp-lsp ] && [ $ADD_MISSING_BASELINES = 1 ] && update=--add-missing-baselines
   python3 "$SCRIPT_DIR/itest.py" check --repo "$REPO" --cases "$CASES" \
     --result "$RESULTS/$server.json" $update || status=1
 done

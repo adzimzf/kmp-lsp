@@ -179,7 +179,8 @@ JDTLS=/path/to/jdtls JAVA=/path/to/java25 BUILD_JDK=/path/to/jdk21 \
 - Fixture: `cases/gson-java.json`, generated with `--generate` from jdtls's
   own answers — only the queries jdtls got right become cases, so **jdtls
   passes 100% by construction** and regenerating can only shrink the set.
-  147 definition, 19 references, 54 completion cases.
+  147 definition, 19 references, 54 completion cases, plus the features
+  below.
 - Grading: *definition* — same target (file, line), with a compiled class
   accepted against that class's source file; *references* — the in-repo
   usage set must match exactly; *completion* — the deleted member must rank
@@ -209,6 +210,53 @@ score swung with the runner's speed (50% on one CI run, 89% on the next).
 
 `itest_selfcheck.py` checks the gate itself on a synthetic result: that a
 score below baseline exits non-zero and that a failure names both locations.
+
+### Beyond definition, references and completion
+
+`features.py` adds every other feature jdtls implements, and the standard LSP
+features it does not, each with its own cases in the same fixture (`sources`
+there says where a feature's expected answers come from):
+
+| Feature | Asked on | Passes when |
+|---|---|---|
+| **From jdtls's answers** (jdtls passes 100% by construction) | | |
+| hover | definition queries | the hover text names the symbol |
+| declaration | definition queries | same target as jdtls (as for definition) |
+| typeDefinition | definition queries | the same type declaration as jdtls |
+| implementation | declarations (`references` queries) | the same in-repo implementations, exactly |
+| documentHighlight | declarations | the same occurrences in the file, exactly |
+| documentSymbol | `files` (25) | every named symbol jdtls lists is there, at its line |
+| workspaceSymbol | `files`: the top-level type's name | the search finds its declaration |
+| signatureHelp | calls, just inside the `(` | active signature of that method with jdtls's parameter count |
+| prepareRename | declarations | the name's range |
+| rename | declarations | the same edit positions as jdtls, exactly |
+| foldingRange | `files` | every code region jdtls folds (not comments/imports) starts a range |
+| selectionRange | definition queries | jdtls's innermost range, a nested chain of 3+ |
+| semanticTokens | definition queries | the token type jdtls gives (legends mapped by name) |
+| inlayHint | `files` (up to 80 hints) | each parameter-name hint at the same place, same name |
+| callHierarchy | method declarations | the same incoming call sites, exactly |
+| typeHierarchy | `files`: the top-level type | the same supertypes and subtypes |
+| diagnostics | `files` | no error where jdtls publishes none (the target compiles) |
+| codeAction | `imports`: one import line blanked | a quick fix at the usage adds `import <fqn>;` back |
+| **From the sources** | | |
+| formatting | 10 `files`, indentation stripped | code unchanged, indentation back |
+| rangeFormatting | 8 method-body lines stripped | indented again, nothing else moves |
+| onTypeFormatting | Enter after a statement | the new line indented like the statement |
+| documentLink † | `links`: files with URLs in comments | every URL is a link at its position |
+| pullDiagnostics † | `files` | `textDocument/diagnostic` reports no error |
+| workspaceDiagnostics † | once | `workspace/diagnostic` reports no error |
+| moniker † | declarations | a moniker naming `package.Type` and the symbol |
+
+† standard LSP that jdtls does not implement. jdtls advertises formatting and
+on-type formatting, but its output is a style choice (Eclipse's), so those
+three are graded on properties any formatter must have. Not covered: code
+lens (jdtls's are "N references", which references covers), document color
+(no colors in Java), linked editing range (no paired tags in Java), inline
+value (a debugger feature).
+
+`--generate --generate-features hover,rename` rebuilds only those features'
+cases; `--add-missing-baselines` records kmp-lsp's score for features that
+have none yet without touching the others.
 
 Adding a target: a `targets/<name>.json` with `roots`, `sample`, `probes`
 (known cross-file definitions that mark the server ready) and `build`, then
