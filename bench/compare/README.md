@@ -200,9 +200,12 @@ JDTLS=/path/to/jdtls JAVA=/path/to/java25 BUILD_JDK=/path/to/jdk21 \
   so record a baseline from a fresh `--workdir`, not from the directory you
   have been iterating in.
 
-kmp-lsp's state directory is primed with one throw-away run first: on an
-empty state it indexes dependency jars in the background without reporting
-progress, so the very first questions are asked before their answers exist.
+kmp-lsp's state directory is primed with one throw-away run first, so the
+graded run starts from the dependency manifest and jar caches a first session
+leaves behind. Both runs wait for the library phase (`kmp-lsp/libraries`
+progress) to end before asking: without that progress, a run asked its
+questions while the JDK and dependency jars were still being indexed, and the
+score swung with the runner's speed (50% on one CI run, 89% on the next).
 
 `itest_selfcheck.py` checks the gate itself on a synthetic result: that a
 score below baseline exits non-zero and that a failure names both locations.

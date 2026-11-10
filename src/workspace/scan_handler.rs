@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use tokio::sync::{mpsc, oneshot, RwLock};
+use tower_lsp::lsp_types::NumberOrString;
 
 use crate::indexer::{Indexer, ProgressReporter};
 use crate::rg::IgnoreMatcher;
@@ -37,6 +38,10 @@ pub(crate) fn try_lock_sidecar_bounded(
         Err(std::sync::TryLockError::WouldBlock) => None,
     }
 }
+
+/// The `$/progress` token of the library phase (see
+/// [`ScanHandler::spawn_reporting_library_progress`]).
+pub(crate) const LIBRARY_PROGRESS_TOKEN: &str = "kmp-lsp/libraries";
 
 pub(crate) struct ScanHandler<R: ProgressReporter + 'static> {
     indexer: Arc<Indexer>,
@@ -424,7 +429,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             .workspace_root
             .generation_atomic()
             .load(Ordering::Acquire);
-        tokio::task::spawn_blocking(move || {
+        self.spawn_reporting_library_progress(move || {
             // Bail before any filesystem work if this task is already superseded
             // (a newer scan bumped the generation).
             if indexer
@@ -522,6 +527,21 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
 }
 
 impl<R: ProgressReporter + 'static> ScanHandler<R> {
+    /// Run the library phase `work` (compiled JARs, sources JARs, the JDK)
+    /// on a blocking thread, reported to the client as `$/progress` from start
+    /// to end. Requests asked before it ends may miss library symbols, so a
+    /// client — or a harness deciding when the server has settled — has to
+    /// be able to see it is still running.
+    fn spawn_reporting_library_progress(&self, work: impl FnOnce() + Send + 'static) {
+        let reporter = Arc::clone(&self.reporter);
+        tokio::spawn(async move {
+            let token = NumberOrString::String(LIBRARY_PROGRESS_TOKEN.to_owned());
+            reporter.begin(&token, "indexing libraries").await;
+            let _ = tokio::task::spawn_blocking(work).await;
+            reporter.end(&token, "libraries indexed").await;
+        });
+    }
+
     /// Mount library sources JARs when the sidecar is unavailable. Unlike
     /// [`ScanHandler::spawn_jar_indexing`], `jar_phase` is left
     /// `Unavailable`: compiled JARs are still unread, and diagnostics treat a
@@ -551,7 +571,7 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
             .workspace_root
             .generation_atomic()
             .load(Ordering::Acquire);
-        tokio::task::spawn_blocking(move || {
+        self.spawn_reporting_library_progress(move || {
             let generation_ok = || {
                 indexer
                     .workspace_root
