@@ -50,6 +50,7 @@ pub(super) fn server_capabilities() -> ServerCapabilities {
             work_done_progress_options: Default::default(),
         })),
         folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+        selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
         code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
         signature_help_provider: Some(SignatureHelpOptions {
             trigger_characters: Some(vec!["(".into(), ",".into()]),

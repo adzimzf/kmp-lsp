@@ -34,6 +34,10 @@ pub(super) fn walk_references(
     uri: &Url,
     raw: &mut Vec<RawToken>,
 ) {
+    if language == Language::Java {
+        super::java_references::walk_java_references(doc, src, indexer, uri, raw);
+        return;
+    }
     if language != Language::Kotlin {
         return;
     }
@@ -436,7 +440,7 @@ fn enum_entry_reference_token(
         .map(|_| type_index(&SemanticTokenType::ENUM_MEMBER))
 }
 
-fn resolve_symbol_kind(
+pub(super) fn resolve_symbol_kind(
     name: &str,
     indexer: &Indexer,
     from_uri: &Url,
@@ -492,8 +496,8 @@ fn range_contains(range: &Range, position: &Position) -> bool {
         && (position.line, position.character) < (range.end.line, range.end.character)
 }
 
-struct ResolvedReference {
-    kind: SymbolKind,
-    uri: Url,
-    range: Range,
+pub(super) struct ResolvedReference {
+    pub(super) kind: SymbolKind,
+    pub(super) uri: Url,
+    pub(super) range: Range,
 }

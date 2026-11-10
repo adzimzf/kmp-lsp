@@ -31,6 +31,7 @@ pub(crate) mod parameter_hints;
 pub(crate) mod references;
 pub(crate) mod references_verify;
 pub(crate) mod rename;
+pub(crate) mod selection_range;
 pub(crate) mod signature_help;
 pub(crate) mod symbols;
 pub(crate) mod text_utils;

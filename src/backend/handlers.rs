@@ -160,6 +160,19 @@ impl Backend {
         ))
     }
 
+    // ── textDocument/selectionRange ──────────────────────────────────────────
+
+    pub(super) async fn selection_range_impl(
+        &self,
+        params: SelectionRangeParams,
+    ) -> Result<Option<Vec<SelectionRange>>> {
+        Ok(crate::features::selection_range::compute_selection_ranges(
+            self.indexer.as_ref(),
+            &params.text_document.uri,
+            &params.positions,
+        ))
+    }
+
     // ── textDocument/documentHighlight ───────────────────────────────────────
 
     pub(super) async fn document_highlight_impl(
