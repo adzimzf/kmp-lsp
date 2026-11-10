@@ -1307,6 +1307,32 @@ fn declared_type_from_raw_lines_recovers_truncated_producer_return_type() {
     );
 }
 
+#[test]
+fn declared_type_from_raw_lines_reads_a_java_method_head_not_its_body() {
+    // GsonBuilder.setLenient: the annotations push the detail past the cap,
+    // and the body's own call ends in the last `)` of the declaration range.
+    let src = "class GsonBuilder {\n\
+               @Deprecated\n\
+               @InlineMe(\n\
+                   replacement = \"this.setStrictness(Strictness.LENIENT)\",\n\
+                   imports = \"com.google.gson.Strictness\")\n\
+               @CanIgnoreReturnValue\n\
+               public GsonBuilder setLenient() {\n\
+                 return setStrictness(Strictness.LENIENT);\n\
+               }\n\
+               }\n";
+    let data = crate::parser::parse_java(src);
+    let symbol = data
+        .symbols
+        .iter()
+        .find(|s| s.name == "setLenient")
+        .expect("setLenient must be indexed");
+
+    let recovered = declared_type_from_raw_lines(&data.lines, symbol.range, symbol.kind);
+
+    assert_eq!(recovered.as_deref(), Some("GsonBuilder"));
+}
+
 // ─── type_annotation_matches_owner ─────────────────────────────────────────────
 
 #[test]

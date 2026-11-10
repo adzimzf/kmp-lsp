@@ -1,0 +1,199 @@
+//! Tests for [`find_java_references`]: real `.java` files in a temp
+//! directory (the occurrence search runs `rg`), each with decoys that only a
+//! name-based search would report.
+
+use std::sync::Arc;
+
+use tower_lsp::lsp_types::{Location, Position, Url};
+
+use super::*;
+
+fn write(dir: &std::path::Path, name: &str, content: &str) -> Url {
+    let path = dir.join(name);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, content).unwrap();
+    Url::from_file_path(&path).unwrap()
+}
+
+/// `file:line` (1-based) of every location, sorted.
+fn hits(locations: &[Location]) -> Vec<String> {
+    let mut hits: Vec<String> = locations
+        .iter()
+        .map(|location| {
+            let path = location.uri.to_file_path().unwrap();
+            let file = path.file_name().unwrap().to_string_lossy().into_owned();
+            format!("{file}:{}", location.range.start.line + 1)
+        })
+        .collect();
+    hits.sort();
+    hits
+}
+
+fn position_of(source: &str, line: u32, name: &str) -> Position {
+    let text = source.lines().nth(line as usize).unwrap();
+    Position::new(line, text.find(name).unwrap() as u32)
+}
+
+struct Workspace {
+    _dir: tempfile::TempDir,
+    index: Arc<Indexer>,
+}
+
+impl Workspace {
+    fn new(files: &[(&str, &str)]) -> (Self, Vec<Url>) {
+        let dir = tempfile::tempdir().unwrap();
+        let index = Arc::new(Indexer::new());
+        index.workspace_root.set(dir.path().to_path_buf());
+        let uris = files
+            .iter()
+            .map(|(name, source)| {
+                let uri = write(dir.path(), name, source);
+                index.index_content(&uri, source);
+                uri
+            })
+            .collect();
+        (Self { _dir: dir, index }, uris)
+    }
+}
+
+const READER: &str = "package p;\n\
+public class Reader {\n\
+  /** Ends the object. See {@link #endObject()}. */\n\
+  public void endObject() {}\n\
+  public void endObject(int depth) {}\n\
+}\n";
+
+const TREE_READER: &str = "package p;\n\
+public class TreeReader extends Reader {\n\
+  @Override\n\
+  public void endObject() {}\n\
+}\n";
+
+const WRITER: &str = "package p;\n\
+public class Writer {\n\
+  public void endObject() {}\n\
+}\n";
+
+const USES: &str = "package p;\n\
+class Uses {\n\
+  void run(Reader reader, Writer writer, TreeReader tree) {\n\
+    reader.endObject();\n\
+    writer.endObject();\n\
+    tree.endObject();\n\
+    String name = \"endObject\";\n\
+  }\n\
+  /** Like {@link TreeReader#endObject()} and {@link Writer#endObject()}. */\n\
+  void documented() {}\n\
+}\n";
+
+/// From an override, a usage is a call that may run it: on its own type, or
+/// through the method it overrides (`reader.endObject()` on a `Reader`). Not
+/// a same-named method of an unrelated type, an overload, another
+/// declaration, a string, or a javadoc link to an unrelated type.
+#[tokio::test]
+async fn method_references_follow_overrides_not_names() {
+    let (workspace, uris) = Workspace::new(&[
+        ("p/Reader.java", READER),
+        ("p/TreeReader.java", TREE_READER),
+        ("p/Writer.java", WRITER),
+        ("p/Uses.java", USES),
+    ]);
+    let tree_reader = &uris[1];
+
+    let found = find_java_references(
+        &workspace.index,
+        tree_reader,
+        position_of(TREE_READER, 3, "endObject"),
+        false,
+    )
+    .await
+    .expect("a Java method is answered here");
+
+    assert_eq!(
+        hits(&found),
+        vec!["Uses.java:4", "Uses.java:6", "Uses.java:9"]
+    );
+}
+
+const FOO: &str = "package a;\n\
+public class Foo {\n\
+  public Foo() {}\n\
+  public Foo(int size) {}\n\
+}\n";
+
+const OTHER_FOO: &str = "package b;\n\
+public class Foo {}\n";
+
+const FOO_USER: &str = "package c;\n\
+\n\
+import a.Foo;\n\
+\n\
+/** Builds a {@link Foo}; see also {@link b.Foo}. */\n\
+class FooUser {\n\
+  Foo make() {\n\
+    return new Foo(3);\n\
+  }\n\
+  String label = \"Foo\";\n\
+}\n";
+
+/// A type's usages: its import, a constructor call, a javadoc link that
+/// names it. Not its constructors' declarations, a same-named type of
+/// another package, or a string.
+#[tokio::test]
+async fn type_references_count_imports_constructor_calls_and_javadoc() {
+    let (workspace, uris) = Workspace::new(&[
+        ("a/Foo.java", FOO),
+        ("b/Foo.java", OTHER_FOO),
+        ("c/FooUser.java", FOO_USER),
+    ]);
+    let foo = &uris[0];
+
+    let found = find_java_references(&workspace.index, foo, position_of(FOO, 1, "Foo"), false)
+        .await
+        .expect("a Java type is answered here");
+
+    assert_eq!(
+        hits(&found),
+        vec![
+            "FooUser.java:3",
+            "FooUser.java:5",
+            "FooUser.java:7",
+            "FooUser.java:8"
+        ]
+    );
+}
+
+#[test]
+fn javadoc_reference_splits_type_member_and_parameters() {
+    let line = "   * Uses {@link GsonBuilder#setDateFormat(int, int)} instead.";
+    let column = line.find("setDateFormat").unwrap();
+
+    let reference = javadoc_reference_at(line, column, "setDateFormat").unwrap();
+
+    assert_eq!(reference.type_part, "GsonBuilder");
+    assert_eq!(reference.member.as_deref(), Some("setDateFormat"));
+    assert_eq!(
+        reference.parameters,
+        Some(vec!["int".to_owned(), "int".to_owned()])
+    );
+    assert!(reference.names_member);
+    assert!(!reference.names_type);
+}
+
+#[test]
+fn javadoc_reference_is_absent_outside_a_reference_tag() {
+    let line = "   * The setDateFormat method, see {@link Other}.";
+    let column = line.find("setDateFormat").unwrap();
+
+    assert_eq!(javadoc_reference_at(line, column, "setDateFormat"), None);
+}
+
+#[test]
+fn declared_parameter_types_keep_only_simple_type_names() {
+    assert_eq!(
+        declared_parameter_types(
+            "final java.util.List<String> names, int... values, @Nullable Foo foo"
+        ),
+        vec!["List", "int[]", "Foo"]
+    );
+}

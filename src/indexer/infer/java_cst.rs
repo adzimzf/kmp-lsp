@@ -40,6 +40,7 @@ const FIELD_ACCESS: &str = "field_access";
 const OBJECT_CREATION: &str = "object_creation_expression";
 const CLASS_LITERAL: &str = "class_literal";
 const CAST_EXPRESSION: &str = "cast_expression";
+const ARRAY_ACCESS: &str = "array_access";
 const PARENTHESIZED_EXPRESSION: &str = "parenthesized_expression";
 const ASSIGNMENT_EXPRESSION: &str = "assignment_expression";
 const STRING_LITERAL: &str = "string_literal";
@@ -719,13 +720,29 @@ fn expr_type_at_depth(
             let named = node.named_child(0)?.utf8_text_owned(bytes)?;
             here(format!("Class<{named}>"))
         }
+        // `objs[3]` is an element of the array `objs`: `Object[]` → `Object`.
+        ARRAY_ACCESS => {
+            let array = node.child_by_field_name("array")?;
+            let (array_type, array_uri) = expr_type_at_depth(array, bytes, deps, uri, depth + 1)?;
+            let element = array_type
+                .trim_end()
+                .strip_suffix("[]")?
+                .trim_end()
+                .to_owned();
+            Some((element, array_uri))
+        }
         PARENTHESIZED_EXPRESSION => {
             expr_type_at_depth(node.named_child(0)?, bytes, deps, uri, depth + 1)
         }
         METHOD_INVOCATION => method_invocation_type(node, bytes, deps, uri, depth),
         FIELD_ACCESS => {
             let receiver = node.child_by_field_name("object")?;
-            let field = node.child_by_field_name("field")?.utf8_text_owned(bytes)?;
+            let field_node = node.child_by_field_name("field")?;
+            // `Outer.this`: the enclosing instance of the class it names.
+            if field_node.kind() == THIS {
+                return here(receiver.utf8_text_owned(bytes)?);
+            }
+            let field = field_node.utf8_text_owned(bytes)?;
             let (receiver_type, receiver_uri) =
                 expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
             let lookup_name = receiver_type.dotted_ident_prefix();

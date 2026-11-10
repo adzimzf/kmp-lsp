@@ -728,3 +728,109 @@ async fn java_local_and_parameter_go_to_their_own_declarations() {
         vec![4]
     );
 }
+
+/// A bare call inside a class binds to the class's own method (`this.read`),
+/// never to a same-named method of a class nested in it: `TypeAdapter.fromJson`
+/// calls its own abstract `read`, not `NullSafeTypeAdapter.read` declared
+/// further down the file. `TypeAdapter.this.read(..)` inside the nested class
+/// reaches the outer one too.
+#[tokio::test]
+async fn goto_definition_java_bare_call_binds_to_enclosing_class_not_nested_class() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/TypeAdapter.java").unwrap();
+    let src = "public abstract class TypeAdapter<T> {\n\
+               \x20 public abstract T read(JsonReader in) throws IOException;\n\
+               \x20 public final T fromJson(Reader in) throws IOException {\n\
+               \x20   JsonReader reader = new JsonReader(in);\n\
+               \x20   return read(reader);\n\
+               \x20 }\n\
+               \x20 private final class NullSafeTypeAdapter extends TypeAdapter<T> {\n\
+               \x20   @Override\n\
+               \x20   public T read(JsonReader reader) throws IOException {\n\
+               \x20     return TypeAdapter.this.read(reader);\n\
+               \x20   }\n\
+               \x20 }\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+
+    for (line, expected_line) in [(4u32, 1u32), (9, 1)] {
+        let text = src.lines().nth(line as usize).unwrap();
+        let col = text.rfind("read(").unwrap() as u32;
+        let position = Position::new(line, col);
+        let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+        let response = find_definition(&ctx, &idx, &uri, position).await;
+        let lines: Vec<u32> = match response {
+            Some(GotoDefinitionResponse::Scalar(location)) => vec![location.range.start.line],
+            Some(GotoDefinitionResponse::Array(locations)) => locations
+                .iter()
+                .map(|location| location.range.start.line)
+                .collect(),
+            other => panic!("line {line}: expected a location, got {other:?}"),
+        };
+        assert_eq!(lines, vec![expected_line], "`read` on line {line}");
+    }
+}
+
+/// An element of an array has the array's element type: `users[0].save()`
+/// is `User.save`, not the same-named `Admin.save`.
+#[tokio::test]
+async fn goto_definition_java_call_on_array_element_uses_element_type() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Users.java").unwrap();
+    let src = "class User { void save() {} }\n\
+               class Admin { void save() {} }\n\
+               class Users {\n\
+               \x20 void run(User[] users) {\n\
+               \x20   users[0].save();\n\
+               \x20 }\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+    let col = src.lines().nth(4).unwrap().find("save").unwrap() as u32;
+    let position = Position::new(4, col);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+    let response = find_definition(&ctx, &idx, &uri, position).await;
+    let lines: Vec<u32> = match response {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location.range.start.line],
+        Some(GotoDefinitionResponse::Array(locations)) => locations
+            .iter()
+            .map(|location| location.range.start.line)
+            .collect(),
+        other => panic!("expected a location, got {other:?}"),
+    };
+    assert_eq!(lines, vec![0], "must jump to User.save");
+}
+
+/// A type name used inside its own class (`Node<K, V> right;` in `class
+/// Node`) still names the class: narrowing a bare name to the enclosing
+/// class's members must not keep only `Node`'s constructors.
+#[tokio::test]
+async fn goto_definition_java_type_name_inside_its_class_is_the_class() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Tree.java").unwrap();
+    let src = "class Tree {\n\
+               \x20 static final class Node {\n\
+               \x20   Node right;\n\
+               \x20   Node() {}\n\
+               \x20   Node(Node right) { this.right = right; }\n\
+               \x20 }\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+    let col = src.lines().nth(2).unwrap().find("Node").unwrap() as u32;
+    let position = Position::new(2, col);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+    let response = find_definition(&ctx, &idx, &uri, position).await;
+    let lines: Vec<u32> = match response {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location.range.start.line],
+        Some(GotoDefinitionResponse::Array(locations)) => locations
+            .iter()
+            .map(|location| location.range.start.line)
+            .collect(),
+        other => panic!("expected a location, got {other:?}"),
+    };
+    // The constructors may be offered too; the class itself must never be
+    // narrowed away (type-definition on `right` needs it).
+    assert!(lines.contains(&1), "must reach class Node; got {lines:?}");
+}

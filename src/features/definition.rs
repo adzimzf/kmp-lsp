@@ -321,6 +321,7 @@ pub(crate) async fn find_definition(
     if ctx.qualifier.is_none() {
         if let Some(shape) = call_shape_at_callee(index, uri, position) {
             let locs = index.find_definition_for_call(&ctx.word, uri, shape);
+            let locs = index.narrow_to_enclosing_java_class(uri, position, locs);
             if !locs.is_empty() {
                 return locs_to_opt_response(locs);
             }
@@ -338,6 +339,9 @@ pub(crate) async fn find_definition(
         }
     }
     let mut locs = index.find_definition_qualified(&ctx.word, ctx.qualifier.as_deref(), uri);
+    if ctx.qualifier.is_none() {
+        locs = index.narrow_to_enclosing_java_class(uri, position, locs);
+    }
     locs = crate::indexer::narrow_java_overloads(index, uri, position, locs);
     // `resolve_qualified` can now return a wrong-arity member alongside its
     // correct-arity extension fallback (`with_supertype_extension_fallback`)

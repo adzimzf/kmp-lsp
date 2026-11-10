@@ -48,6 +48,17 @@ impl Backend {
             self.indexer.ensure_indexed(uri);
         }
 
+        if let Some(locations) = crate::features::java_references::find_java_references(
+            &self.indexer,
+            uri,
+            position,
+            params.context.include_declaration,
+        )
+        .await
+        {
+            return Ok((!locations.is_empty()).then_some(locations));
+        }
+
         let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
             return Ok(None);
         };
