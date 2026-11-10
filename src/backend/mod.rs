@@ -420,6 +420,13 @@ impl LanguageServer for Backend {
         panic_safe("folding_range", self.folding_range_impl(params)).await
     }
 
+    async fn selection_range(
+        &self,
+        params: SelectionRangeParams,
+    ) -> Result<Option<Vec<SelectionRange>>> {
+        panic_safe("selection_range", self.selection_range_impl(params)).await
+    }
+
     async fn on_type_formatting(
         &self,
         params: DocumentOnTypeFormattingParams,

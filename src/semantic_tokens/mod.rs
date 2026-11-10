@@ -15,6 +15,7 @@
 
 mod helpers;
 mod java;
+mod java_references;
 mod kotlin;
 mod params;
 mod resolve;
