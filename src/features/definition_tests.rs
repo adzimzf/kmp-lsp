@@ -801,3 +801,36 @@ async fn goto_definition_java_call_on_array_element_uses_element_type() {
     };
     assert_eq!(lines, vec![0], "must jump to User.save");
 }
+
+/// A type name used inside its own class (`Node<K, V> right;` in `class
+/// Node`) still names the class: narrowing a bare name to the enclosing
+/// class's members must not keep only `Node`'s constructors.
+#[tokio::test]
+async fn goto_definition_java_type_name_inside_its_class_is_the_class() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Tree.java").unwrap();
+    let src = "class Tree {\n\
+               \x20 static final class Node {\n\
+               \x20   Node right;\n\
+               \x20   Node() {}\n\
+               \x20   Node(Node right) { this.right = right; }\n\
+               \x20 }\n\
+               }\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+    let col = src.lines().nth(2).unwrap().find("Node").unwrap() as u32;
+    let position = Position::new(2, col);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+    let response = find_definition(&ctx, &idx, &uri, position).await;
+    let lines: Vec<u32> = match response {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location.range.start.line],
+        Some(GotoDefinitionResponse::Array(locations)) => locations
+            .iter()
+            .map(|location| location.range.start.line)
+            .collect(),
+        other => panic!("expected a location, got {other:?}"),
+    };
+    // The constructors may be offered too; the class itself must never be
+    // narrowed away (type-definition on `right` needs it).
+    assert!(lines.contains(&1), "must reach class Node; got {lines:?}");
+}

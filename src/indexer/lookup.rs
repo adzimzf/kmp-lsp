@@ -279,7 +279,7 @@ impl Indexer {
             .collect();
         // Innermost first: a nested class starts after the class around it.
         enclosing.sort_by_key(|symbol| std::cmp::Reverse(symbol.range.start));
-        let container_of = |candidate: &Location| -> Option<String> {
+        let symbol_of = |candidate: &Location| -> Option<&SymbolEntry> {
             if candidate.uri != *uri {
                 return None;
             }
@@ -287,8 +287,17 @@ impl Indexer {
                 .symbols
                 .iter()
                 .find(|symbol| symbol.selection_range == candidate.range)
-                .and_then(|symbol| symbol.container.clone())
         };
+        // Only a member name is bound this way. A type name (`Node` inside
+        // `class Node`) names the type, never one of its constructors.
+        let names_a_type = candidates.iter().filter_map(symbol_of).any(|symbol| {
+            is_type(&symbol) || symbol.container.as_deref() == Some(symbol.name.as_str())
+        });
+        if names_a_type {
+            return candidates;
+        }
+        let container_of =
+            |candidate: &Location| symbol_of(candidate).and_then(|symbol| symbol.container.clone());
         for class in enclosing {
             let members: Vec<Location> = candidates
                 .iter()
