@@ -9,14 +9,14 @@ more precise (superclass hierarchy, cross-file resolution) as indexing completes
 | LSP capability | Notes |
 |---|---|
 | `textDocument/definition` | Index lookup → superclass hierarchy → `rg` fallback |
-| `textDocument/hover` | Declaration kind, source line, lambda param types, Kotlin stdlib signatures |
+| `textDocument/hover` | Signature first, then the doc comment; declaration kind, source line, lambda param types, Kotlin stdlib signatures; a Java type variable shows its type parameter (`<V extends Comparable<V>>`) and owner |
 | `textDocument/documentSymbol` | All symbols in the current file (outline view) |
 | `textDocument/completion` | Dot-completion (`it.`, `this.`, named params), bare-word, stdlib entries |
 | `completionItem/resolve` | Lazy KDoc/Javadoc + signature on item selection; keeps initial list fast |
 | `textDocument/references` | Project-wide `rg --word-regexp` + in-memory scan of open buffers, Java ↔ Kotlin spellings, and usages inside library sources jars |
 | `textDocument/signatureHelp` | Active function signature + highlighted parameter as you type |
-| `textDocument/rename` | Renames symbol across all files via `WorkspaceEdit`; index updated via file watcher |
-| `textDocument/foldingRange` | Brace-based region folds + consecutive comment block folds |
+| `textDocument/rename` | Renames symbol across all files via `WorkspaceEdit`; index updated via file watcher. Java types and methods: the references find-references gives, a type's constructors, and a method's whole override family (refused when it reaches a library method, an anonymous class's method, or more than 16 methods); one edit per file, like jdtls |
+| `textDocument/foldingRange` | Brace-based region folds + consecutive comment block folds; Java constructors, enum/annotation bodies, switch blocks and `case` groups, import runs; a Java declaration folds from its name line |
 | `textDocument/selectionRange` | Expand selection through the enclosing syntax nodes: name → call → statement → block → method → class → file |
 | `textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `callHierarchy/outgoingCalls` | Callers from find-references (comments left out), grouped by enclosing method; callees from the body's calls, resolved like go-to-definition |
 | `textDocument/prepareTypeHierarchy`, `typeHierarchy/supertypes`, `typeHierarchy/subtypes` | Declared supertypes (+ Java's implicit `Object`/`Enum`/`Record`/`Annotation`); direct subtypes incl. anonymous classes, enum constant bodies and lambdas, named like jdtls |
@@ -25,8 +25,13 @@ more precise (superclass hierarchy, cross-file resolution) as indexing completes
 | `textDocument/inlayHint` | Type hints for lambda `it`, named lambda params, `this`, untyped `val`/`var`; Java parameter names on literal arguments (`add(number: 1)`) |
 | `textDocument/semanticTokens/full` | Two-phase: Phase 1 CST classification + Phase 2 cross-file resolution. Kotlin, Java, Swift. Java references: calls, types (class/interface/enum/annotation/type parameter), constructors, fields and enum constants |
 | `textDocument/publishDiagnostics` | Syntax errors from tree-sitter (ERROR/MISSING nodes) — not type checking |
+| `textDocument/diagnostic`, `workspace/diagnostic` | Pull diagnostics: a file's report is what a push publishes for it; the workspace report covers open files fully and every other workspace file's syntax errors |
+| `textDocument/declaration` | Java: a method's topmost overridden declaration (`set.iterator()` → `Iterable.iterator`); otherwise go-to-definition's answer |
+| `textDocument/documentLink` | `http(s)://` URLs written in comments (not in strings) |
+| `textDocument/formatting`, `textDocument/rangeFormatting` | Java: re-indents (leading whitespace only, code never changes) from bracket nesting, statement and argument continuations, `case` labels and block comments; Kotlin and Swift left to their formatters |
+| `textDocument/onTypeFormatting` | Enter: brace splitting, comment continuation; in Java, a new line after a statement lines up with it |
 | `textDocument/implementation` | Transitive subtype lookup (interface → all implementing classes, BFS; Java anonymous classes included) |
-| `textDocument/documentHighlight` | Highlights all in-file occurrences; declaration sites marked WRITE, usages READ |
+| `textDocument/documentHighlight` | Highlights all in-file occurrences; declaration sites marked WRITE, usages READ. Java types and methods: only the occurrences that bind to the declaration (overloads and overridden methods' calls left out) |
 | `workspace/symbol` | Fuzzy substring search; supports dot-qualified queries for extension functions |
 | `$/progress` | Spinner while workspace is indexed; non-blocking |
 | `textDocument/didSave` | Re-indexes the saved file so external formatters/codegen are picked up |
@@ -45,11 +50,11 @@ parsing only (no type resolution):
 | ~~`textDocument/selectionRange`~~ | ~~Medium~~ | ✅ **Implemented.** Expands by CST node boundaries. |
 | `completionItem` — `deprecated` tag (`CompletionItemTag::DEPRECATED`) | Medium | Strikethrough for `@Deprecated`/`@deprecated` symbols. Requires detecting the annotation at index time and storing a flag on `SymbolEntry`. |
 | `completionItem` — `label_details` | Medium | Inline param list + right-aligned return type in the completion list (RA-style). Would require splitting `SymbolEntry.detail` into params + return type at parse time. |
-| `textDocument/gotoDeclaration` | Trivial | Identical to `goto_definition` for our use-case (no separate declaration/definition concept in Kotlin/Java). |
+| ~~`textDocument/gotoDeclaration`~~ | ~~Trivial~~ | ✅ **Implemented for Java** (`src/features/declaration.rs`): a method's topmost overridden declaration. Kotlin answers go-to-definition's. |
 | ~~`textDocument/typeDefinition`~~ | ~~Medium~~ | ✅ **Implemented for Java.** Go-to-definition, then the declaration's written type (`src/features/type_definition.rs`). Kotlin declarations answer nothing yet. |
 | `textDocument/codeAction` — quick-fixes | Medium | Implemented: introduce local variable, add import alias, add missing import (Kotlin from its diagnostic, Java from the name at the cursor). Missing: generate override stubs, suppress warning. |
 | `textDocument/onTypeFormatting` | Low | Auto-indent / brace matching as you type. |
-| `textDocument/formatting` | Low | Delegate to `ktfmt` / `google-java-format` subprocess if available on `$PATH`. |
+| `textDocument/formatting` | Low | ✅ **Java re-indentation implemented** (`src/features/java_formatting.rs`). Line wrapping and Kotlin/Swift: delegate to `google-java-format` / `ktfmt` subprocess if available on `$PATH`. |
 
 ## Known UX gaps (scouted from JetBrains kmp-lsp, 2026-05)
 

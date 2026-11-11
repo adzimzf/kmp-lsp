@@ -17,7 +17,16 @@ impl Backend {
         };
         let context_build_ms = context_started.elapsed().as_millis();
         let hover_started = std::time::Instant::now();
-        let result = crate::features::hover::compute_hover(workspace, &ctx, uri, position);
+        let mut result = crate::features::hover::compute_hover(workspace, &ctx, uri, position);
+        if result.is_none() {
+            result = crate::features::hover::java_type_parameter_hover(
+                &self.indexer,
+                &ctx,
+                uri,
+                position,
+            )
+            .await;
+        }
         let compute_hover_ms = hover_started.elapsed().as_millis();
         if context_build_ms + compute_hover_ms > crate::backend::panic_guard::SLOW_THRESHOLD_MS {
             log::warn!(
@@ -202,6 +211,15 @@ impl Backend {
     ) -> Result<Option<Vec<DocumentHighlight>>> {
         let uri = &params.text_document_position_params.text_document.uri;
         let pos = params.text_document_position_params.position;
+        self.indexer.ensure_indexed(uri);
+        // A Java type or method: the occurrences that resolve to it, as
+        // find-references decides — not every same-named word.
+        if let Some(highlights) =
+            crate::features::java_references::java_document_highlights(&self.indexer, uri, pos)
+                .await
+        {
+            return Ok((!highlights.is_empty()).then_some(highlights));
+        }
         Ok(crate::features::highlight::compute_document_highlight(
             uri,
             pos,

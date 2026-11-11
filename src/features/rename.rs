@@ -13,6 +13,7 @@ use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 
+use crate::features::java_references::JavaRename;
 use crate::features::references::verified_references_for;
 use crate::features::text_utils::is_keyword_for_file;
 use crate::indexer::{
@@ -29,7 +30,7 @@ pub(crate) async fn prepare_rename_impl(
         None => return Ok(None),
     };
 
-    if word.len() <= 1 || is_keyword_for_file(&word, uri.path()) {
+    if is_keyword_for_file(&word, uri.path()) {
         return Ok(None);
     }
 
@@ -58,6 +59,97 @@ fn workspace_edit_from_locations(locations: &[Location], new_name: &str) -> Work
         document_changes: None,
         change_annotations: None,
     }
+}
+
+/// One edit per file, from its first renamed name to its last, the text in
+/// between kept — how jdtls answers a Java rename. A client applies it in one
+/// step, and nothing in between can be left half-renamed. A file whose text
+/// cannot be read gets one edit per name instead.
+fn merged_workspace_edit(
+    indexer: &Indexer,
+    locations: &[Location],
+    new_name: &str,
+) -> WorkspaceEdit {
+    let mut by_file: HashMap<Url, Vec<Range>> = HashMap::new();
+    for location in locations {
+        by_file
+            .entry(location.uri.clone())
+            .or_default()
+            .push(location.range);
+    }
+    let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+    for (uri, mut ranges) in by_file {
+        ranges.sort_by_key(|range| range.start);
+        ranges.dedup();
+        let edits = indexer
+            .lines_for(&uri)
+            .and_then(|lines| merged_edit(&lines, &ranges, new_name))
+            .map(|edit| vec![edit])
+            .unwrap_or_else(|| {
+                ranges
+                    .iter()
+                    .rev()
+                    .map(|range| TextEdit {
+                        range: *range,
+                        new_text: new_name.to_owned(),
+                    })
+                    .collect()
+            });
+        changes.insert(uri, edits);
+    }
+    WorkspaceEdit {
+        changes: Some(changes),
+        document_changes: None,
+        change_annotations: None,
+    }
+}
+
+/// The single edit replacing `ranges` (sorted, single-line, not overlapping)
+/// with `new_name` and keeping the text between them.
+fn merged_edit(lines: &[String], ranges: &[Range], new_name: &str) -> Option<TextEdit> {
+    let first = ranges.first()?;
+    let last = ranges.last()?;
+    let mut text = String::new();
+    let mut at = first.start;
+    for range in ranges {
+        if range.start.line != range.end.line || range.start < at {
+            return None;
+        }
+        text.push_str(&text_between(lines, at, range.start)?);
+        text.push_str(new_name);
+        at = range.end;
+    }
+    Some(TextEdit {
+        range: Range::new(first.start, last.end),
+        new_text: text,
+    })
+}
+
+/// The text from `start` to `end` (UTF-16 positions), lines joined by `\n`.
+fn text_between(lines: &[String], start: Position, end: Position) -> Option<String> {
+    let byte_at = |position: Position| -> Option<usize> {
+        let line = lines.get(position.line as usize)?;
+        let mut units = 0;
+        for (byte, character) in line.char_indices() {
+            if units >= position.character {
+                return Some(byte);
+            }
+            units += character.len_utf16() as u32;
+        }
+        (units >= position.character).then_some(line.len())
+    };
+    let (from, to) = (byte_at(start)?, byte_at(end)?);
+    if start.line == end.line {
+        return lines[start.line as usize].get(from..to).map(str::to_owned);
+    }
+    let mut text = lines[start.line as usize][from..].to_owned();
+    for line in &lines[start.line as usize + 1..end.line as usize] {
+        text.push('\n');
+        text.push_str(line);
+    }
+    text.push('\n');
+    text.push_str(&lines[end.line as usize][..to]);
+    Some(text)
 }
 
 /// Build a user-facing rename refusal. Rename refusals are errors BY DESIGN
@@ -91,6 +183,17 @@ pub(crate) async fn rename_impl(
     // function/lambda body. Never refuses, never crosses the scope boundary.
     if let Some(locations) = local_scope_occurrences(indexer, uri, pos) {
         return Ok(Some(workspace_edit_from_locations(&locations, new_name)));
+    }
+
+    // A Java type or method: what find-references finds, with the names
+    // that have to change along (see `java_rename`).
+    match crate::features::java_references::java_rename(indexer, uri, pos).await {
+        Some(JavaRename::Names(locations)) if locations.is_empty() => return Ok(None),
+        Some(JavaRename::Names(locations)) => {
+            return Ok(Some(merged_workspace_edit(indexer, &locations, new_name)))
+        }
+        Some(JavaRename::Refused(reason)) => return Err(refusal(reason)),
+        None => {}
     }
 
     let Some(symbol) = classify_cursor(indexer, uri, pos) else {

@@ -24,6 +24,23 @@ impl Backend {
         Ok(self.rewrite_jar_targets_off_thread(response).await)
     }
 
+    /// `textDocument/declaration`: a Java method's topmost overridden
+    /// declaration; otherwise the same answer as go-to-definition.
+    pub(super) async fn goto_declaration_impl(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let position_params = &params.text_document_position_params;
+        let uri = &position_params.text_document.uri;
+        let position = position_params.position;
+        if let Some(response) =
+            crate::features::declaration::java_declaration(&self.indexer, uri, position).await
+        {
+            return Ok(self.rewrite_jar_targets_off_thread(Some(response)).await);
+        }
+        self.goto_definition_impl(params).await
+    }
+
     pub(super) async fn goto_type_definition_impl(
         &self,
         params: GotoDefinitionParams,

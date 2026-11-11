@@ -219,3 +219,51 @@ async fn unresolvable_receiver_candidate_is_included_not_excluded() {
          per the accepted-risk policy, got {file_edits:?}"
     );
 }
+
+#[test]
+fn a_files_names_are_renamed_in_one_edit_that_keeps_the_text_between() {
+    let lines: Vec<String> = [
+        "class Box {",
+        "  Box() {}",
+        "  Box copy() { return new Box(); }",
+        "}",
+    ]
+    .iter()
+    .map(|line| line.to_string())
+    .collect();
+    let ranges = [
+        Range::new(Position::new(0, 6), Position::new(0, 9)),
+        Range::new(Position::new(1, 2), Position::new(1, 5)),
+        Range::new(Position::new(2, 2), Position::new(2, 5)),
+        Range::new(Position::new(2, 26), Position::new(2, 29)),
+    ];
+    let edit = merged_edit(&lines, &ranges, "Crate").unwrap();
+    assert_eq!(
+        edit.range,
+        Range::new(Position::new(0, 6), Position::new(2, 29))
+    );
+    assert_eq!(
+        edit.new_text,
+        "Crate {\n  Crate() {}\n  Crate copy() { return new Crate"
+    );
+}
+
+#[tokio::test]
+async fn java_names_that_are_kotlin_keywords_or_one_letter_can_be_renamed() {
+    let source = "class R {\n  static Object data() { return null; }\n  String s() { return \"\"; }\n  boolean f(int x) { return true; }\n}\n";
+    let file_uri = uri("/R.java");
+    let indexer = Indexer::new();
+    indexer.index_content(&file_uri, source);
+    for (line, name) in [(1, "data"), (2, "s")] {
+        let column = source.lines().nth(line).unwrap().find(name).unwrap() as u32;
+        let answer = prepare_rename_impl(&indexer, &file_uri, Position::new(line as u32, column))
+            .await
+            .unwrap();
+        assert!(answer.is_some(), "`{name}` must be renameable");
+    }
+    let column = source.lines().nth(3).unwrap().find("boolean").unwrap() as u32;
+    let keyword = prepare_rename_impl(&indexer, &file_uri, Position::new(3, column))
+        .await
+        .unwrap();
+    assert!(keyword.is_none(), "a Java keyword is not renameable");
+}

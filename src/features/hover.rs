@@ -405,6 +405,57 @@ fn hover_substitution_context(uri: &Url, line: u32) -> SubstitutionContext<'_> {
     }
 }
 
+/// Hover on a Java type variable (`V` in `Node<K, V> left`): the type
+/// parameter it names, with its bound, and the class or method declaring it.
+/// `None` when the name does not resolve to a type parameter.
+pub(crate) async fn java_type_parameter_hover(
+    indexer: &crate::indexer::Indexer,
+    ctx: &CursorContext,
+    uri: &Url,
+    position: Position,
+) -> Option<Hover> {
+    if crate::Language::from_path(uri.path()) != crate::Language::Java {
+        return None;
+    }
+    let response =
+        crate::features::definition::find_definition(ctx, indexer, uri, position).await?;
+    let definition = match response {
+        tower_lsp::lsp_types::GotoDefinitionResponse::Scalar(location) => location,
+        tower_lsp::lsp_types::GotoDefinitionResponse::Array(locations) => {
+            locations.into_iter().next()?
+        }
+        tower_lsp::lsp_types::GotoDefinitionResponse::Link(links) => {
+            let link = links.into_iter().next()?;
+            Location::new(link.target_uri, link.target_selection_range)
+        }
+    };
+    let doc = indexer.live_doc_or_parse(&definition.uri)?;
+    let node = crate::indexer::cursor_node_at(&doc, definition.range.start.into())?;
+    let parameter = std::iter::successors(Some(node), |node| node.parent())
+        .take(2)
+        .find(|node| node.kind() == "type_parameter")?;
+    let text = parameter.utf8_text(&doc.bytes).ok()?;
+    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let owner = std::iter::successors(parameter.parent(), |node| node.parent())
+        .find(|node| {
+            matches!(
+                node.kind(),
+                "class_declaration"
+                    | "interface_declaration"
+                    | "record_declaration"
+                    | "method_declaration"
+                    | "constructor_declaration"
+            )
+        })
+        .and_then(|owner| owner.child_by_field_name("name"))
+        .and_then(|name| name.utf8_text(&doc.bytes).ok());
+    let mut markdown = format!("```java\n<{text}>\n```");
+    if let Some(owner) = owner {
+        markdown.push_str(&format!("\n\n*type parameter of `{owner}`*"));
+    }
+    Some(make_markdown_hover(markdown))
+}
+
 fn make_markdown_hover(markdown: String) -> Hover {
     Hover {
         contents: HoverContents::Markup(MarkupContent {

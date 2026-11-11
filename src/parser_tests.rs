@@ -485,6 +485,14 @@ fn java_import_parsed() {
 }
 
 #[test]
+fn java_annotation_element_is_a_method_of_its_annotation() {
+    let data = parse_java("public @interface Since {\n  double value();\n}");
+    let value = sym(&data, "value").expect("the element is indexed");
+    assert_eq!(value.kind, SymbolKind::METHOD);
+    assert_eq!(value.container.as_deref(), Some("Since"));
+}
+
+#[test]
 fn java_constructor_indexed() {
     let data = parse_java("public class Foo {\n  public Foo(int x) {}\n}");
     let ctor = sym(&data, "Foo");

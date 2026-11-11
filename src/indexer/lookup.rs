@@ -390,6 +390,149 @@ impl Indexer {
         base.0
     }
 
+    /// The declarations the method `symbol` (declared at `location`, in a
+    /// workspace or JAR file) overrides, nearest first: at each step up the
+    /// hierarchy, the nearest supertype declaring a method of the same name
+    /// and parameter count. The last one is the root every override below it
+    /// shares — what a Java "declaration" is. Empty for a method that
+    /// overrides nothing, or one that is not a member of a type.
+    pub(crate) fn overridden_method_declarations(
+        &self,
+        symbol: &SymbolEntry,
+        location: &Location,
+    ) -> Vec<Location> {
+        /// Bounds the climb on a malformed (cyclic) hierarchy.
+        const MAX_OVERRIDE_HOPS: usize = 16;
+        let Some(container) = symbol.container.clone() else {
+            return Vec::new();
+        };
+        let arity = symbol.param_counts.1;
+        let mut found: Vec<Location> = Vec::new();
+        let mut base = (container, location.uri.to_string());
+        for _ in 0..MAX_OVERRIDE_HOPS {
+            let nearest = crate::resolver::walk_hierarchy_breadth_first(
+                self,
+                &base.0,
+                &base.1,
+                crate::types::CallerContext::default(),
+                12,
+                crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+                |indexer, super_name, super_uri, _| {
+                    indexer
+                        .member_declaration(super_uri, super_name, &symbol.name, arity)
+                        .map(|declaration| {
+                            (super_name.to_owned(), super_uri.to_owned(), declaration)
+                        })
+                        .into_iter()
+                        .collect()
+                },
+            )
+            .into_iter()
+            .next();
+            let Some((super_name, super_uri, declaration)) = nearest else {
+                break;
+            };
+            if found.contains(&declaration) {
+                break;
+            }
+            found.push(declaration);
+            base = (super_name, super_uri);
+        }
+        found
+    }
+
+    /// The declarations overriding the method `name` taking `arity`
+    /// parameters that `type_name` declares: those in its subtypes, at any
+    /// depth, anonymous classes included. Stops after `limit` are found.
+    pub(crate) fn overriding_method_declarations(
+        &self,
+        type_name: &str,
+        name: &str,
+        arity: u8,
+        limit: usize,
+    ) -> Vec<Location> {
+        /// Bounds the walk on a malformed (cyclic) hierarchy.
+        const MAX_SUBTYPE_VISITS: usize = 512;
+        let mut found: Vec<Location> = Vec::new();
+        let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut pending: Vec<String> = vec![type_name.to_owned()];
+        while let Some(current) = pending.pop() {
+            if found.len() >= limit || visited.len() >= MAX_SUBTYPE_VISITS {
+                break;
+            }
+            if !visited.insert(current.clone()) {
+                continue;
+            }
+            for subtype in self.subtypes_of(&current) {
+                let Some(file_data) = self.files.get(subtype.uri.as_str()) else {
+                    continue;
+                };
+                let declared = file_data.symbols.iter().find(|symbol| {
+                    is_type_kind(symbol.kind) && symbol.selection_range == subtype.range
+                });
+                let overriding = match declared {
+                    Some(subtype_symbol) => {
+                        pending.push(subtype_symbol.name.clone());
+                        file_data.symbols.iter().find(|symbol| {
+                            symbol.name == name
+                                && symbol.container.as_deref() == Some(subtype_symbol.name.as_str())
+                                && symbol.kind == SymbolKind::METHOD
+                                && symbol.param_counts.1 == arity
+                        })
+                    }
+                    None => file_data
+                        .anonymous_class_at(subtype.range)
+                        .and_then(|anonymous| {
+                            file_data.symbols.iter().find(|symbol| {
+                                symbol.name == name
+                                    && symbol.kind == SymbolKind::METHOD
+                                    && symbol.param_counts.1 == arity
+                                    && anonymous.body.start <= symbol.range.start
+                                    && symbol.range.end <= anonymous.body.end
+                            })
+                        }),
+                };
+                if let Some(symbol) = overriding {
+                    let location = Location::new(subtype.uri.clone(), symbol.selection_range);
+                    if !found.contains(&location) {
+                        found.push(location);
+                    }
+                }
+            }
+        }
+        found
+    }
+
+    /// Whether the declaration spanning `range` in `uri` is a member of an
+    /// anonymous class (`new TypeAdapter<T>() { … }`).
+    pub(crate) fn is_anonymous_class_member(&self, uri: &Url, range: Range) -> bool {
+        self.files.get(uri.as_str()).is_some_and(|file_data| {
+            file_data.anonymous_classes.iter().any(|anonymous| {
+                anonymous.body.start <= range.start && range.end <= anonymous.body.end
+            })
+        })
+    }
+
+    /// Where the type `type_name` declared in `uri` declares a method `name`
+    /// taking `arity` parameters.
+    fn member_declaration(
+        &self,
+        uri: &str,
+        type_name: &str,
+        name: &str,
+        arity: u8,
+    ) -> Option<Location> {
+        let file_data = self.files.get(uri).or_else(|| self.jar_files.get(uri))?;
+        let symbol = file_data.symbols.iter().find(|symbol| {
+            symbol.name == name
+                && symbol.container.as_deref() == Some(type_name)
+                && matches!(symbol.kind, SymbolKind::METHOD | SymbolKind::FUNCTION)
+                && symbol.param_counts.1 == arity
+                && symbol.extension_receiver_type().is_empty()
+        })?;
+        Some(Location::new(Url::parse(uri).ok()?, symbol.selection_range))
+    }
+
     /// Whether the type `type_name` declared in `uri` declares a member
     /// `member` itself (not an extension).
     pub(crate) fn declares_member(&self, uri: &str, type_name: &str, member: &str) -> bool {

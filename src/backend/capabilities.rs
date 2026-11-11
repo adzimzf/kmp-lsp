@@ -59,6 +59,18 @@ pub(super) fn server_capabilities() -> ServerCapabilities {
             retrigger_characters: Some(vec!["(".into(), ",".into()]),
             work_done_progress_options: Default::default(),
         }),
+        diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions {
+            identifier: Some("kmp-lsp".into()),
+            inter_file_dependencies: true,
+            workspace_diagnostics: true,
+            work_done_progress_options: Default::default(),
+        })),
+        document_link_provider: Some(DocumentLinkOptions {
+            resolve_provider: Some(false),
+            work_done_progress_options: Default::default(),
+        }),
+        document_formatting_provider: Some(OneOf::Left(true)),
+        document_range_formatting_provider: Some(OneOf::Left(true)),
         document_on_type_formatting_provider: Some(DocumentOnTypeFormattingOptions {
             first_trigger_character: "\n".to_string(),
             more_trigger_character: None,
