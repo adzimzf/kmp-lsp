@@ -197,3 +197,41 @@ fn declared_parameter_types_keep_only_simple_type_names() {
         vec!["List", "int[]", "Foo"]
     );
 }
+
+const CURRENT_WRITE: &str = "package p;\n\
+class CurrentWrite implements CharSequence {\n\
+  @Override public String toString() { return \"\"; }\n\
+}\n";
+
+const JDK_OBJECT: &str = "package java.lang;\n\
+public class Object {\n\
+  public String toString() { return null; }\n\
+}\n";
+
+/// A call bound to `Object.toString()` may run the target's override, also
+/// when the JDK's sources are indexed beside the workspace's (so
+/// `Object.java` has symbols but is not a workspace file).
+#[tokio::test]
+async fn a_call_bound_to_an_indexed_jdk_object_method_may_run_the_override() {
+    let (workspace, uris) = Workspace::new(&[("p/CurrentWrite.java", CURRENT_WRITE)]);
+    let object =
+        Url::parse("jar:file:///jdk/lib/src.zip!/java.base/java/lang/Object.java").unwrap();
+    workspace.index.index_content(&object, JDK_OBJECT);
+    let target = JavaTarget::at(
+        &workspace.index,
+        &uris[0],
+        position_of(CURRENT_WRITE, 2, "toString"),
+    )
+    .await
+    .expect("the override is a Java method target");
+    let mut matcher = TargetMatcher {
+        index: &workspace.index,
+        target: &target,
+        resolved: HashMap::new(),
+    };
+    let object_to_string = Location::new(
+        object,
+        Range::new(Position::new(2, 16), Position::new(2, 24)),
+    );
+    assert!(matcher.definition_is_target(&object_to_string));
+}

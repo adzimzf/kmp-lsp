@@ -267,7 +267,10 @@ def grade(repo, feature, case, answer, ungraded=frozenset()):
         return references_failure(repo, case, answer, ungraded)
     if feature == "completion":
         return completion_failure(case, answer)
-    verdict = extra.BY_NAME[feature].grade(case, answer, repo)
+    if feature == "callHierarchy":
+        verdict = extra.BY_NAME[feature].grade(case, answer, repo, ungraded)
+    else:
+        verdict = extra.BY_NAME[feature].grade(case, answer, repo)
     if verdict is None:
         return None
     expected, actual, detail = verdict
@@ -275,11 +278,17 @@ def grade(repo, feature, case, answer, ungraded=frozenset()):
 
 def reference_misses(fixture, feature):
     """case id → the (file, line) usages the reference server is known to
-    miss there, from the fixture's `reference_misses` (each entry says why)."""
+    miss there, from the fixture's `reference_misses` (each entry says why).
+    Incoming calls are a reference search on the same queries, so
+    callHierarchy shares the references entries."""
     misses = {}
-    for case_id, entries in fixture.get("reference_misses", {}).get(feature, {}).items():
+    listed = fixture.get("reference_misses", {})
+    for case_id, entries in listed.get(MISSES_OF.get(feature, feature), {}).items():
         misses[case_id] = frozenset((entry["file"], entry["line"]) for entry in entries)
     return misses
+
+# Features whose known reference misses are another feature's.
+MISSES_OF = {"callHierarchy": "references"}
 
 def answer_id(feature, case):
     return extra.BY_NAME[feature].answer_id(case) if feature in extra.BY_NAME else case["id"]

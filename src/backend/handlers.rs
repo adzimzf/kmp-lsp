@@ -32,9 +32,24 @@ impl Backend {
         &self,
         params: ReferenceParams,
     ) -> Result<Option<Vec<Location>>> {
-        let uri = &params.text_document_position.text_document.uri;
-        let position = params.text_document_position.position;
+        let locations = self
+            .reference_locations(
+                &params.text_document_position.text_document.uri,
+                params.text_document_position.position,
+                params.context.include_declaration,
+            )
+            .await;
+        Ok((!locations.is_empty()).then_some(locations))
+    }
 
+    /// The references to the symbol at `position` in `uri`: what
+    /// `textDocument/references` answers, and where incoming calls come from.
+    pub(super) async fn reference_locations(
+        &self,
+        uri: &Url,
+        position: Position,
+        include_declaration: bool,
+    ) -> Vec<Location> {
         // Ensure the file is in the index before scope resolution — `did_open`
         // is async (actor-queued), so the index may not have it yet.
         //
@@ -52,28 +67,26 @@ impl Backend {
             &self.indexer,
             uri,
             position,
-            params.context.include_declaration,
+            include_declaration,
         )
         .await
         {
-            return Ok((!locations.is_empty()).then_some(locations));
+            return locations;
         }
 
         let Some(ctx) = CursorContext::build(&self.indexer, uri, position) else {
-            return Ok(None);
+            return Vec::new();
         };
 
-        let locations = crate::features::references::find_references_with_qualifier(
+        crate::features::references::find_references_with_qualifier(
             &ctx.word,
             ctx.qualifier.as_deref(),
             uri,
             position,
-            params.context.include_declaration,
+            include_declaration,
             &self.indexer,
         )
-        .await;
-
-        Ok((!locations.is_empty()).then_some(locations))
+        .await
     }
 
     pub(super) async fn document_symbol_impl(

@@ -668,7 +668,12 @@ impl TargetMatcher<'_> {
         // Every class extends `java.lang.Object`, which the hierarchy walk
         // never names: a call that binds to `Object`'s own method may run the
         // target's override.
-        let is_workspace_file = !self.index.file_symbols(&definition.uri).is_empty();
+        // The JDK's sources are indexed beside the workspace's, so being
+        // indexed doesn't make `Object.java` a workspace file: a `jar:` entry
+        // or a library file never is.
+        let is_workspace_file = definition.uri.scheme() == "file"
+            && !self.index.is_library_uri(&definition.uri)
+            && !self.index.file_symbols(&definition.uri).is_empty();
         if supertype == "Object" && !is_workspace_file {
             return true;
         }

@@ -226,7 +226,7 @@ impl<'data> SubtypeBody<'data> {
     }
 }
 
-fn is_class_kind(kind: SymbolKind) -> bool {
+pub(crate) fn is_class_kind(kind: SymbolKind) -> bool {
     matches!(
         kind,
         SymbolKind::CLASS
@@ -237,7 +237,7 @@ fn is_class_kind(kind: SymbolKind) -> bool {
     )
 }
 
-fn range_contains(outer: Range, inner: Range) -> bool {
+pub(crate) fn range_contains(outer: Range, inner: Range) -> bool {
     outer.start <= inner.start && inner.end <= outer.end
 }
 
