@@ -936,7 +936,7 @@ fn append_dot_tail_completions(
 /// Functions/methods get a snippet `name($1)`; all other kinds are plain-text.
 /// The `sort_text` prefix is the `kind_sort_rank` value so the list is ordered
 /// consistently with the rest of the completion results.
-fn completion_item_for_nested_symbol(
+pub(crate) fn completion_item_for_nested_symbol(
     indexer: &Indexer,
     symbol: &SymbolEntry,
     uri_str: &str,

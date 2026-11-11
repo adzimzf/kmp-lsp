@@ -24,6 +24,7 @@ pub(crate) mod folding;
 pub(crate) mod highlight;
 pub(crate) mod hover;
 pub(crate) mod implementation;
+pub(crate) mod java_completion;
 pub(crate) mod java_references;
 pub(crate) mod missing_import_diagnostics;
 pub(crate) mod nullable_call_diagnostics;

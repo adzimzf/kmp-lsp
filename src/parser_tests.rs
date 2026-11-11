@@ -2218,3 +2218,31 @@ fn extension_receiver_naming_a_class_beside_an_unrelated_type_parameter_is_a_cla
     let src = "class A\nclass Host<B> { fun A.read() { this } }\n";
     assert!(!enclosing_receiver_is_type_parameter(src, "this"));
 }
+
+/// Java visibility comes from the modifiers: none means package-private,
+/// except in an interface, whose members are public.
+#[test]
+fn java_visibility_reads_the_modifiers() {
+    let data = parse_java(
+        "package a;\n\
+         public class A {\n\
+         \x20 @Override\n\
+         \x20 protected String annotated() { return null; }\n\
+         \x20 int peek() { return 0; }\n\
+         \x20 private final int count = 0;\n\
+         \x20 interface I { void run(); }\n\
+         }\n",
+    );
+    let visibility = |name: &str| {
+        data.symbols
+            .iter()
+            .find(|symbol| symbol.name == name)
+            .map(|symbol| symbol.visibility)
+    };
+    assert_eq!(visibility("A"), Some(Visibility::Public));
+    assert_eq!(visibility("annotated"), Some(Visibility::Protected));
+    assert_eq!(visibility("peek"), Some(Visibility::Package));
+    assert_eq!(visibility("count"), Some(Visibility::Private));
+    assert_eq!(visibility("I"), Some(Visibility::Package));
+    assert_eq!(visibility("run"), Some(Visibility::Public));
+}

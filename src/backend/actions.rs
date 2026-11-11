@@ -31,8 +31,28 @@ impl Backend {
             .snippet_support
             .load(std::sync::atomic::Ordering::Relaxed);
         let indexer = std::sync::Arc::clone(&self.indexer);
+        // Inside a Java call's arguments, the parameter type there ranks the
+        // members of that type first; resolving the call is async.
+        let expected_arguments =
+            crate::features::java_completion::expected_argument_types(&indexer, &uri, position)
+                .await;
 
         Ok(tokio::task::spawn_blocking(move || {
+            if let Some(items) = crate::features::java_completion::java_member_completions(
+                indexer.as_ref(),
+                &uri,
+                position,
+                snippets,
+                expected_arguments,
+            ) {
+                return crate::features::completion::completion_list(
+                    items,
+                    false,
+                    crate::features::traits::CompletionIndex::is_indexing_in_progress(
+                        indexer.as_ref(),
+                    ),
+                );
+            }
             crate::features::completion::compute_completions(
                 &uri,
                 position,

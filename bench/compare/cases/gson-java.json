@@ -22662,7 +22662,7 @@
   "kmp-lsp": {
    "definition": 147,
    "references": 19,
-   "completion": 35,
+   "completion": 54,
    "hover": 144,
    "declaration": 0,
    "typeDefinition": 62,
@@ -22670,7 +22670,7 @@
    "documentHighlight": 24,
    "documentSymbol": 24,
    "workspaceSymbol": 24,
-   "signatureHelp": 55,
+   "signatureHelp": 79,
    "prepareRename": 34,
    "rename": 14,
    "foldingRange": 10,

@@ -140,6 +140,8 @@ pub(crate) enum Visibility {
     Internal,
     Protected,
     Private,
+    /// Java's default, no modifier: visible inside the declaring package only.
+    Package,
 }
 
 /// The rarely-populated ("cold") fields of a [`SymbolEntry`], split out behind a

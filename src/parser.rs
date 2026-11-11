@@ -2721,7 +2721,7 @@ impl crate::types::FileData {
 
     fn push_named(&mut self, node: &Node, bytes: &[u8], kind: SymbolKind) {
         if let Some((name, sel)) = first_identifier(node, bytes) {
-            let visibility = visibility_at_line(&self.lines, node.range().start_point.row);
+            let visibility = java_visibility(node);
             let range = ts_to_lsp(node.range());
             let detail = extract_detail_from_node(*node, bytes, &self.lines);
             let type_params = node.extract_type_params(bytes);
@@ -2834,7 +2834,7 @@ impl crate::types::FileData {
             SymbolKind::FIELD
         };
         let nr = ts_to_lsp(node.range());
-        let vis = visibility_at_line(&self.lines, node.range().start_point.row);
+        let vis = java_visibility(node);
         let dep = deprecated_at_line(&self.lines, node.range().start_point.row);
         let detail = extract_detail_from_node(*node, bytes, &self.lines);
         for child in node.children_of_kind(KIND_VAR_DECLARATOR) {
@@ -2874,6 +2874,31 @@ impl crate::types::FileData {
 
 /// Extract `(params_text, (required, total))` from the `formal_parameters` child
 /// of a Java method or constructor declaration node.
+/// The visibility a Java declaration's modifiers give it. With none, an
+/// interface's (or annotation's) member and an enum constant are public,
+/// anything else package-private.
+fn java_visibility(node: &Node) -> Visibility {
+    if let Some(modifiers) = node.first_child_of_kind(KIND_MODIFIERS) {
+        let mut cursor = modifiers.walk();
+        for modifier in modifiers.children(&mut cursor) {
+            match modifier.kind() {
+                "public" => return Visibility::Public,
+                "protected" => return Visibility::Protected,
+                "private" => return Visibility::Private,
+                _ => {}
+            }
+        }
+    }
+    let in_interface = node
+        .parent()
+        .is_some_and(|body| matches!(body.kind(), "interface_body" | "annotation_type_body"));
+    if in_interface || node.kind() == KIND_ENUM_CONSTANT {
+        Visibility::Public
+    } else {
+        Visibility::Package
+    }
+}
+
 fn java_params_and_counts(node: &Node, bytes: &[u8]) -> (String, (u8, u8)) {
     if let Some(child) = node.first_child_of_kind(KIND_FORMAL_PARAMS) {
         let text = extract_inner_text(&child, bytes);

@@ -147,11 +147,19 @@ impl Backend {
     ) -> Result<Option<SignatureHelp>> {
         let uri = &params.text_document_position_params.text_document.uri;
         let pos = params.text_document_position_params.position;
-        let result = crate::features::signature_help::compute_signature_help(
-            uri,
-            pos,
-            self.indexer.as_ref(),
-        );
+        // A Java call is resolved as go-to-definition resolves it; the
+        // name-based lookup below only serves Kotlin and Swift.
+        let result = match crate::features::signature_help::java_call_site(&self.indexer, uri, pos)
+        {
+            Some(site) => {
+                crate::features::signature_help::java_signature_help(&self.indexer, uri, site).await
+            }
+            None => crate::features::signature_help::compute_signature_help(
+                uri,
+                pos,
+                self.indexer.as_ref(),
+            ),
+        };
         log::debug!(
             "signatureHelp uri={} line={} char={} → {}",
             uri,
