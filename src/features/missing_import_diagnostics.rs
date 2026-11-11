@@ -379,10 +379,173 @@ pub(crate) fn missing_import_actions(
         .flat_map(|(diagnostic, name)| {
             fqns_for_name(indexer, name).into_iter().map({
                 let lines = Arc::clone(&lines);
-                move |fqn| import_action(uri, &lines, diagnostic, fqn, needs_semicolon)
+                move |fqn| import_action(uri, &lines, Some(diagnostic), fqn, needs_semicolon)
             })
         })
         .collect()
+}
+
+/// Java quick fixes "Import 'Fqn'" for the type name at `range` when the file
+/// can't see it: not declared or imported there, not in its package or in
+/// `java.lang`. Unlike [`missing_import_actions`] this needs no diagnostic of
+/// ours — clients send the compiler's own, or none — so the name is read from
+/// the source, and the file's imports from its current text (the index of an
+/// edited file can lag behind it). Workspace types come first, then the JDK's,
+/// then other libraries'.
+pub(crate) fn java_import_actions(
+    indexer: &Indexer,
+    uri: &Url,
+    range: Range,
+) -> Vec<CodeActionOrCommand> {
+    if crate::Language::from_path(uri.path()) != crate::Language::Java {
+        return Vec::new();
+    }
+    let Some(lines) = indexer.mem_lines_for(uri.as_str()) else {
+        return Vec::new();
+    };
+    let Some(reference) = java_type_reference_at(indexer, uri, range) else {
+        return Vec::new();
+    };
+    if reference.declared_in_file {
+        return Vec::new();
+    }
+    let header = JavaHeader::read(&lines);
+    let mut candidates = indexer.top_level_types_named(&reference.name);
+    if header.sees(&reference.name, &candidates) {
+        return Vec::new();
+    }
+    candidates.sort_by_key(|candidate| (!candidate.in_workspace, !is_jdk_type(&candidate.fqn)));
+    candidates
+        .into_iter()
+        .map(|candidate| import_action(uri, &lines, None, candidate.fqn, true))
+        .collect()
+}
+
+fn is_jdk_type(fqn: &str) -> bool {
+    fqn.starts_with("java.") || fqn.starts_with("javax.")
+}
+
+/// A Java file's package and imports, as its text has them now.
+#[derive(Default)]
+struct JavaHeader {
+    package: String,
+    /// `a.b.Name` of each `import a.b.Name;`.
+    single_types: Vec<String>,
+    /// `a.b` of each `import a.b.*;`.
+    on_demand: Vec<String>,
+}
+
+impl JavaHeader {
+    fn read(lines: &[String]) -> Self {
+        let mut header = JavaHeader::default();
+        for line in lines {
+            let line = line.trim();
+            if let Some(package) = line.strip_prefix("package ") {
+                header.package = package.trim_end_matches(';').trim().to_owned();
+            } else if let Some(import) = line.strip_prefix("import ") {
+                let import = import.trim_end_matches(';').trim();
+                if import.starts_with("static ") {
+                    continue;
+                }
+                match import.strip_suffix(".*") {
+                    Some(package) => header.on_demand.push(package.to_owned()),
+                    None => header.single_types.push(import.to_owned()),
+                }
+            }
+        }
+        header
+    }
+
+    /// Whether `name` is visible without a new import: imported by name, or
+    /// one of its `candidates` is in this package, `java.lang` or a package
+    /// imported with `*`.
+    fn sees(&self, name: &str, candidates: &[crate::indexer::ImportableType]) -> bool {
+        let imported = self
+            .single_types
+            .iter()
+            .any(|import| import.rsplit('.').next() == Some(name));
+        imported
+            || candidates.iter().any(|candidate| {
+                let package = candidate
+                    .fqn
+                    .rsplit_once('.')
+                    .map_or("", |(package, _)| package);
+                package == self.package
+                    || package == "java.lang"
+                    || self.on_demand.iter().any(|on_demand| on_demand == package)
+            })
+    }
+}
+
+/// A capitalized name standing alone (`Foo`, not `a.b.Foo`): a type, an
+/// annotation, or the receiver of a static call.
+struct JavaTypeReference {
+    name: String,
+    /// A type or type parameter of that name is declared in the file itself.
+    declared_in_file: bool,
+}
+
+fn java_type_reference_at(indexer: &Indexer, uri: &Url, range: Range) -> Option<JavaTypeReference> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let point = crate::features::selection_range::point_of(&doc.bytes, range.start)?;
+    let node = doc
+        .tree
+        .root_node()
+        .descendant_for_point_range(point, point)?;
+    if !matches!(node.kind(), "identifier" | "type_identifier") || is_qualified(node) {
+        return None;
+    }
+    let name = node.utf8_text(&doc.bytes).ok()?;
+    if !name.starts_with_uppercase() {
+        return None;
+    }
+    Some(JavaTypeReference {
+        name: name.to_owned(),
+        declared_in_file: declares_type(doc.tree.root_node(), &doc.bytes, name, 0),
+    })
+}
+
+/// Whether `node` is the second half of `a.Name` / `a.b.Name`.
+fn is_qualified(node: Node) -> bool {
+    let Some(parent) = node.parent() else {
+        return false;
+    };
+    let scoped = matches!(
+        parent.kind(),
+        "scoped_type_identifier" | "scoped_identifier" | "field_access"
+    );
+    scoped && parent.named_child(0) != Some(node)
+}
+
+/// Whether a class, interface, enum, record, annotation type or type
+/// parameter called `name` is declared anywhere under `node`.
+fn declares_type(node: Node, src: &[u8], name: &str, depth: usize) -> bool {
+    if depth >= crate::util::MAX_CST_DESCENT_DEPTH {
+        return false;
+    }
+    let declaration = matches!(
+        node.kind(),
+        "class_declaration"
+            | "interface_declaration"
+            | "enum_declaration"
+            | "record_declaration"
+            | "annotation_type_declaration"
+            | "type_parameter"
+    );
+    if declaration {
+        let declared = node
+            .child_by_field_name("name")
+            .or_else(|| node.named_child(0))
+            .and_then(|identifier| identifier.utf8_text(src).ok());
+        if declared == Some(name) {
+            return true;
+        }
+    }
+    let mut cursor = node.walk();
+    let found = node
+        .named_children(&mut cursor)
+        .any(|child| declares_type(child, src, name, depth + 1));
+    found
 }
 
 /// Extract `Foo` back out of `"'Foo' is not imported and not in scope"`.
@@ -396,7 +559,7 @@ fn flagged_name_from_message(message: &str) -> Option<&str> {
 fn import_action(
     uri: &Url,
     lines: &[String],
-    diagnostic: &Diagnostic,
+    diagnostic: Option<&Diagnostic>,
     fqn: String,
     needs_semicolon: bool,
 ) -> CodeActionOrCommand {
@@ -408,7 +571,7 @@ fn import_action(
     CodeActionOrCommand::CodeAction(CodeAction {
         title: format!("Import '{fqn}'"),
         kind: Some(CodeActionKind::QUICKFIX),
-        diagnostics: Some(vec![diagnostic.clone()]),
+        diagnostics: diagnostic.map(|diagnostic| vec![diagnostic.clone()]),
         edit: Some(WorkspaceEdit {
             changes: Some(changes),
             ..Default::default()

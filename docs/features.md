@@ -20,6 +20,8 @@ more precise (superclass hierarchy, cross-file resolution) as indexing completes
 | `textDocument/selectionRange` | Expand selection through the enclosing syntax nodes: name → call → statement → block → method → class → file |
 | `textDocument/prepareCallHierarchy`, `callHierarchy/incomingCalls`, `callHierarchy/outgoingCalls` | Callers from find-references (comments left out), grouped by enclosing method; callees from the body's calls, resolved like go-to-definition |
 | `textDocument/prepareTypeHierarchy`, `typeHierarchy/supertypes`, `typeHierarchy/subtypes` | Declared supertypes (+ Java's implicit `Object`/`Enum`/`Record`/`Annotation`); direct subtypes incl. anonymous classes, enum constant bodies and lambdas, named like jdtls |
+| `textDocument/moniker` | Qualified name of the declaration at the cursor (or the one a use resolves to): `com.google.gson.GsonBuilder#create()`, `com.google.gson.internal.LinkedTreeMap.LinkedTreeMapIterator`; scheme `java` / `kotlin` / `swift` |
+| `textDocument/codeAction` | Introduce local variable, add import alias, add package; Kotlin missing-import quick fix from its diagnostic; Java "Import 'Fqn'" on an unresolved type name (workspace, JDK and library types; no diagnostic needed) |
 | `textDocument/inlayHint` | Type hints for lambda `it`, named lambda params, `this`, untyped `val`/`var`; Java parameter names on literal arguments (`add(number: 1)`) |
 | `textDocument/semanticTokens/full` | Two-phase: Phase 1 CST classification + Phase 2 cross-file resolution. Kotlin, Java, Swift. Java references: calls, types (class/interface/enum/annotation/type parameter), constructors, fields and enum constants |
 | `textDocument/publishDiagnostics` | Syntax errors from tree-sitter (ERROR/MISSING nodes) — not type checking |
@@ -45,7 +47,7 @@ parsing only (no type resolution):
 | `completionItem` — `label_details` | Medium | Inline param list + right-aligned return type in the completion list (RA-style). Would require splitting `SymbolEntry.detail` into params + return type at parse time. |
 | `textDocument/gotoDeclaration` | Trivial | Identical to `goto_definition` for our use-case (no separate declaration/definition concept in Kotlin/Java). |
 | ~~`textDocument/typeDefinition`~~ | ~~Medium~~ | ✅ **Implemented for Java.** Go-to-definition, then the declaration's written type (`src/features/type_definition.rs`). Kotlin declarations answer nothing yet. |
-| `textDocument/codeAction` — quick-fixes | Medium | Currently only "introduce local variable" and "add import alias" are implemented. Missing: add missing import, generate override stubs, suppress warning. |
+| `textDocument/codeAction` — quick-fixes | Medium | Implemented: introduce local variable, add import alias, add missing import (Kotlin from its diagnostic, Java from the name at the cursor). Missing: generate override stubs, suppress warning. |
 | `textDocument/onTypeFormatting` | Low | Auto-indent / brace matching as you type. |
 | `textDocument/formatting` | Low | Delegate to `ktfmt` / `google-java-format` subprocess if available on `$PATH`. |
 

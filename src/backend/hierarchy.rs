@@ -1,10 +1,12 @@
-//! Call and type hierarchy requests: the backend side of
-//! [`crate::features::call_hierarchy`] and [`crate::features::type_hierarchy`].
+//! Call and type hierarchy and moniker requests: the backend side of
+//! [`crate::features::call_hierarchy`], [`crate::features::type_hierarchy`]
+//! and [`crate::features::moniker`].
 
 use super::cursor::CursorContext;
 use super::Backend;
 use crate::features::call_hierarchy as calls;
 use crate::features::definition as def;
+use crate::features::moniker as monikers;
 use crate::features::type_hierarchy as types;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -28,6 +30,24 @@ impl Backend {
             .iter()
             .find_map(|location| calls::callable_declared_at(&self.indexer, location));
         Ok(item.map(|item| vec![item]))
+    }
+
+    /// The moniker of the declaration at the cursor or, from a use, of the
+    /// declaration it resolves to.
+    pub(super) async fn moniker_impl(&self, params: MonikerParams) -> Result<Option<Vec<Moniker>>> {
+        let position_params = params.text_document_position_params;
+        let uri = &position_params.text_document.uri;
+        let position = position_params.position;
+        self.indexer.ensure_indexed(uri);
+        if let Some(moniker) = monikers::moniker_at(&self.indexer, uri, position) {
+            return Ok(Some(vec![moniker]));
+        }
+        let moniker = self
+            .definitions_at(uri, position)
+            .await
+            .iter()
+            .find_map(|location| monikers::moniker_declared_at(&self.indexer, location));
+        Ok(moniker.map(|moniker| vec![moniker]))
     }
 
     pub(super) async fn incoming_calls_impl(

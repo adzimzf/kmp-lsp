@@ -416,6 +416,59 @@ impl Indexer {
         self.files.get(uri.as_str())?.package.clone()
     }
 
+    /// The fully qualified names of the top-level types called `name`, from
+    /// the workspace, library sources and compiled libraries: what an import
+    /// of `name` could name. Nested types (`ProcessBuilder.Redirect.Type`) are
+    /// left out, since a plain `import package.Name;` can't reach them, and so
+    /// are package-private ones.
+    pub(crate) fn top_level_types_named(&self, name: &str) -> Vec<ImportableType> {
+        let mut types: Vec<ImportableType> = Vec::new();
+        for location in self.lookup_definitions(name) {
+            let Some(package) = self.top_level_type_package(name, &location) else {
+                continue;
+            };
+            let fqn = format!("{package}.{name}");
+            if types.iter().any(|known| known.fqn == fqn) {
+                continue;
+            }
+            types.push(ImportableType {
+                fqn,
+                in_workspace: location.uri.scheme() == "file",
+            });
+        }
+        types
+    }
+
+    /// The package of the type `name` declared at `location`, when that
+    /// declaration is a top-level type.
+    fn top_level_type_package(&self, name: &str, location: &Location) -> Option<String> {
+        let uri = location.uri.as_str();
+        if let Some(file_data) = self.files.get(uri) {
+            let declared = file_data.symbols.iter().any(|symbol| {
+                symbol.name == name
+                    && symbol.selection_range == location.range
+                    && is_importable_type(symbol)
+            });
+            return declared
+                .then(|| file_data.package.clone())
+                .flatten()
+                .filter(|package| !package.is_empty());
+        }
+        // A compiled library's symbols sit one per synthetic line, and the
+        // side table holds each one's package at the same index.
+        let symbol_index = location.range.start.line as usize;
+        let file_data = self.jar_files.get(uri)?;
+        let symbol = file_data.symbols.get(symbol_index)?;
+        if symbol.name != name || !is_importable_type(symbol) {
+            return None;
+        }
+        self.jar_symbol_packages
+            .get(uri)
+            .and_then(|packages| packages.get(symbol_index).cloned())
+            .or_else(|| file_data.package.clone())
+            .filter(|package| !package.is_empty())
+    }
+
     /// If `name` resolves to a compiled/sources JAR definition, return its
     /// `(package, container)` — e.g. `("androidx.compose.runtime", None)` for the
     /// top-level `remember`, or `("androidx.compose.ui", Some("Modifier"))` for a
@@ -758,3 +811,31 @@ pub(crate) fn apply_type_subst(
 #[cfg(test)]
 #[path = "lookup_tests.rs"]
 mod tests;
+
+/// A top-level type an import can name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ImportableType {
+    pub fqn: String,
+    /// Declared in the workspace's own sources rather than in a library.
+    pub in_workspace: bool,
+}
+
+/// A top-level type other packages can see.
+fn is_importable_type(symbol: &SymbolEntry) -> bool {
+    let hidden = matches!(
+        symbol.visibility,
+        crate::types::Visibility::Private | crate::types::Visibility::Package
+    );
+    is_type_kind(symbol.kind) && symbol.container.is_none() && !hidden
+}
+
+fn is_type_kind(kind: SymbolKind) -> bool {
+    matches!(
+        kind,
+        SymbolKind::CLASS
+            | SymbolKind::INTERFACE
+            | SymbolKind::ENUM
+            | SymbolKind::STRUCT
+            | SymbolKind::OBJECT
+    )
+}

@@ -22683,8 +22683,8 @@
    "documentLink": 0,
    "pullDiagnostics": 0,
    "workspaceDiagnostics": 0,
-   "moniker": 0,
-   "codeAction": 0,
+   "moniker": 40,
+   "codeAction": 20,
    "formatting": 0,
    "rangeFormatting": 0,
    "onTypeFormatting": 0
