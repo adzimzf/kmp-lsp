@@ -77,7 +77,7 @@ pub(crate) fn selection_range_at(doc: &LiveDoc, position: Position) -> Selection
 
 /// The tree-sitter point (row, byte column) of an LSP position, or `None`
 /// when the line doesn't exist.
-fn point_of(bytes: &[u8], position: Position) -> Option<Point> {
+pub(crate) fn point_of(bytes: &[u8], position: Position) -> Option<Point> {
     let text = std::str::from_utf8(bytes).ok()?;
     let line = text.split('\n').nth(position.line as usize)?;
     Some(Point::new(

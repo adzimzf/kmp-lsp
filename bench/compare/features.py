@@ -892,9 +892,12 @@ class CallHierarchy(Feature):
     def expect(self, query, answer_, repo):
         return case_of(query, expect=answer_["calls"]) if answer_["calls"] else None
 
-    def grade(self, case, answer_, repo):
-        expected = {tuple(call) for call in case["expect"]}
-        mine = {tuple(call) for call in answer_["calls"]}
+    def grade(self, case, answer_, repo, ungraded=frozenset()):
+        """`ungraded`: call sites the reference server is known to miss (the
+        fixture's `reference_misses` for the same query) — neither required
+        nor counted as extra."""
+        expected = {tuple(call) for call in case["expect"]} - ungraded
+        mine = {tuple(call) for call in answer_["calls"]} - ungraded
         if mine == expected:
             return None
         return (f"{len(expected)} call sites", f"{len(mine)}, {len(mine & expected)} of them expected",

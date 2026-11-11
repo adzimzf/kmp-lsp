@@ -20,6 +20,7 @@ pub(crate) mod format;
 pub(crate) mod git_watcher;
 pub(crate) mod handlers;
 pub(crate) mod helpers;
+pub(crate) mod hierarchy;
 pub(crate) mod init;
 pub(crate) mod nav;
 pub(crate) mod panic_guard;
@@ -425,6 +426,56 @@ impl LanguageServer for Backend {
         params: SelectionRangeParams,
     ) -> Result<Option<Vec<SelectionRange>>> {
         panic_safe("selection_range", self.selection_range_impl(params)).await
+    }
+
+    async fn prepare_call_hierarchy(
+        &self,
+        params: CallHierarchyPrepareParams,
+    ) -> Result<Option<Vec<CallHierarchyItem>>> {
+        panic_safe(
+            "prepare_call_hierarchy",
+            self.prepare_call_hierarchy_impl(params),
+        )
+        .await
+    }
+
+    async fn incoming_calls(
+        &self,
+        params: CallHierarchyIncomingCallsParams,
+    ) -> Result<Option<Vec<CallHierarchyIncomingCall>>> {
+        panic_safe("incoming_calls", self.incoming_calls_impl(params)).await
+    }
+
+    async fn outgoing_calls(
+        &self,
+        params: CallHierarchyOutgoingCallsParams,
+    ) -> Result<Option<Vec<CallHierarchyOutgoingCall>>> {
+        panic_safe("outgoing_calls", self.outgoing_calls_impl(params)).await
+    }
+
+    async fn prepare_type_hierarchy(
+        &self,
+        params: TypeHierarchyPrepareParams,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>> {
+        panic_safe(
+            "prepare_type_hierarchy",
+            self.prepare_type_hierarchy_impl(params),
+        )
+        .await
+    }
+
+    async fn supertypes(
+        &self,
+        params: TypeHierarchySupertypesParams,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>> {
+        panic_safe("supertypes", self.supertypes_impl(params)).await
+    }
+
+    async fn subtypes(
+        &self,
+        params: TypeHierarchySubtypesParams,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>> {
+        panic_safe("subtypes", self.subtypes_impl(params)).await
     }
 
     async fn on_type_formatting(

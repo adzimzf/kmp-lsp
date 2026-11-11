@@ -104,3 +104,17 @@ assert (passed, asked) == (0, 1), (passed, asked)
 assert "extra    src/Target.java:3" in "\n".join(failures[0].render(itest.Repo(str(REPO))))
 
 print("ok: a known reference miss is ungraded, any other extra usage still fails")
+
+# Incoming calls are a reference search on the same queries: callHierarchy
+# leaves out the same known misses, and still fails on any other extra.
+fixture["cases"]["callHierarchy"] = [case("usages", 1, "call", {"expect": [["src/Caller.java", 1]]})]
+result["answers"]["callHierarchy"] = [{"id": "usages", "error": None, "seconds": 0, "calls": [
+    ["src/Caller.java", 1], ["src/Target.java", 0]]}]
+passed, asked, failures = itest.score(itest.Repo(str(REPO)), fixture, result)["callHierarchy"]
+assert (passed, asked) == (1, 1), [failure.render(itest.Repo(str(REPO))) for failure in failures]
+
+result["answers"]["callHierarchy"][0]["calls"].append(["src/Target.java", 2])
+passed, asked, failures = itest.score(itest.Repo(str(REPO)), fixture, result)["callHierarchy"]
+assert (passed, asked) == (0, 1), (passed, asked)
+
+print("ok: callHierarchy shares the references' known misses, any other extra call still fails")
