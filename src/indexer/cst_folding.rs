@@ -9,7 +9,7 @@ use tower_lsp::lsp_types::{FoldingRange, FoldingRangeKind, Url};
 
 use crate::indexer::Indexer;
 use crate::queries::{
-    KIND_BLOCK, KIND_CATCH_BLOCK, KIND_CLASS_BODY, KIND_CONTROL_STRUCTURE_BODY,
+    KIND_BLOCK, KIND_BLOCK_COMMENT, KIND_CATCH_BLOCK, KIND_CLASS_BODY, KIND_CONTROL_STRUCTURE_BODY,
     KIND_ENUM_CLASS_BODY, KIND_FUN_BODY, KIND_IMPORT_LIST, KIND_INTERFACE_BODY, KIND_LAMBDA_LIT,
     KIND_LINE_COMMENT, KIND_MULTILINE_COMMENT, KIND_OBJECT_BODY,
 };
@@ -25,7 +25,36 @@ const REGION_KINDS: &[&str] = &[
     KIND_CATCH_BLOCK,
     KIND_CONTROL_STRUCTURE_BODY,
     KIND_LAMBDA_LIT,
+    // Java: `interface_body`, `class_body` and `block` are shared with Kotlin.
+    "constructor_body",
+    "enum_body",
+    "annotation_type_body",
+    "switch_block",
+    "switch_block_statement_group",
+    "array_initializer",
 ];
+
+/// Java declarations whose fold starts at their name, not at the `{` of their
+/// body (as jdtls folds them): `Excluder withExclusionStrategy(` with its
+/// parameters on the following lines folds from the name's line, and so does
+/// a class whose `implements` clause wraps. Members of an anonymous class fold
+/// from their `{`.
+const JAVA_DECLARATION_KINDS: &[&str] = &[
+    "method_declaration",
+    "constructor_declaration",
+    "class_declaration",
+    "interface_declaration",
+    "enum_declaration",
+    "record_declaration",
+    "annotation_type_declaration",
+];
+
+fn is_anonymous_class_member(node: tree_sitter::Node) -> bool {
+    node.parent()
+        .filter(|body| body.kind() == KIND_CLASS_BODY)
+        .and_then(|body| body.parent())
+        .is_some_and(|owner| owner.kind() == "object_creation_expression")
+}
 
 /// Compute folding ranges for `uri` using the live parse tree.
 ///
@@ -44,6 +73,17 @@ pub(crate) fn cst_folding_ranges(indexer: &Indexer, uri: &Url) -> Option<Vec<Fol
     }
 }
 
+fn region(start: usize, end: usize) -> FoldingRange {
+    FoldingRange {
+        start_line: start as u32,
+        end_line: end as u32,
+        start_character: None,
+        end_character: None,
+        kind: Some(FoldingRangeKind::Region),
+        collapsed_text: None,
+    }
+}
+
 fn collect_folds(node: tree_sitter::Node, out: &mut Vec<FoldingRange>) {
     collect_folds_at(node, out, 0);
 }
@@ -59,10 +99,38 @@ fn collect_folds_at(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, depth:
 
     let kind = node.kind();
 
+    if JAVA_DECLARATION_KINDS.contains(&kind) && !is_anonymous_class_member(node) {
+        if let (Some(name), Some(body)) = (
+            node.child_by_field_name("name"),
+            node.child_by_field_name("body"),
+        ) {
+            let start = name.start_position().row.min(body.start_position().row);
+            let end = body.end_position().row;
+            if end > start + 1 {
+                out.push(region(start, end));
+            }
+            for child in node.children(&mut node.walk()) {
+                if child.id() == body.id() {
+                    // The body's own fold is the declaration's: fold what is inside it.
+                    collect_children_folds(body, out, depth + 1);
+                } else {
+                    collect_folds_at(child, out, depth + 1);
+                }
+            }
+            return;
+        }
+    }
+
     if REGION_KINDS.contains(&kind) {
         let start = node.start_position();
         let end = node.end_position();
-        if end.row > start.row + 1 {
+        // A `{ … }` block keeps its closing line in view, so it needs a line
+        // between its braces to fold; a `case` group folds from two lines.
+        let closes_with_brace = node
+            .child(node.child_count().saturating_sub(1) as u32)
+            .is_some_and(|last| last.kind() == "}");
+        let shown_lines = if closes_with_brace { 1 } else { 0 };
+        if end.row > start.row + shown_lines {
             out.push(FoldingRange {
                 start_line: start.row as u32,
                 end_line: end.row as u32,
@@ -72,7 +140,7 @@ fn collect_folds_at(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, depth:
                 collapsed_text: None,
             });
         }
-    } else if kind == KIND_MULTILINE_COMMENT {
+    } else if kind == KIND_MULTILINE_COMMENT || kind == KIND_BLOCK_COMMENT {
         let start = node.start_position();
         let end = node.end_position();
         if end.row > start.row {
@@ -100,13 +168,36 @@ fn collect_folds_at(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, depth:
         }
     }
 
-    // Collect consecutive line_comment siblings as a single comment fold.
+    collect_children_folds(node, out, depth);
+}
+
+/// Folds within `node`'s children: runs of line comments and of imports fold
+/// as one; every other child is walked.
+fn collect_children_folds(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, depth: usize) {
     let mut walker = node.walk();
     let children: Vec<_> = node.children(&mut walker).collect();
     let mut i = 0;
     while i < children.len() {
         let child = children[i];
-        if child.kind() == KIND_LINE_COMMENT {
+        if child.kind() == "import_declaration" {
+            // Java has no import list node: a run of imports folds as one.
+            let run_start = child.start_position().row;
+            let mut run_end = child.end_position().row;
+            let mut j = i + 1;
+            while j < children.len()
+                && matches!(children[j].kind(), "import_declaration" | KIND_LINE_COMMENT)
+            {
+                run_end = children[j].end_position().row;
+                j += 1;
+            }
+            if run_end > run_start {
+                out.push(FoldingRange {
+                    kind: Some(FoldingRangeKind::Imports),
+                    ..region(run_start, run_end)
+                });
+            }
+            i = j;
+        } else if child.kind() == KIND_LINE_COMMENT {
             let run_start = child.start_position().row;
             let mut run_end = run_start;
             let mut j = i + 1;
@@ -171,5 +262,53 @@ mod depth_guard_tests {
         // If this doesn't overflow, `join` returns normally (a stack overflow
         // aborts the whole process rather than failing this join).
         handle.join().expect("must not overflow the stack");
+    }
+}
+
+#[cfg(test)]
+mod java_tests {
+    use tree_sitter::Parser;
+
+    fn fold_starts(source: &str) -> Vec<(usize, usize)> {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_java::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let mut out = Vec::new();
+        super::collect_folds(tree.root_node(), &mut out);
+        let mut starts: Vec<(usize, usize)> = out
+            .iter()
+            .map(|range| (range.start_line as usize, range.end_line as usize))
+            .collect();
+        starts.sort();
+        starts
+    }
+
+    #[test]
+    fn constructors_switches_and_cases_fold() {
+        let source = "class A {\n  A(int x) {\n    super();\n  }\n  int f(int x) {\n    switch (x) {\n      case 1:\n        a();\n        return 1;\n      default:\n        return 0;\n    }\n  }\n}\n";
+        assert_eq!(
+            fold_starts(source),
+            vec![(0, 13), (1, 3), (4, 12), (5, 11), (6, 8), (9, 10)]
+        );
+    }
+
+    #[test]
+    fn a_method_with_wrapped_parameters_folds_from_its_name() {
+        let source = "class A {\n  void f(\n      int a,\n      int b) {\n    a();\n  }\n}\n";
+        assert_eq!(fold_starts(source), vec![(0, 6), (1, 5)]);
+    }
+
+    #[test]
+    fn a_wrapped_class_header_folds_from_its_name_an_anonymous_member_from_its_brace() {
+        let source = "class A\n    implements B {\n  Object o = new B() {\n    void f(\n        int a) {\n      a();\n    }\n  };\n}\n";
+        assert_eq!(fold_starts(source), vec![(0, 8), (2, 7), (4, 6)]);
+    }
+
+    #[test]
+    fn enum_and_annotation_bodies_and_imports_fold() {
+        let source = "import a.B;\nimport a.C;\n\nenum E {\n  ONE,\n  TWO\n}\n@interface S {\n  int value();\n  int other();\n}\n";
+        assert_eq!(fold_starts(source), vec![(0, 1), (3, 6), (7, 10)]);
     }
 }

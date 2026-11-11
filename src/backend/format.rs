@@ -7,16 +7,19 @@
 use crate::indexer::lookup::{lang_str, symbol_kw_for_lang};
 use crate::indexer::resolution::ResolvedSymbol;
 
-/// Format a standard symbol hover: optional KDoc block + fenced code block.
+/// Format a standard symbol hover: fenced code block + optional KDoc block.
+///
+/// The signature comes first, as jdtls and most servers show it: a long doc
+/// comment must not push the name it documents out of view.
 ///
 /// ```text
-/// /** KDoc comment */
-///
-/// ---
-///
 /// ```kotlin
 /// fun foo(x: Int): String
 /// ```
+///
+/// ---
+///
+/// KDoc comment
 /// ```
 pub(crate) fn format_symbol_hover(info: &ResolvedSymbol, uri_path: &str) -> String {
     let lang = lang_str(uri_path);
@@ -48,7 +51,7 @@ pub(crate) fn format_symbol_hover(info: &ResolvedSymbol, uri_path: &str) -> Stri
     if info.doc.is_empty() {
         body
     } else {
-        format!("{}\n\n---\n\n{body}", info.doc)
+        format!("{body}\n\n---\n\n{}", info.doc)
     }
 }
 

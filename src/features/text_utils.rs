@@ -233,47 +233,75 @@ pub(crate) const KOTLIN_BUILTIN_TYPES: &[&str] = &[
     "UnsupportedOperationException",
 ];
 
-/// Java-only reserved words that are NOT Kotlin keywords (valid Kotlin identifiers).
-/// Applied in addition to `KOTLIN_KEYWORDS` for `.java` files.
+/// Java's reserved words and literals. A Java file is checked against these
+/// alone: Kotlin keywords such as `data`, `value` or `it` are ordinary Java
+/// names.
 ///
 /// **Must remain sorted** — `is_keyword_for_file` uses binary search.
-pub(crate) const JAVA_EXTRA_KEYWORDS: &[&str] = &[
+pub(crate) const JAVA_KEYWORDS: &[&str] = &[
+    "abstract",
     "assert",
     "boolean",
+    "break",
     "byte",
     "case",
+    "catch",
     "char",
+    "class",
+    "const",
+    "continue",
     "default",
+    "do",
     "double",
+    "else",
+    "enum",
     "extends",
+    "false",
+    "final",
+    "finally",
     "float",
+    "for",
     "goto",
+    "if",
     "implements",
+    "import",
     "instanceof",
     "int",
+    "interface",
     "long",
     "native",
     "new",
+    "null",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
     "short",
     "static",
     "strictfp",
+    "super",
     "switch",
     "synchronized",
+    "this",
+    "throw",
     "throws",
     "transient",
+    "true",
+    "try",
     "void",
     "volatile",
+    "while",
 ];
 
 /// Returns `true` when `name` is a reserved keyword for the given file path —
-/// i.e. not a valid rename target. Java files check both `KOTLIN_KEYWORDS` and
-/// `JAVA_EXTRA_KEYWORDS`; all other files check `KOTLIN_KEYWORDS` only.
+/// i.e. not a valid rename target. Java files check `JAVA_KEYWORDS`; all other
+/// files check `KOTLIN_KEYWORDS`.
 pub(crate) fn is_keyword_for_file(name: &str, file_path: &str) -> bool {
-    let in_kotlin = KOTLIN_KEYWORDS.binary_search(&name).is_ok();
-    if in_kotlin {
-        return true;
+    if file_path.ends_with(".java") {
+        return JAVA_KEYWORDS.binary_search(&name).is_ok();
     }
-    file_path.ends_with(".java") && JAVA_EXTRA_KEYWORDS.binary_search(&name).is_ok()
+    KOTLIN_KEYWORDS.binary_search(&name).is_ok()
 }
 
 /// Replace all whole-word occurrences of `word` with `replacement` across

@@ -16,7 +16,9 @@ pub(crate) mod capabilities;
 pub(crate) mod commands;
 pub(crate) mod cursor;
 pub(crate) mod dependency_watcher;
+pub(crate) mod diagnostics;
 pub(crate) mod format;
+pub(crate) mod formatting;
 pub(crate) mod git_watcher;
 pub(crate) mod handlers;
 pub(crate) mod helpers;
@@ -334,7 +336,7 @@ impl LanguageServer for Backend {
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        panic_safe("goto_declaration", self.goto_definition_impl(params)).await
+        panic_safe("goto_declaration", self.goto_declaration_impl(params)).await
     }
 
     async fn goto_type_definition(
@@ -486,31 +488,40 @@ impl LanguageServer for Backend {
         &self,
         params: DocumentOnTypeFormattingParams,
     ) -> Result<Option<Vec<TextEdit>>> {
-        let uri = &params.text_document_position.text_document.uri;
-        let position = params.text_document_position.position;
-        let Some(lines) = self.indexer.lines_for(uri) else {
-            log::debug!("on_type_formatting: no lines for {uri}");
-            return Ok(None);
-        };
-        let ch = &params.ch;
-        log::debug!(
-            "on_type_formatting: ch={ch:?} pos=({},{}) prev={:?} cur={:?}",
-            position.line,
-            position.character,
-            lines.get(position.line.saturating_sub(1) as usize),
-            lines.get(position.line as usize),
-        );
-        let result = crate::features::on_type_formatting::compute_on_type_formatting(
-            &lines,
-            position,
-            ch,
-            &params.options,
-        );
-        log::debug!(
-            "on_type_formatting: result has {} edits",
-            result.as_ref().map_or(0, |v| v.len())
-        );
-        Ok(result)
+        panic_safe("on_type_formatting", self.on_type_formatting_impl(params)).await
+    }
+
+    async fn diagnostic(
+        &self,
+        params: DocumentDiagnosticParams,
+    ) -> Result<DocumentDiagnosticReportResult> {
+        panic_safe("diagnostic", self.diagnostic_impl(params)).await
+    }
+
+    async fn workspace_diagnostic(
+        &self,
+        params: WorkspaceDiagnosticParams,
+    ) -> Result<WorkspaceDiagnosticReportResult> {
+        panic_safe(
+            "workspace_diagnostic",
+            self.workspace_diagnostic_impl(params),
+        )
+        .await
+    }
+
+    async fn document_link(&self, params: DocumentLinkParams) -> Result<Option<Vec<DocumentLink>>> {
+        panic_safe("document_link", self.document_link_impl(params)).await
+    }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        panic_safe("formatting", self.formatting_impl(params)).await
+    }
+
+    async fn range_formatting(
+        &self,
+        params: DocumentRangeFormattingParams,
+    ) -> Result<Option<Vec<TextEdit>>> {
+        panic_safe("range_formatting", self.range_formatting_impl(params)).await
     }
 
     async fn code_action(

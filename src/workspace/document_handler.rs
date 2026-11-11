@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::Url;
+use tower_lsp::lsp_types::{Diagnostic, Url};
 use tower_lsp::Client;
 
 use crate::backend::helpers::syntax_diagnostics;
@@ -374,33 +374,10 @@ impl DocumentHandler {
                 let indexer = Arc::clone(&handler_indexer);
                 let client = handler_client.clone();
                 tokio::task::spawn(async move {
-                    let syntax_diags = indexer
-                        .files
-                        .get(uri.as_str())
-                        .map(|f| syntax_diagnostics(&f.syntax_errors))
-                        .unwrap_or_default();
                     let semantic_diags = tokio::task::spawn_blocking({
                         let indexer = Arc::clone(&indexer);
                         let uri = uri.clone();
-                        move || {
-                            let mut d = Vec::new();
-                            d.extend(when_diagnostics(&indexer, &uri));
-                            if let Some(doc) = indexer.live_doc(&uri) {
-                                d.extend(call_arg_diagnostics(&indexer, &uri, &doc));
-                                d.extend(nullable_dot_call_diagnostics(&indexer, &uri, &doc));
-                                d.extend(missing_import_diagnostics(&indexer, &uri, &doc));
-                                d.extend(unused_import_diagnostics(&doc));
-                            }
-                            let lines = indexer.mem_lines_for(uri.as_str());
-                            let lines: Vec<String> = lines
-                                .as_ref()
-                                .map(|l| l.as_ref().clone())
-                                .unwrap_or_default();
-                            if let Some(pkg_diag) = missing_package_diagnostic(&lines, &uri) {
-                                d.push(pkg_diag);
-                            }
-                            d
-                        }
+                        move || file_diagnostics(&indexer, &uri)
                     })
                     .await;
                     if let Err(ref e) = semantic_diags {
@@ -418,8 +395,7 @@ impl DocumentHandler {
                             },
                         );
                     }
-                    let mut diagnostics = syntax_diags;
-                    diagnostics.extend(semantic_diags.unwrap_or_default());
+                    let diagnostics = semantic_diags.unwrap_or_default();
                     if let Some(client) = client {
                         client.publish_diagnostics(uri, diagnostics, None).await;
                     }
@@ -591,3 +567,34 @@ pub(crate) fn promote_file_imports(indexer: &Indexer, uri: &Url) {
 #[cfg(test)]
 #[path = "document_handler_tests.rs"]
 mod tests;
+
+/// The diagnostics of an open file as they stand: its syntax errors and the
+/// semantic checks. What a republish sends and a pull
+/// (`textDocument/diagnostic`) answers. CPU-bound: call it off the async
+/// runtime. While the workspace scan is still running the semantic checks
+/// are left out: the index is partial and they would report false positives.
+pub(crate) fn file_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> {
+    let mut diagnostics = indexer
+        .files
+        .get(uri.as_str())
+        .map(|file| syntax_diagnostics(&file.syntax_errors))
+        .unwrap_or_default();
+    let semantic = !indexer.indexing_in_progress.load(Ordering::Acquire);
+    if semantic {
+        diagnostics.extend(when_diagnostics(indexer, uri));
+    }
+    if let Some(doc) = indexer.live_doc_or_parse(uri).filter(|_| semantic) {
+        diagnostics.extend(call_arg_diagnostics(indexer, uri, &doc));
+        diagnostics.extend(nullable_dot_call_diagnostics(indexer, uri, &doc));
+        diagnostics.extend(missing_import_diagnostics(indexer, uri, &doc));
+        diagnostics.extend(unused_import_diagnostics(&doc));
+    }
+    let lines = indexer
+        .mem_lines_for(uri.as_str())
+        .map(|lines| lines.as_ref().clone())
+        .unwrap_or_default();
+    if let Some(package_diagnostic) = missing_package_diagnostic(&lines, uri) {
+        diagnostics.push(package_diagnostic);
+    }
+    diagnostics
+}

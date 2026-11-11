@@ -19,7 +19,10 @@
 
 use std::collections::HashMap;
 
-use tower_lsp::lsp_types::{GotoDefinitionResponse, Location, Position, Range, SymbolKind, Url};
+use tower_lsp::lsp_types::{
+    DocumentHighlight, DocumentHighlightKind, GotoDefinitionResponse, Location, Position, Range,
+    SymbolKind, Url,
+};
 
 use super::text_utils::utf16_column;
 use crate::backend::cursor::CursorContext;
@@ -67,7 +70,196 @@ pub(crate) async fn find_java_references(
         }
         None => occurrences,
     };
+    let mut found =
+        resolved_occurrences(index, &target, occurrences, include_declaration, false).await;
+    // Usages spelled another way (Kotlin's `account.balance` for
+    // `getBalance()`) and those inside library sources.
+    for location in super::references::beyond_rg_reference_locations(index, uri, position).await {
+        if !found.contains(&location) {
+            found.push(location);
+        }
+    }
+    Some(found)
+}
 
+/// `textDocument/documentHighlight` for a Java declaration: its occurrences
+/// in `uri` itself, found as its references are — its own name (a write)
+/// included when it is declared there. `None` when the declaration is not one
+/// this module answers for.
+pub(crate) async fn java_document_highlights(
+    index: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Vec<DocumentHighlight>> {
+    if !is_java_file(uri) || index.is_library_uri(uri) {
+        return None;
+    }
+    let target = JavaTarget::at(index, uri, position).await?;
+    let lines = index.lines_for(uri)?;
+    let occurrences = word_occurrences(uri, &lines, &target.symbol.name);
+    let declared_here = target.location.uri == *uri;
+    // A highlight marks what binds to this very method, as jdtls does.
+    let found = resolved_occurrences(index, &target, occurrences, declared_here, true).await;
+    Some(
+        found
+            .into_iter()
+            .map(|location| DocumentHighlight {
+                kind: Some(if location == target.location {
+                    DocumentHighlightKind::WRITE
+                } else {
+                    DocumentHighlightKind::READ
+                }),
+                range: location.range,
+            })
+            .collect(),
+    )
+}
+
+/// What renaming a Java declaration has to change.
+pub(crate) enum JavaRename {
+    /// Every name to change: the declaration's own, its references', the
+    /// rest of a method's override family, and a type's constructors.
+    Names(Vec<Location>),
+    /// Why it can't be renamed without breaking code: a method in an override
+    /// family this rename can't change whole.
+    Refused(&'static str),
+}
+
+/// The most methods an override family may have for a rename to change them
+/// all: each one is a reference search of its own.
+const MAX_RENAMED_OVERRIDE_FAMILY: usize = 16;
+
+/// What renaming the Java type or method at (or used at) `position` has to
+/// change. `None` when the declaration is not one this module answers for.
+///
+/// A method is renamed with its whole override family — the workspace
+/// methods it overrides and every method overriding those — and the
+/// references of each, so every `@Override` keeps overriding. A family this
+/// can't rename whole is refused: one reaching a library method, an
+/// anonymous class's method (its family is its supertype's, any size), and
+/// one too large to search.
+pub(crate) async fn java_rename(
+    index: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<JavaRename> {
+    if !is_java_file(uri) || index.is_library_uri(uri) {
+        return None;
+    }
+    let target = JavaTarget::at(index, uri, position).await?;
+    let mut family = Vec::new();
+    if target.kind == TargetKind::Method {
+        family = match override_family(index, &target) {
+            Ok(family) => family,
+            Err(reason) => return Some(JavaRename::Refused(reason)),
+        };
+    }
+    let mut locations = find_java_references(index, uri, position, true).await?;
+    for member in family {
+        let references = find_java_references(index, &member.uri, member.range.start, true).await;
+        for location in references.unwrap_or_else(|| vec![member.clone()]) {
+            if !locations.contains(&location) {
+                locations.push(location);
+            }
+        }
+    }
+    if target.kind == TargetKind::Type {
+        let constructors = index
+            .file_symbols(&target.location.uri)
+            .into_iter()
+            .filter(|symbol| {
+                symbol.kind == SymbolKind::CONSTRUCTOR
+                    && symbol.name == target.symbol.name
+                    && range_contains(target.symbol.range, symbol.selection_range.start)
+            })
+            .map(|symbol| Location::new(target.location.uri.clone(), symbol.selection_range));
+        for constructor in constructors {
+            if !locations.contains(&constructor) {
+                locations.push(constructor);
+            }
+        }
+    }
+    Some(JavaRename::Names(locations))
+}
+
+/// The other members of the method `target`'s override family: the
+/// workspace methods it overrides, and every method overriding the topmost
+/// of them. Why not, when renaming them all is not possible.
+fn override_family(index: &Indexer, target: &JavaTarget) -> Result<Vec<Location>, &'static str> {
+    if index.is_anonymous_class_member(&target.location.uri, target.symbol.range) {
+        return Err(
+            "a method of an anonymous class overrides its supertype's — \
+                    rename that method instead",
+        );
+    }
+    let overridden = index.overridden_method_declarations(&target.symbol, &target.location);
+    let is_workspace = |location: &Location| {
+        location.uri.scheme() == "file" && !index.is_library_uri(&location.uri)
+    };
+    if !overridden.iter().all(is_workspace) {
+        return Err("overrides a library method — cannot rename it");
+    }
+    let root_type = match overridden.last() {
+        Some(root) => index
+            .symbol_declared_at(&target.symbol.name, root)
+            .and_then(|symbol| symbol.container),
+        None => target.symbol.container.clone(),
+    };
+    let mut family = overridden;
+    if let Some(root_type) = root_type {
+        let overriding = index.overriding_method_declarations(
+            &root_type,
+            &target.symbol.name,
+            target.symbol.param_counts.1,
+            MAX_RENAMED_OVERRIDE_FAMILY + 1,
+        );
+        for declaration in overriding {
+            if declaration != target.location && !family.contains(&declaration) {
+                family.push(declaration);
+            }
+        }
+    }
+    if family.len() + 1 > MAX_RENAMED_OVERRIDE_FAMILY {
+        return Err("too many methods override it to rename them all");
+    }
+    if !family.iter().all(is_workspace) {
+        return Err("a library method overrides it — cannot rename it");
+    }
+    Ok(family)
+}
+
+/// Whole-word occurrences of `name` in `lines`, as `rg` reports them: the
+/// location's column a byte offset, with the line's text.
+fn word_occurrences(uri: &Url, lines: &[String], name: &str) -> Vec<(Location, String)> {
+    let is_word =
+        |character: char| character.is_alphanumeric() || character == '_' || character == '$';
+    let mut found = Vec::new();
+    for (number, line) in lines.iter().enumerate() {
+        for (column, _) in line.match_indices(name) {
+            let before = line[..column].chars().next_back();
+            let after = line[column + name.len()..].chars().next();
+            if before.is_some_and(is_word) || after.is_some_and(is_word) {
+                continue;
+            }
+            let position = Position::new(number as u32, column as u32);
+            found.push((
+                Location::new(uri.clone(), Range::new(position, position)),
+                line.clone(),
+            ));
+        }
+    }
+    found
+}
+
+/// The occurrences that name `target`, in the order found, its own
+/// declaration first when `include_declaration`.
+async fn resolved_occurrences(
+    index: &Indexer,
+    target: &JavaTarget,
+    occurrences: Vec<(Location, String)>,
+    include_declaration: bool,
+    exact: bool,
+) -> Vec<Location> {
     let occurrences: Vec<Occurrence> = occurrences
         .into_iter()
         .filter_map(|(rg_location, line)| Occurrence::new(rg_location, &line, &target.symbol.name))
@@ -86,7 +278,8 @@ pub(crate) async fn find_java_references(
 
     let mut matcher = TargetMatcher {
         index,
-        target: &target,
+        target,
+        exact,
         resolved: HashMap::new(),
     };
     let mut found: Vec<Location> = Vec::new();
@@ -100,14 +293,7 @@ pub(crate) async fn find_java_references(
             found.push(occurrence.location);
         }
     }
-    // Usages spelled another way (Kotlin's `account.balance` for
-    // `getBalance()`) and those inside library sources.
-    for location in super::references::beyond_rg_reference_locations(index, uri, position).await {
-        if !found.contains(&location) {
-            found.push(location);
-        }
-    }
-    Some(found)
+    found
 }
 
 fn is_java_file(uri: &Url) -> bool {
@@ -471,6 +657,9 @@ fn split_top_level(text: &str) -> Vec<&str> {
 struct TargetMatcher<'a> {
     index: &'a Indexer,
     target: &'a JavaTarget,
+    /// Only a use bound to the target itself counts — not one bound to a
+    /// method it overrides, which may or may not run it.
+    exact: bool,
     /// Whether a go-to-definition result is (or is overridden by) the target.
     resolved: HashMap<(String, u32), bool>,
 }
@@ -651,7 +840,7 @@ impl TargetMatcher<'_> {
                     && symbol.container.as_deref() == Some(name.as_str())
                     && range_contains(target.symbol.range, definition.range.start)
             }
-            TargetKind::Method => self.is_overridden_by_target(&symbol, definition),
+            TargetKind::Method => !self.exact && self.is_overridden_by_target(&symbol, definition),
         }
     }
 

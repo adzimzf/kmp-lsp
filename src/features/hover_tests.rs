@@ -487,3 +487,35 @@ fn java_hover_on_an_overloaded_call_shows_the_overload_the_argument_fits() {
     assert!(text.contains("value: Double"), "got: {text:?}");
     assert!(!text.contains("String?"), "got: {text:?}");
 }
+
+#[tokio::test]
+async fn a_java_type_variable_shows_its_type_parameter_and_owner() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Box.java").unwrap();
+    let src = "class Box<K, V extends Comparable<V>> {\n  V value;\n}\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+    let position = Position::new(1, 2);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+    let hover = java_type_parameter_hover(&idx, &ctx, &uri, position)
+        .await
+        .expect("a hover for the type variable");
+    let text = hover_text(&hover);
+    assert!(text.contains("<V extends Comparable<V>>"), "{text}");
+    assert!(text.contains("type parameter of `Box`"), "{text}");
+}
+
+#[test]
+fn a_documented_symbol_shows_its_signature_before_its_doc() {
+    let idx = Indexer::new();
+    let uri = Url::parse("file:///t/Doc.java").unwrap();
+    let src = "class Doc {\n  /** Runs it. */\n  void run() {}\n  void f() { run(); }\n}\n";
+    idx.index_content(&uri, src);
+    idx.store_live_tree(&uri, src);
+    let position = Position::new(3, 13);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+    let text = hover_text(&compute_hover(&idx, &ctx, &uri, position).expect("a hover"));
+    let signature = text.find("run()").expect("the signature");
+    let doc = text.find("Runs it.").expect("the doc");
+    assert!(signature < doc, "{text}");
+}

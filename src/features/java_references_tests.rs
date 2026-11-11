@@ -227,6 +227,7 @@ async fn a_call_bound_to_an_indexed_jdk_object_method_may_run_the_override() {
     let mut matcher = TargetMatcher {
         index: &workspace.index,
         target: &target,
+        exact: false,
         resolved: HashMap::new(),
     };
     let object_to_string = Location::new(
@@ -234,4 +235,126 @@ async fn a_call_bound_to_an_indexed_jdk_object_method_may_run_the_override() {
         Range::new(Position::new(2, 16), Position::new(2, 24)),
     );
     assert!(matcher.definition_is_target(&object_to_string));
+}
+
+const LOCAL_READER: &str = "package p;\n\
+public class LocalReader extends Reader {\n\
+  @Override\n\
+  public void endObject() {}\n\
+  void run(Reader reader, LocalReader local) {\n\
+    reader.endObject();\n\
+    local.endObject();\n\
+  }\n\
+}\n";
+
+/// A highlight marks what binds to the method itself: `reader.endObject()`
+/// on a `Reader` binds to `Reader.endObject`, even if it may run this one.
+#[tokio::test]
+async fn highlights_mark_only_uses_bound_to_the_method() {
+    let (workspace, uris) = Workspace::new(&[
+        ("p/Reader.java", READER),
+        ("p/LocalReader.java", LOCAL_READER),
+    ]);
+    let highlights = java_document_highlights(
+        &workspace.index,
+        &uris[1],
+        position_of(LOCAL_READER, 3, "endObject"),
+    )
+    .await
+    .expect("a Java method is answered here");
+    let mut lines: Vec<(u32, bool)> = highlights
+        .iter()
+        .map(|highlight| {
+            (
+                highlight.range.start.line + 1,
+                highlight.kind == Some(DocumentHighlightKind::WRITE),
+            )
+        })
+        .collect();
+    lines.sort();
+    assert_eq!(lines, vec![(4, true), (7, false)]);
+}
+
+fn renamed(rename: Option<JavaRename>) -> Vec<String> {
+    match rename {
+        Some(JavaRename::Names(locations)) => hits(&locations),
+        Some(JavaRename::Refused(reason)) => panic!("refused: {reason}"),
+        None => panic!("not answered"),
+    }
+}
+
+/// Renaming an override renames its whole family — the method it overrides,
+/// the other override of that, and the uses of each — but not the overload
+/// or the unrelated `Writer.endObject`.
+#[tokio::test]
+async fn renaming_an_override_renames_its_family() {
+    let (workspace, uris) = Workspace::new(&[
+        ("p/Reader.java", READER),
+        ("p/TreeReader.java", TREE_READER),
+        ("p/Writer.java", WRITER),
+        ("p/Uses.java", USES),
+    ]);
+    let rename = java_rename(
+        &workspace.index,
+        &uris[1],
+        position_of(TREE_READER, 3, "endObject"),
+    )
+    .await;
+    assert_eq!(
+        renamed(rename),
+        vec![
+            "Reader.java:3",
+            "Reader.java:4",
+            "TreeReader.java:4",
+            "Uses.java:4",
+            "Uses.java:6",
+            "Uses.java:9",
+        ]
+    );
+}
+
+/// A type's rename changes its constructors' names with it.
+#[tokio::test]
+async fn renaming_a_type_renames_its_constructors() {
+    let (workspace, uris) = Workspace::new(&[
+        ("a/Foo.java", FOO),
+        ("b/Foo.java", OTHER_FOO),
+        ("c/FooUser.java", FOO_USER),
+    ]);
+    let rename = java_rename(&workspace.index, &uris[0], position_of(FOO, 1, "Foo")).await;
+    assert_eq!(
+        renamed(rename),
+        vec![
+            "Foo.java:2",
+            "Foo.java:3",
+            "Foo.java:4",
+            "FooUser.java:3",
+            "FooUser.java:5",
+            "FooUser.java:7",
+            "FooUser.java:8",
+        ]
+    );
+}
+
+const ANONYMOUS: &str = "package p;\n\
+class Anonymous {\n\
+  Reader reader = new Reader() {\n\
+    @Override\n\
+    public void endObject() {}\n\
+  };\n\
+}\n";
+
+/// An anonymous class's method belongs to its supertype's family, which a
+/// rename from here can't see whole: refused, rather than half-renamed.
+#[tokio::test]
+async fn renaming_an_anonymous_class_method_is_refused() {
+    let (workspace, uris) =
+        Workspace::new(&[("p/Reader.java", READER), ("p/Anonymous.java", ANONYMOUS)]);
+    let rename = java_rename(
+        &workspace.index,
+        &uris[1],
+        position_of(ANONYMOUS, 4, "endObject"),
+    )
+    .await;
+    assert!(matches!(rename, Some(JavaRename::Refused(_))));
 }

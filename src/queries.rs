@@ -303,6 +303,8 @@ pub(crate) const KIND_FIELD_DECL: &str = "field_declaration";
 pub(crate) const KIND_IMPORT_DECL: &str = "import_declaration";
 pub(crate) const KIND_PACKAGE_DECL: &str = "package_declaration";
 pub(crate) const KIND_ANNOTATION_TYPE_DECL: &str = "annotation_type_declaration";
+/// `int value() default 1;` inside an `@interface`.
+pub(crate) const KIND_ANNOTATION_ELEMENT_DECL: &str = "annotation_type_element_declaration";
 pub(crate) const KIND_ENUM_CONSTANT: &str = "enum_constant";
 pub(crate) const KIND_SUPERCLASS: &str = "superclass";
 pub(crate) const KIND_SUPER_INTERFACES: &str = "super_interfaces";
