@@ -45,13 +45,21 @@ pub(crate) fn compute_completions(
     snippets: bool,
     index: &impl CompletionIndex,
 ) -> Option<CompletionResponse> {
-    let (mut items, hit_cap) = index.completions(uri, position, snippets);
+    let (items, hit_cap) = index.completions(uri, position, snippets);
+    completion_list(items, hit_cap, index.is_indexing_in_progress())
+}
+
+/// The response for `items`: `None` when empty, the first preselected.
+pub(crate) fn completion_list(
+    mut items: Vec<CompletionItem>,
+    hit_cap: bool,
+    still_indexing: bool,
+) -> Option<CompletionResponse> {
     // Always return None for an empty list — returning {items:[], isIncomplete:true}
     // causes clients like nvim-cmp to clear the popup and fall back to buffer source.
     if items.is_empty() {
         return None;
     }
-    let still_indexing = index.is_indexing_in_progress();
     // Pre-select the best match so the editor highlights it without an extra keystroke.
     if let Some(first) = items.first_mut() {
         first.preselect = Some(true);

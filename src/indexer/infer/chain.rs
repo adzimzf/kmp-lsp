@@ -567,8 +567,35 @@ pub(super) fn resolve_method_return_type_on(
     deps: &impl InferDeps,
     uri: &Url,
 ) -> Option<(String, Url)> {
-    let (return_type, declared_in) =
-        deps.find_method_return_type_with_origin_for_type(lookup_name, member, uri)?;
+    let declared = deps.find_method_return_type_with_origin_for_type(lookup_name, member, uri)?;
+    substituted_return_type(declared, lookup_name, current_type, deps, uri)
+}
+
+/// [`resolve_method_return_type_on`] for a Java call with arguments: the
+/// return type of the overload the `arguments` fit best
+/// (`that(String)` → `StringSubject`, not `that(Object)` → `Subject`).
+/// `None` when no overload of `lookup_name` is found that way.
+pub(super) fn resolve_overloaded_method_return_type_on(
+    lookup_name: &str,
+    current_type: &str,
+    member: &str,
+    arguments: &[super::java_cst::ArgumentType],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(String, Url)> {
+    let declared = deps.find_static_method_return_type(lookup_name, member, arguments, uri)?;
+    substituted_return_type(declared, lookup_name, current_type, deps, uri)
+}
+
+/// A member's `(return type, declaring file)` with the receiver's type
+/// arguments substituted, paired with the file that spells the result.
+fn substituted_return_type(
+    (return_type, declared_in): (String, Url),
+    lookup_name: &str,
+    current_type: &str,
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(String, Url)> {
     let (substituted, spelled_in) = substitute_receiver_type_arguments(
         &return_type,
         lookup_name,

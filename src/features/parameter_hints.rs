@@ -48,22 +48,35 @@ pub(crate) async fn callee_parameters(
     uri: &Url,
     callee: Position,
 ) -> Option<Vec<DeclaredParameter>> {
-    let ctx = CursorContext::build(indexer, uri, callee)?;
-    let locations = match find_definition(&ctx, indexer, uri, callee).await? {
-        GotoDefinitionResponse::Scalar(location) => vec![location],
-        GotoDefinitionResponse::Array(locations) => locations,
-        GotoDefinitionResponse::Link(links) => links
-            .into_iter()
-            .map(|link| Location::new(link.target_uri, link.target_selection_range))
-            .collect(),
-    };
-    // `this(..)` resolves to its class: narrowing finds the constructor.
-    let locations = narrow_java_overloads(indexer, uri, callee, locations);
+    let locations = callee_declarations(indexer, uri, callee).await;
     let mut signatures = locations
         .iter()
         .filter_map(|location| declared_parameters_at(indexer, location));
     let first = signatures.next()?;
     signatures.all(|other| other == first).then_some(first)
+}
+
+/// The declarations the call named at `callee` resolves to, as
+/// go-to-definition resolves it, narrowed to the overloads its arguments fit.
+pub(crate) async fn callee_declarations(
+    indexer: &Indexer,
+    uri: &Url,
+    callee: Position,
+) -> Vec<Location> {
+    let Some(ctx) = CursorContext::build(indexer, uri, callee) else {
+        return Vec::new();
+    };
+    let locations = match find_definition(&ctx, indexer, uri, callee).await {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location],
+        Some(GotoDefinitionResponse::Array(locations)) => locations,
+        Some(GotoDefinitionResponse::Link(links)) => links
+            .into_iter()
+            .map(|link| Location::new(link.target_uri, link.target_selection_range))
+            .collect(),
+        None => Vec::new(),
+    };
+    // `this(..)` resolves to its class: narrowing finds the constructor.
+    narrow_java_overloads(indexer, uri, callee, locations)
 }
 
 /// A call that passes literals inside the requested range.

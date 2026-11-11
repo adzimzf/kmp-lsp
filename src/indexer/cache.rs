@@ -39,7 +39,7 @@ use crate::types::{FileData, FileIndexResult, Visibility};
 ///      receiver — older caches stored it empty.
 /// v36: Java files record their anonymous classes (`FileData::anonymous_classes`)
 ///      — older caches would miss them as implementations.
-pub(crate) const CACHE_VERSION: u32 = 36;
+pub(crate) const CACHE_VERSION: u32 = 37;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

@@ -147,7 +147,7 @@ pub(crate) fn call_sites(indexer: &Indexer, item: &CallHierarchyItem) -> Vec<Ran
 }
 
 /// The name node a call node calls, if `node` is a call.
-fn callee_name(node: Node<'_>) -> Option<Node<'_>> {
+pub(crate) fn callee_name(node: Node<'_>) -> Option<Node<'_>> {
     match node.kind() {
         "method_invocation" => node.child_by_field_name("name"),
         "object_creation_expression" => {

@@ -24,7 +24,9 @@ use crate::resolver::jvm_interop::PropertyAccess;
 use crate::types::Language;
 use crate::StrExt as _;
 
-use super::chain::{resolve_field_type_on, resolve_method_return_type_on};
+use super::chain::{
+    resolve_field_type_on, resolve_method_return_type_on, resolve_overloaded_method_return_type_on,
+};
 use super::cst_symbol::{SymbolAtCursor, SymbolRole};
 use super::deps::{CallShape, InferDeps};
 
@@ -840,11 +842,30 @@ fn method_invocation_type(
     };
     let (receiver_type, receiver_uri) = expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
     let lookup_name = receiver_type.dotted_ident_prefix();
+    // With arguments, the overload they select decides the return type.
+    let has_arguments = node
+        .child_by_field_name("arguments")
+        .is_some_and(|arguments| arguments.named_child_count() > 0);
+    if has_arguments {
+        let arguments = java_argument_types(node, bytes, deps, uri);
+        if let Some(found) = resolve_overloaded_method_return_type_on(
+            &lookup_name,
+            &receiver_type,
+            &method,
+            &arguments,
+            deps,
+            &receiver_uri,
+        ) {
+            return Some(found);
+        }
+    }
     resolve_method_return_type_on(&lookup_name, &receiver_type, &method, deps, &receiver_uri)
 }
 
 /// `foo()` with no receiver: a method of an enclosing class — declared in
 /// this file, else inherited.
+const JAVA_OBJECT: &str = "Object";
+
 fn bare_method_return_type(
     node: Node<'_>,
     method: &str,
@@ -877,6 +898,8 @@ fn bare_method_return_type(
                     })
             })
         })
+        // Every class extends `Object`: `getClass()` is its method.
+        .or_else(|| deps.find_method_return_type_with_origin_for_type(JAVA_OBJECT, method, uri))
 }
 
 /// The classes `name` may be statically imported from in `node`'s file:

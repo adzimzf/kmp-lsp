@@ -174,7 +174,7 @@ fn display_name(uri: &Url, data: &FileData, symbol: &SymbolEntry) -> String {
 }
 
 /// The type `name` names, seen from `from`.
-fn resolve_type(indexer: &Indexer, name: &str, from: &Url) -> Option<TypeHierarchyItem> {
+pub(crate) fn resolve_type(indexer: &Indexer, name: &str, from: &Url) -> Option<TypeHierarchyItem> {
     indexer
         .find_definition(name, from)
         .into_iter()
@@ -183,7 +183,7 @@ fn resolve_type(indexer: &Indexer, name: &str, from: &Url) -> Option<TypeHierarc
 
 /// The simple name of the declared type `item` stands for; `None` for an
 /// anonymous class, a lambda or a type outside the workspace.
-fn declared_name(item: &TypeHierarchyItem) -> Option<String> {
+pub(crate) fn declared_name(item: &TypeHierarchyItem) -> Option<String> {
     item.data
         .as_ref()?
         .get("name")

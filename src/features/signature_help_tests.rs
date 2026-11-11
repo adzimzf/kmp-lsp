@@ -360,3 +360,94 @@ fn swift_sig_help_fires_for_unclosed_call_inside_function_body() {
         "sig help must still fire for an unclosed call inside a function body; got: {result:?}"
     );
 }
+
+// ── Java ──────────────────────────────────────────────────────────────────────
+
+mod java {
+    use tower_lsp::lsp_types::{ParameterLabel, Position, Url};
+
+    use crate::features::signature_help::{
+        java_call_site, java_parameter_label, java_signature_help,
+    };
+    use crate::indexer::Indexer;
+
+    fn index(idx: &Indexer, path: &str, src: &str) -> Url {
+        let uri = Url::parse(&format!("file:///t/{path}")).unwrap();
+        idx.index_content(&uri, src);
+        idx.store_live_tree(&uri, src);
+        uri
+    }
+
+    /// Like jdtls: every overload is listed, the one the arguments select is
+    /// active, and the active parameter is the argument the cursor is in.
+    #[tokio::test]
+    async fn the_overload_the_arguments_select_is_active() {
+        let idx = Indexer::new();
+        index(
+            &idx,
+            "Box.java",
+            "public class Box<E> {\n\
+             \x20 public boolean add(@Nullable E e) { return true; }\n\
+             \x20 public void add(int index, final E element) {}\n\
+             }\n",
+        );
+        let src = "class Use {\n\
+                   \x20 void use(Box<String> box) {\n\
+                   \x20   box.add(\"x\");\n\
+                   \x20   box.add(0, \"x\");\n\
+                   \x20 }\n\
+                   }\n";
+        let uri = index(&idx, "Use.java", src);
+
+        let one = Position::new(2, 12);
+        let site = java_call_site(&idx, &uri, one).expect("a call site");
+        let help = java_signature_help(&idx, &uri, site)
+            .await
+            .expect("signature help");
+        let labels: Vec<&str> = help.signatures.iter().map(|s| s.label.as_str()).collect();
+        assert_eq!(labels, ["add(E e)", "add(int index, E element)"]);
+        assert_eq!(help.active_signature, Some(0));
+
+        let second_argument = Position::new(3, 16);
+        let site = java_call_site(&idx, &uri, second_argument).expect("a call site");
+        assert_eq!(site.argument, 1);
+        let help = java_signature_help(&idx, &uri, site)
+            .await
+            .expect("signature help");
+        assert_eq!(help.active_signature, Some(1));
+        assert_eq!(help.active_parameter, Some(1));
+        let parameters = help.signatures[1].parameters.clone().unwrap();
+        assert!(
+            matches!(&parameters[1].label, ParameterLabel::Simple(label) if label == "E element")
+        );
+    }
+
+    /// Outside a call's parentheses there is no Java call site; inside a
+    /// nested call, the innermost call is the one helped.
+    #[test]
+    fn the_call_site_is_the_innermost_call_around_the_cursor() {
+        let idx = Indexer::new();
+        let src = "class Use {\n  void use() { outer(inner(1), 2); }\n}\n";
+        let uri = index(&idx, "Use.java", src);
+        let line = src.lines().nth(1).unwrap();
+        let column = |needle: &str| line.find(needle).unwrap() as u32;
+        assert!(java_call_site(&idx, &uri, Position::new(1, column("outer"))).is_none());
+        let inner = java_call_site(&idx, &uri, Position::new(1, column("1)"))).unwrap();
+        assert_eq!(inner.callee, Position::new(1, column("inner")));
+        let outer = java_call_site(&idx, &uri, Position::new(1, column("2)"))).unwrap();
+        assert_eq!(outer.callee, Position::new(1, column("outer")));
+        assert_eq!(outer.argument, 1);
+    }
+
+    #[test]
+    fn parameter_labels_drop_annotations_and_final() {
+        assert_eq!(
+            java_parameter_label("@Nullable Throwable actual"),
+            "Throwable actual"
+        );
+        assert_eq!(
+            java_parameter_label("final @SuppressWarnings(\"x\") Map<String, Integer>   map"),
+            "Map<String, Integer> map"
+        );
+    }
+}
