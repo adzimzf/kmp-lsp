@@ -123,6 +123,7 @@ pub(crate) use self::apply::stale_keys_for;
 
 pub(crate) mod lookup;
 pub(crate) use lookup::apply_type_subst;
+pub(crate) use lookup::ImportableType;
 
 pub(crate) mod node_ext;
 pub(crate) use node_ext::NodeExt;

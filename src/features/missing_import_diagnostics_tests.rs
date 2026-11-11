@@ -327,3 +327,116 @@ fn no_diagnostic_for_a_plain_call_provided_by_the_extension_receiver() {
          Fragment and must not be flagged: {diags:?}"
     );
 }
+
+mod java {
+    use tower_lsp::lsp_types::{CodeActionOrCommand, Position, Range, Url};
+
+    use super::{setup, uri};
+    use crate::features::missing_import_diagnostics::java_import_actions;
+    use crate::indexer::Indexer;
+
+    const LIBRARY: [(&str, &str); 3] = [
+        (
+            "/lib/com/example/json/Parser.java",
+            "package com.example.json;\npublic class Parser {}\n",
+        ),
+        (
+            "/lib/com/example/text/Parser.java",
+            "package com.example.text;\nclass Parser {}\n",
+        ),
+        (
+            "/lib/com/example/xml/Reader.java",
+            "package com.example.xml;\npublic class Reader {\n  public static class Parser {}\n}\n",
+        ),
+    ];
+
+    /// The import quick fixes offered for the name at `line:character` of
+    /// `caller` (put after the library files).
+    fn titles(caller: &str, line: u32, character: u32) -> Vec<String> {
+        let mut sources = LIBRARY.to_vec();
+        sources.push(("/app/com/example/app/Main.java", caller));
+        let (file, idx, _) = setup(&sources);
+        actions(&idx, &file, line, character)
+    }
+
+    fn actions(idx: &Indexer, file: &Url, line: u32, character: u32) -> Vec<String> {
+        let at = Range::new(
+            Position::new(line, character),
+            Position::new(line, character + 1),
+        );
+        java_import_actions(idx, file, at)
+            .into_iter()
+            .map(|action| match action {
+                CodeActionOrCommand::CodeAction(action) => action.title,
+                CodeActionOrCommand::Command(command) => command.title,
+            })
+            .collect()
+    }
+
+    /// Only the public top-level `Parser` is importable: the package-private
+    /// one and the nested one aren't reachable by `import package.Parser;`.
+    #[test]
+    fn offers_the_public_top_level_type_of_that_name() {
+        let caller = "package com.example.app;\nclass Main {\n  Parser parser;\n}\n";
+        assert_eq!(titles(caller, 2, 2), ["Import 'com.example.json.Parser'"]);
+    }
+
+    #[test]
+    fn the_quick_fix_adds_the_import_statement() {
+        let caller = "package com.example.app;\n\nclass Main {\n  Parser parser;\n}\n";
+        let mut sources = LIBRARY.to_vec();
+        sources.push(("/app/com/example/app/Main.java", caller));
+        let (file, idx, _) = setup(&sources);
+        let at = Range::new(Position::new(3, 2), Position::new(3, 8));
+        let Some(CodeActionOrCommand::CodeAction(action)) =
+            java_import_actions(&idx, &file, at).into_iter().next()
+        else {
+            panic!("no import action");
+        };
+        let edits = &action.edit.unwrap().changes.unwrap()[&file];
+        assert!(
+            edits
+                .iter()
+                .any(|edit| edit.new_text.contains("import com.example.json.Parser;")),
+            "{edits:?}"
+        );
+    }
+
+    #[test]
+    fn nothing_to_offer_when_the_file_already_sees_the_name() {
+        let imported = "package com.example.app;\nimport com.example.json.Parser;\nclass Main {\n  Parser parser;\n}\n";
+        assert!(titles(imported, 3, 2).is_empty());
+        let on_demand = "package com.example.app;\nimport com.example.json.*;\nclass Main {\n  Parser parser;\n}\n";
+        assert!(titles(on_demand, 3, 2).is_empty());
+        let type_parameter =
+            "package com.example.app;\nclass Main<Parser> {\n  Parser parser;\n}\n";
+        assert!(titles(type_parameter, 2, 2).is_empty());
+        let qualified =
+            "package com.example.app;\nclass Main {\n  com.example.json.Parser parser;\n}\n";
+        assert!(titles(qualified, 2, 19).is_empty());
+    }
+
+    #[test]
+    fn nothing_to_offer_for_a_type_of_the_same_package() {
+        let (file, idx, _) = setup(&[
+            (
+                "/lib/com/example/json/Parser.java",
+                "package com.example.json;\npublic class Parser {}\n",
+            ),
+            (
+                "/lib/com/example/json/Main.java",
+                "package com.example.json;\nclass Main {\n  Parser parser;\n}\n",
+            ),
+        ]);
+        assert!(actions(&idx, &file, 2, 2).is_empty());
+    }
+
+    /// Without the file's `.java` extension the Java rules don't apply.
+    #[test]
+    fn kotlin_files_are_left_to_the_diagnostic_path() {
+        let (_, idx, _) = setup(&LIBRARY);
+        let kotlin = uri("/app/Main.kt");
+        idx.index_content(&kotlin, "package app\nval parser: Parser? = null\n");
+        assert!(actions(&idx, &kotlin, 1, 12).is_empty());
+    }
+}

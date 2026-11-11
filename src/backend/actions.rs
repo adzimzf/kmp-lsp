@@ -107,6 +107,12 @@ impl Backend {
             ));
         }
 
+        actions.extend(features::missing_import_diagnostics::java_import_actions(
+            self.indexer.as_ref(),
+            uri,
+            range,
+        ));
+
         let lang = crate::Language::from_path(uri.path());
         if matches!(lang, crate::Language::Kotlin | crate::Language::Java) {
             if let Some(action) = features::code_actions::build_add_package_action(&all_lines, uri)

@@ -439,6 +439,10 @@ impl LanguageServer for Backend {
         .await
     }
 
+    async fn moniker(&self, params: MonikerParams) -> Result<Option<Vec<Moniker>>> {
+        panic_safe("moniker", self.moniker_impl(params)).await
+    }
+
     async fn incoming_calls(
         &self,
         params: CallHierarchyIncomingCallsParams,
