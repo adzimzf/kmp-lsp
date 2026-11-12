@@ -85,3 +85,4 @@ pub(crate) use resolve::resolve_symbol;
 pub(crate) use resolve::resolve_symbol_in_type_scope;
 #[cfg(test)]
 pub(crate) use resolve::resolve_symbol_index_only;
+pub(crate) use resolve::resolve_type_name;

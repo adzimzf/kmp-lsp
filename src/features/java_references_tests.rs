@@ -358,3 +358,157 @@ async fn renaming_an_anonymous_class_method_is_refused() {
     .await;
     assert!(matches!(rename, Some(JavaRename::Refused(_))));
 }
+
+const STATE: &str = "package s;\n\
+public class State {\n\
+  public static final int EMPTY = 1;\n\
+  private Object delegate;\n\
+  void setDelegate(Object value) { delegate = value; }\n\
+  Object delegate() {\n\
+    Object delegate = this.delegate;\n\
+    return delegate;\n\
+  }\n\
+  int count(State other) { return other.delegate == null ? EMPTY : 0; }\n\
+}\n";
+
+const STATE_USER: &str = "package u;\n\
+\n\
+import static s.State.EMPTY;\n\
+import s.State;\n\
+\n\
+class StateUser {\n\
+  int EMPTY_TOO = EMPTY;\n\
+  void run(State state) {\n\
+    state.setDelegate(state.delegate());\n\
+    int EMPTY = 2;\n\
+    int copy = EMPTY;\n\
+  }\n\
+}\n";
+
+/// A field's usages: its bare and qualified reads and writes, an
+/// `import static`, and a call of its setter (jdtls's default
+/// `includeAccessors`). Not the same-named method `delegate()`, a local
+/// that shadows it, or another class's same-named local.
+#[tokio::test]
+async fn field_references_follow_bindings_and_include_accessor_calls() {
+    let (workspace, uris) =
+        Workspace::new(&[("s/State.java", STATE), ("u/StateUser.java", STATE_USER)]);
+    let state = &uris[0];
+
+    let delegate = find_java_references(
+        &workspace.index,
+        state,
+        position_of(STATE, 3, "delegate"),
+        false,
+    )
+    .await
+    .expect("a Java field is answered here");
+    assert_eq!(
+        hits(&delegate),
+        vec![
+            "State.java:10",
+            "State.java:5",
+            "State.java:7",
+            "StateUser.java:9"
+        ]
+    );
+
+    let empty = find_java_references(
+        &workspace.index,
+        state,
+        position_of(STATE, 2, "EMPTY"),
+        false,
+    )
+    .await
+    .expect("a Java constant is answered here");
+    assert_eq!(
+        hits(&empty),
+        vec!["State.java:10", "StateUser.java:3", "StateUser.java:7"]
+    );
+}
+
+/// Renaming a field changes its name, not the calls of its setter.
+#[tokio::test]
+async fn renaming_a_field_leaves_its_accessor_calls() {
+    let (workspace, uris) =
+        Workspace::new(&[("s/State.java", STATE), ("u/StateUser.java", STATE_USER)]);
+    let rename = java_rename(
+        &workspace.index,
+        &uris[0],
+        position_of(STATE, 3, "delegate"),
+    )
+    .await;
+    assert_eq!(
+        renamed(rename),
+        vec![
+            "State.java:10",
+            "State.java:4",
+            "State.java:5",
+            "State.java:7"
+        ]
+    );
+}
+
+/// A constructor's usages are the creations its arguments select: not the
+/// other constructor's, nor the class name used as a qualifier.
+#[tokio::test]
+async fn constructor_references_are_the_creations_that_select_it() {
+    let builder = "package b;\n\
+public class Builder {\n\
+  static final Builder DEFAULT = new Builder();\n\
+  public Builder() {}\n\
+  Builder(Builder from) {}\n\
+  Builder copy() { return new Builder(this); }\n\
+  static Builder fresh() { return new Builder(Builder.DEFAULT); }\n\
+}\n";
+    let (workspace, uris) = Workspace::new(&[("b/Builder.java", builder)]);
+
+    let found = find_java_references(
+        &workspace.index,
+        &uris[0],
+        position_of(builder, 4, "Builder"),
+        false,
+    )
+    .await
+    .expect("a Java constructor is answered here");
+
+    assert_eq!(hits(&found), vec!["Builder.java:6", "Builder.java:7"]);
+}
+
+/// A local's usages are in its own scope: not a same-named field, a
+/// same-named local of another method, or a member access `other.src`; a
+/// lambda parameter's are in its lambda.
+#[tokio::test]
+async fn local_references_stay_in_their_scope() {
+    let scopes = "package l;\n\
+class Scopes {\n\
+  Object src;\n\
+  void first(Scopes other) {\n\
+    Object src = other.src;\n\
+    use(src);\n\
+  }\n\
+  void second() {\n\
+    java.util.function.Function<Object, Object> f = src -> src;\n\
+    Object src = this.src;\n\
+    use(src);\n\
+  }\n\
+  void use(Object value) {}\n\
+}\n";
+    let (workspace, uris) = Workspace::new(&[("l/Scopes.java", scopes)]);
+    let local = |line: u32, nth: usize| {
+        let text = scopes.lines().nth(line as usize).unwrap();
+        let column = text.match_indices("src").nth(nth).unwrap().0;
+        Position::new(line, column as u32)
+    };
+
+    let first = find_java_references(&workspace.index, &uris[0], local(4, 0), false)
+        .await
+        .expect("a Java local is answered here");
+    assert_eq!(hits(&first), vec!["Scopes.java:6"]);
+
+    let lambda_parameter = find_java_references(&workspace.index, &uris[0], local(8, 0), false)
+        .await
+        .expect("a lambda parameter is answered here");
+    assert_eq!(lambda_parameter.len(), 1);
+    assert_eq!(hits(&lambda_parameter), vec!["Scopes.java:9"]);
+}

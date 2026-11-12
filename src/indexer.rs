@@ -41,11 +41,12 @@ pub(crate) use self::infer::{
     cst_symbol::{
         classify_cursor, classify_occurrence_at, classify_symbol_at, declared_parameters_at,
         enclosing_nav_expr_if_member, implicit_receiver_of, is_call_callee, is_declaration_site,
-        is_local_declaration_at, is_local_value_reference, java_local_definition,
-        java_type_parameter_definition, local_scope_occurrences, narrow_java_overloads,
-        navigation_member_ident, navigation_receiver_node, resolve_identity,
-        resolve_identity_with_io, shape_filter_locations, type_definition_step, NavigationSource,
-        NotCodeKind, OccurrenceSite, SymbolAtCursor, SymbolRole, TypeDefinitionStep,
+        is_java_type_name_at, is_local_declaration_at, is_local_value_reference,
+        java_local_declaration_at, java_local_definition, java_type_parameter_definition,
+        local_scope_occurrences, narrow_java_overloads, navigation_member_ident,
+        navigation_receiver_node, resolve_identity, resolve_identity_with_io,
+        shape_filter_locations, type_definition_step, NavigationSource, NotCodeKind,
+        OccurrenceSite, SymbolAtCursor, SymbolRole, TypeDefinitionStep,
     },
     deps::{
         CallShape, CallableInfo, ExtensionCallable, InferDeps, MemberTypeParameters,
@@ -587,6 +588,14 @@ impl InferDeps for Indexer {
         uri: &Url,
     ) -> Option<(String, Url)> {
         self::infer::cst_symbol::static_method_return_type(self, class_path, method, arguments, uri)
+    }
+    fn find_lambda_parameter_type(
+        &self,
+        target_type: &str,
+        parameter_index: usize,
+        uri: &Url,
+    ) -> Option<(String, Url)> {
+        self::infer::cst_symbol::lambda_parameter_type(self, target_type, parameter_index, uri)
     }
     fn find_method_return_type_with_origin_for_type(
         &self,

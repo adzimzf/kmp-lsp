@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tower_lsp::lsp_types::{Location, Url};
+use tower_lsp::lsp_types::{Location, SymbolKind, Url};
 
 use crate::indexer::{CallShape, Indexer};
 use crate::parser::parse_by_extension;
@@ -301,6 +301,55 @@ fn resolve_chain(
     shape: Option<CallShape>,
     hierarchy_walk_origin_uri: Option<&Url>,
 ) -> Vec<Location> {
+    resolve_chain_in(
+        indexer,
+        name,
+        from_uri,
+        io,
+        with_hierarchy,
+        shape,
+        hierarchy_walk_origin_uri,
+        Namespace::Any,
+    )
+}
+
+/// What a bare name may bind to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Namespace {
+    /// Anything: a member, a local, a type.
+    Any,
+    /// Only a type: a Java type position (`URL.class`, `List<URL>`), where a
+    /// same-named field or method of the enclosing class is no candidate.
+    Types,
+}
+
+/// `name` written in a Java type position of `from_uri`, resolved as a type
+/// only: the file's own types, then imports, the package, `java.lang` and
+/// star imports — never a same-named field (`TypeAdapter<URL> URL`).
+pub(crate) fn resolve_type_name(indexer: &Indexer, name: &str, from_uri: &Url) -> Vec<Location> {
+    resolve_chain_in(
+        indexer,
+        name,
+        from_uri,
+        ResolveIo::Full,
+        true,
+        None,
+        None,
+        Namespace::Types,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resolve_chain_in(
+    indexer: &Indexer,
+    name: &str,
+    from_uri: &Url,
+    io: ResolveIo,
+    with_hierarchy: bool,
+    shape: Option<CallShape>,
+    hierarchy_walk_origin_uri: Option<&Url>,
+    namespace: Namespace,
+) -> Vec<Location> {
     // Behavioural knobs derived from the policy (see the `ResolveIo` table):
     //  - `full_io`: cold-index + local-decl + swift + hierarchy + project-wide rg
     //  - `allow_fd`: import resolution may spawn `fd` (everything except IndexOnly)
@@ -321,7 +370,10 @@ fn resolve_chain(
     }
 
     // 1 ── local (indexed symbols) ────────────────────────────────────────────
-    let local = resolve_local(indexer, name, from_uri, shape);
+    let local = match namespace {
+        Namespace::Any => resolve_local(indexer, name, from_uri, shape),
+        Namespace::Types => resolve_local_types(indexer, name, from_uri),
+    };
     if !local.is_empty() {
         return local;
     }
@@ -330,7 +382,7 @@ fn resolve_chain(
     // Catches function parameters without val/var that aren't in the symbol index.
     // Also catches named lambda parameters: `{ item -> ...}` found via the
     // `name ->` pattern in find_declaration_range_in_lines.
-    if full_io && !name.starts_with_uppercase() {
+    if full_io && namespace == Namespace::Any && !name.starts_with_uppercase() {
         let decl = find_local_declaration(indexer, name, from_uri);
         if !decl.is_empty() {
             return decl;
@@ -684,6 +736,31 @@ pub(super) fn resolve_local(
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// [`resolve_local`] for a name in a type position: the file's own types
+/// (classes, interfaces, enums, records, annotations) of that name.
+fn resolve_local_types(indexer: &Indexer, name: &str, uri: &Url) -> Vec<Location> {
+    let is_type = |kind: SymbolKind| {
+        matches!(
+            kind,
+            SymbolKind::CLASS
+                | SymbolKind::INTERFACE
+                | SymbolKind::ENUM
+                | SymbolKind::STRUCT
+                | SymbolKind::OBJECT
+        )
+    };
+    resolve_local(indexer, name, uri, None)
+        .into_iter()
+        .filter(|location| {
+            indexer.files.get(uri.as_str()).is_some_and(|file| {
+                file.symbols
+                    .iter()
+                    .any(|symbol| symbol.selection_range == location.range && is_type(symbol.kind))
+            })
+        })
+        .collect()
 }
 
 /// The `rg`-step counterpart to the arity check above: `rg` finds `location`

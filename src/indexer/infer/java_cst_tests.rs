@@ -590,3 +590,74 @@ fn literal_argument_calls_list_each_call_with_its_literals() {
     );
     assert!(super::literal_argument_calls(doc.tree.root_node(), 3..=3).is_empty());
 }
+
+#[test]
+fn java_type_keys_keep_boxes_apart_from_primitives() {
+    assert_eq!(java_overload_type_key("Boolean"), "Boolean");
+    assert_eq!(java_overload_type_key("java.lang.Integer"), "Integer");
+    assert_eq!(java_overload_type_key("boolean"), "boolean");
+    assert_eq!(java_overload_type_key("@Nullable Double..."), "Double[]");
+    assert_eq!(
+        parameter_type_keys("Boolean value, long count"),
+        vec!["Boolean", "long"]
+    );
+    // Kotlin's `Boolean` is both: still folded.
+    assert_eq!(parameter_type_keys("value: Boolean"), vec!["boolean"]);
+}
+
+#[test]
+fn boxing_is_tried_only_after_widening_and_subtyping() {
+    let score = |argument: &str, parameter: &str| {
+        overload_fit_score(
+            &[ArgumentType::Known(argument.into())],
+            &[parameter.to_owned()],
+            &UnknownHierarchy,
+        )
+    };
+    assert!(score("boolean", "boolean") > score("boolean", "Boolean"));
+    assert!(score("Boolean", "Boolean") > score("Boolean", "boolean"));
+    assert!(score("int", "long") > score("int", "Integer"));
+    assert!(score("Double", "Number") > score("Double", "double"));
+    assert_eq!(score("int", "Long"), None, "boxing never widens");
+    assert_eq!(
+        score("Integer", "short"),
+        None,
+        "no narrowing after unboxing"
+    );
+    assert!(
+        score("Integer", "long").is_some(),
+        "unboxing, then widening"
+    );
+    assert!(score("char", "int").is_some());
+}
+
+#[test]
+fn more_specific_overload_is_the_one_whose_parameters_are_subtypes() {
+    let keys = |keys: &[&str]| keys.iter().map(|key| (*key).to_owned()).collect::<Vec<_>>();
+    let specific = keys(&["String", "Appendable"]);
+    let general = keys(&["Object", "Appendable"]);
+    assert!(is_more_specific(
+        &specific,
+        &general,
+        &uri(),
+        &UnknownHierarchy
+    ));
+    assert!(!is_more_specific(
+        &general,
+        &specific,
+        &uri(),
+        &UnknownHierarchy
+    ));
+    assert!(is_more_specific(
+        &keys(&["int"]),
+        &keys(&["long"]),
+        &uri(),
+        &UnknownHierarchy
+    ));
+    assert!(!is_more_specific(
+        &keys(&["int"]),
+        &keys(&["Integer"]),
+        &uri(),
+        &UnknownHierarchy
+    ));
+}
