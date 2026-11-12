@@ -118,3 +118,37 @@ passed, asked, failures = itest.score(itest.Repo(str(REPO)), fixture, result)["c
 assert (passed, asked) == (0, 1), (passed, asked)
 
 print("ok: callHierarchy shares the references' known misses, any other extra call still fails")
+
+# Hand-written cases: a position that no longer holds the identifier stops
+# the test before any server runs; a case below its own baseline exits 1.
+import handwritten
+
+def hand_file(entries, baselines=None):
+    hand_path = os.path.join(tempfile.mkdtemp(), "hand.json")
+    json.dump({"target": "selfcheck", "cases": entries, "baselines": baselines or {}}, open(hand_path, "w"))
+    return hand_path
+
+call_case = {"id": "call", "kind": "definition", "file": "src/Caller.java", "line": 2, "at": "call",
+             "category": "member_call", "why": "selfcheck", "expect": {"definition": "src/Target.java:2"}}
+try:
+    handwritten.load(hand_file([dict(call_case, line=1)]), itest.Repo(str(REPO)))
+    raise AssertionError("a case whose line does not hold `at` must be refused")
+except handwritten.AuthoringError as error:
+    assert "`call` (#1) not on line 1" in str(error), error
+try:
+    handwritten.load(hand_file([dict(call_case, expect={"definition": "src/Target.java:1"})]), itest.Repo(str(REPO)))
+    raise AssertionError("an expected line that does not hold the name must be refused")
+except handwritten.AuthoringError as error:
+    assert "does not hold `call`" in str(error), error
+
+queries, hand_fixture = handwritten.load(hand_file([call_case]), itest.Repo(str(REPO)))
+asked = queries["definition"][0]
+assert (asked["id"], asked["line"], asked["character"]) == ("hand-call", 1, 28), asked
+result["answers"]["definition"].append({"id": "hand-call", "locations": [location("src/Caller.java", 1)]})
+json.dump(result, open(path + ".result", "w"))
+fixture["baselines"]["server"] = {}
+json.dump(fixture, open(path, "w"))
+arguments.handwritten = hand_file([call_case], {"server": {"definition": 1}})
+assert itest.check(arguments) == 1, "a hand-written case below its baseline must exit non-zero"
+
+print("ok: hand-written cases are checked against the sources and gated by their own baseline")

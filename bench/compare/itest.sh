@@ -16,7 +16,8 @@
 #                     separated, default all); the others are kept as they are
 #   --features LIST   what the servers are asked (default all: every feature
 #                     in features.py besides definition/references/completion)
-#   --update-baseline record kmp-lsp's score as its new baseline
+#   --update-baseline record kmp-lsp's score as its new baseline (generated
+#                     and hand-written cases alike)
 #   --add-missing-baselines
 #                     record kmp-lsp's score only for features without a baseline
 #   --workdir DIR     where the clone, caches and results go (default: ~/lsp-compare)
@@ -61,6 +62,7 @@ TARGET_JSON="$SCRIPT_DIR/targets/$TARGET_NAME.json"
 REPO="$WORKDIR/$TARGET_NAME"
 QUERIES="$WORKDIR/$TARGET_NAME-queries.json"
 CASES="$SCRIPT_DIR/cases/$TARGET_NAME-java.json"
+HANDWRITTEN="$SCRIPT_DIR/cases/$TARGET_NAME-java-handwritten.json"
 RESULTS="$WORKDIR/itest-results"
 KMP_LSP="$REPO_ROOT/target/release/kmp-lsp"
 
@@ -80,6 +82,14 @@ fi
 git -C "$REPO" fetch -q origin "$(json commit)" 2>/dev/null || true
 git -C "$REPO" checkout -q "$(json commit)"
 python3 "$SCRIPT_DIR/queries.py" "$REPO" "$TARGET_JSON" "$QUERIES"
+# Hand-written cases (handwritten.py) are asked in the same runs as the
+# sampled queries; a case whose position no longer matches the sources stops
+# the test here.
+hand_args=()
+if [ -f "$HANDWRITTEN" ]; then
+  python3 "$SCRIPT_DIR/itest.py" add-queries --queries "$QUERIES" --repo "$REPO" --handwritten "$HANDWRITTEN"
+  hand_args=(--handwritten "$HANDWRITTEN")
+fi
 
 # jdtls imports the project by running its build: a filled dependency cache
 # keeps downloads out of the measurement (and out of the failure modes).
@@ -141,6 +151,6 @@ for server in ${SERVERS//,/ }; do
   [ "$server" = kmp-lsp ] && [ $UPDATE_BASELINE = 1 ] && update=--update-baseline
   [ "$server" = kmp-lsp ] && [ $ADD_MISSING_BASELINES = 1 ] && update=--add-missing-baselines
   python3 "$SCRIPT_DIR/itest.py" check --repo "$REPO" --cases "$CASES" \
-    --result "$RESULTS/$server.json" $update || status=1
+    --result "$RESULTS/$server.json" $update "${hand_args[@]}" || status=1
 done
 exit $status
