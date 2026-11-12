@@ -1463,6 +1463,18 @@ impl CurrentFileCompletionContext {
     }
 }
 
+/// Whether a bare name in a `language` file can reach `symbol` from outside
+/// its declaration: in Java only a type can — a method or field needs its
+/// class's scope (`java_scope_completions`) or a receiver. Kotlin's
+/// top-level functions and properties are reachable too.
+fn reachable_bare(symbol: &SymbolEntry, language: crate::Language) -> bool {
+    let is_type = matches!(
+        symbol.kind,
+        SymbolKind::CLASS | SymbolKind::INTERFACE | SymbolKind::STRUCT | SymbolKind::ENUM
+    );
+    is_type || language != crate::Language::Java
+}
+
 struct BareCompletionWalk<'a> {
     indexer: &'a Indexer,
     prefix: &'a str,
@@ -1510,7 +1522,12 @@ impl<'a> BareCompletionWalk<'a> {
             return;
         };
 
-        for symbol in &file.symbols {
+        let language = self.language();
+        for symbol in file
+            .symbols
+            .iter()
+            .filter(|symbol| reachable_bare(symbol, language))
+        {
             self.completer.add(
                 &symbol.name,
                 symbol_kind_to_completion(symbol.kind),
@@ -1521,7 +1538,9 @@ impl<'a> BareCompletionWalk<'a> {
             );
         }
 
-        if self.completer.lowercase_mode {
+        // `declared_names` is a Kotlin `name:` text scan; Java's locals are
+        // read from the tree by `java_scope_completions`.
+        if self.completer.lowercase_mode && !self.is_java() {
             for declared_name in &file.declared_names {
                 self.completer.add(
                     declared_name,
@@ -1536,6 +1555,7 @@ impl<'a> BareCompletionWalk<'a> {
     }
 
     fn collect_same_package(&mut self) {
+        let language = self.language();
         let Some(package_name) = self.current_package_name() else {
             return;
         };
@@ -1563,7 +1583,11 @@ impl<'a> BareCompletionWalk<'a> {
             if file.source_set == SourceSet::Test && caller_source_set != SourceSet::Test {
                 continue;
             }
-            for symbol in &file.symbols {
+            for symbol in file
+                .symbols
+                .iter()
+                .filter(|symbol| reachable_bare(symbol, language))
+            {
                 self.completer.add(
                     &symbol.name,
                     symbol_kind_to_completion(symbol.kind),
@@ -1591,7 +1615,8 @@ impl<'a> BareCompletionWalk<'a> {
     /// `withContext`, etc., which are excluded from `collect_cross_package` (uppercase
     /// only) but are directly usable because they are already star-imported.
     fn collect_star_imported_functions(&mut self) {
-        if self.completer.annotation_only || !self.completer.lowercase_mode {
+        // Java has no top-level functions; `import pkg.*` brings in types.
+        if self.completer.annotation_only || !self.completer.lowercase_mode || self.is_java() {
             return;
         }
         // Resolve imports from live_lines when available so newly added imports work.
@@ -1884,9 +1909,18 @@ impl<'a> BareCompletionWalk<'a> {
         });
     }
 
+    fn language(&self) -> crate::Language {
+        crate::Language::from_path(self.from_uri.path())
+    }
+
+    fn is_java(&self) -> bool {
+        self.language() == crate::Language::Java
+    }
+
     fn collect_stdlib(&mut self) {
         // Kotlin stdlib contains no annotation classes — skip entirely in annotation context.
-        if self.completer.annotation_only {
+        // Nor is any of it (or the Kotlin live templates) callable from Java.
+        if self.completer.annotation_only || self.is_java() {
             return;
         }
         for mut item in bare_completions(self.completer.snippets) {
@@ -1929,7 +1963,9 @@ impl<'a> BareCompletionWalk<'a> {
     /// `symbols_from_nested_type` enumerates jar-backed ancestors by
     /// `container` (synthetic one-line ranges can't nest).
     fn collect_inherited_members(&mut self) {
-        if self.completer.annotation_only {
+        // Java's inherited members, with Java's access rules, come from
+        // `java_scope_completions`.
+        if self.completer.annotation_only || self.is_java() {
             return;
         }
         let cursor_line = match self.cursor_line {

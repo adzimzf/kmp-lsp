@@ -58,7 +58,8 @@ pub(crate) use self::infer::{
         lambda_param_position_on_line, line_has_lambda_param, ThisContext,
     },
     java_cst::{
-        java_local_at, literal_argument_calls, parameter_for_argument, DeclaredParameter,
+        enclosing_java_class_names, java_local_at, java_locals_in_scope, literal_argument_calls,
+        parameter_for_argument, DeclaredParameter, JavaLocal, JavaLocalBinding,
         LiteralArgumentCall,
     },
     lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS, SCOPE_FUNCTIONS},

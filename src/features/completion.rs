@@ -224,7 +224,16 @@ pub(crate) fn run_completions(
         Some(position.line),
     );
 
-    if ctx.receiver.is_none() {
+    let java_scope = (ctx.receiver.is_none() && !ctx.annotation_only)
+        .then(|| {
+            crate::features::java_completion::java_scope_completions(
+                index, uri, position, prefix, snippets,
+            )
+        })
+        .flatten();
+    if let Some(scope_items) = java_scope {
+        items = crate::features::java_completion::rank_java_bare_completions(scope_items, items);
+    } else if ctx.receiver.is_none() {
         if !ctx.annotation_only {
             add_implicit_receiver_member_completions(
                 &mut items, index, &ctx.scope, prefix, uri, snippets, position,

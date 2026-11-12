@@ -418,41 +418,97 @@ pub(crate) fn java_local_at<'tree>(
     bytes: &[u8],
 ) -> Option<JavaLocal<'tree>> {
     let name = use_site.utf8_text_owned(bytes)?;
+    locals_visible_from(use_site, &LocalName::Exactly(&name), bytes)
+        .into_iter()
+        .next()
+}
+
+/// Every local and parameter visible at `use_site`, nearest first, one per
+/// name: the one a use of that name there would bind (an inner declaration
+/// shadows an outer one). What a bare name may complete to before members.
+pub(crate) fn java_locals_in_scope<'tree>(
+    use_site: Node<'tree>,
+    bytes: &[u8],
+) -> Vec<JavaLocal<'tree>> {
+    let mut seen = std::collections::HashSet::new();
+    locals_visible_from(use_site, &LocalName::Any, bytes)
+        .into_iter()
+        .filter(|local| {
+            local
+                .declared_name
+                .utf8_text(bytes)
+                .is_ok_and(|name| seen.insert(name.to_owned()))
+        })
+        .collect()
+}
+
+/// Which local names a scope walk collects.
+enum LocalName<'name> {
+    /// Only declarations of this name (resolving a use site).
+    Exactly(&'name str),
+    /// Every declaration (listing what's in scope).
+    Any,
+}
+
+impl LocalName<'_> {
+    fn accepts(&self, declared: &str) -> bool {
+        match self {
+            LocalName::Exactly(name) => *name == declared,
+            LocalName::Any => true,
+        }
+    }
+}
+
+/// The locals `wanted` visible at `use_site`, nearest first. A class body
+/// ends the walk — past it a name is a member.
+fn locals_visible_from<'tree>(
+    use_site: Node<'tree>,
+    wanted: &LocalName<'_>,
+    bytes: &[u8],
+) -> Vec<JavaLocal<'tree>> {
+    let mut found = Vec::new();
     let mut inner = use_site;
     while let Some(scope) = inner.parent() {
         let kind = scope.kind();
         if is_class_like_body(kind) || kind == PROGRAM {
-            return None;
+            break;
         }
-        if let Some(local) = local_in_scope(scope, inner, use_site.start_byte(), &name, bytes) {
-            return Some(local);
+        let in_this_scope = locals_in_scope(scope, inner, use_site.start_byte(), wanted, bytes);
+        let is_lookup = matches!(wanted, LocalName::Exactly(_));
+        found.extend(in_this_scope);
+        if is_lookup && !found.is_empty() {
+            break;
         }
         inner = scope;
     }
-    None
+    found
 }
 
-/// The name field of `declaration` when it reads `name`.
+/// The name field of `declaration` when `wanted` accepts it.
 fn declared_name_node<'tree>(
     declaration: Node<'tree>,
-    name: &str,
+    wanted: &LocalName<'_>,
     bytes: &[u8],
 ) -> Option<Node<'tree>> {
-    declaration
-        .child_by_field_name("name")
-        .filter(|declared| declared.utf8_text(bytes).ok() == Some(name))
+    declaration.child_by_field_name("name").filter(|declared| {
+        declared
+            .utf8_text(bytes)
+            .is_ok_and(|text| wanted.accepts(text))
+    })
 }
 
-fn local_in_scope<'tree>(
+/// The locals `wanted` that `scope` declares for `inner` (its child on the
+/// way up from the use site at `use_start`), nearest first.
+fn locals_in_scope<'tree>(
     scope: Node<'tree>,
     inner: Node<'tree>,
     use_start: usize,
-    name: &str,
+    wanted: &LocalName<'_>,
     bytes: &[u8],
-) -> Option<JavaLocal<'tree>> {
+) -> Vec<JavaLocal<'tree>> {
     match scope.kind() {
         BLOCK | CONSTRUCTOR_BODY | SWITCH_BLOCK_GROUP => {
-            earlier_local_declaration(scope, use_start, name, bytes)
+            earlier_local_declarations(scope, use_start, wanted, bytes)
         }
         FOR_STATEMENT => {
             let mut cursor = scope.walk();
@@ -462,102 +518,128 @@ fn local_in_scope<'tree>(
                 .collect();
             initializers
                 .into_iter()
-                .find_map(|declaration| declared_local(declaration, use_start, name, bytes))
+                .rev()
+                .flat_map(|declaration| declared_locals(declaration, use_start, wanted, bytes))
+                .collect()
         }
         ENHANCED_FOR => {
-            let declared_name = declared_name_node(scope, name, bytes)?;
             let in_body = scope
                 .child_by_field_name("body")
                 .is_some_and(|body| body.id() == inner.id());
-            in_body.then(|| JavaLocal::new(declared_name, typed_binding_of(scope, bytes)))
+            declared_name_node(scope, wanted, bytes)
+                .filter(|_| in_body)
+                .map(|declared_name| JavaLocal::new(declared_name, typed_binding_of(scope, bytes)))
+                .into_iter()
+                .collect()
         }
-        CATCH_CLAUSE => {
-            let parameter = scope.first_child_of_kind(CATCH_FORMAL_PARAMETER)?;
-            let declared_name = declared_name_node(parameter, name, bytes)?;
-            let binding = parameter
-                .first_child_of_kind("catch_type")
-                .and_then(|catch_type| catch_type.utf8_text_owned(bytes))
-                .map_or(JavaLocalBinding::Untyped, |catch_type| {
-                    // A multi-catch `A | B` has no single type.
-                    if catch_type.contains('|') {
-                        JavaLocalBinding::Untyped
-                    } else {
-                        JavaLocalBinding::Typed(catch_type)
-                    }
-                });
-            Some(JavaLocal::new(declared_name, binding))
-        }
+        CATCH_CLAUSE => catch_parameter(scope, wanted, bytes).into_iter().collect(),
         RESOURCE_SPECIFICATION | "try_with_resources_statement" => {
             let specification = if scope.kind() == RESOURCE_SPECIFICATION {
-                scope
+                Some(scope)
             } else {
-                scope.child_by_field_name("resources")?
+                scope.child_by_field_name("resources")
+            };
+            let Some(specification) = specification else {
+                return Vec::new();
             };
             specification
                 .children_of_kind(RESOURCE)
                 .into_iter()
-                .find_map(|resource| {
-                    let declared_name = declared_name_node(resource, name, bytes)?;
+                .rev()
+                .filter_map(|resource| {
+                    let declared_name = declared_name_node(resource, wanted, bytes)?;
                     Some(JavaLocal::new(
                         declared_name,
                         typed_binding_of(resource, bytes),
                     ))
                 })
+                .collect()
         }
-        METHOD_DECLARATION | CONSTRUCTOR_DECLARATION => {
-            declared_parameter(scope.child_by_field_name("parameters")?, name, bytes)
-        }
-        LAMBDA_EXPRESSION => lambda_parameter(scope, name, bytes),
-        _ => None,
+        METHOD_DECLARATION | CONSTRUCTOR_DECLARATION => scope
+            .child_by_field_name("parameters")
+            .map(|parameters| declared_parameters_of(parameters, wanted, bytes))
+            .unwrap_or_default(),
+        LAMBDA_EXPRESSION => lambda_parameters(scope, wanted, bytes),
+        _ => Vec::new(),
     }
 }
 
-/// The nearest local `name` declared in `block` before the use site at
-/// `use_start`. A declarator is in scope only once it has ended: `Foo foo =
-/// foo.bar()` doesn't see itself, `int a = 1, b = a` sees `a`.
-fn earlier_local_declaration<'tree>(
-    block: Node<'tree>,
-    use_start: usize,
-    name: &str,
+/// The parameter of the `catch` clause `clause`, when `wanted` accepts it.
+fn catch_parameter<'tree>(
+    clause: Node<'tree>,
+    wanted: &LocalName<'_>,
     bytes: &[u8],
 ) -> Option<JavaLocal<'tree>> {
-    let mut nearest = None;
+    let parameter = clause.first_child_of_kind(CATCH_FORMAL_PARAMETER)?;
+    let declared_name = declared_name_node(parameter, wanted, bytes)?;
+    let binding = parameter
+        .first_child_of_kind("catch_type")
+        .and_then(|catch_type| catch_type.utf8_text_owned(bytes))
+        .map_or(JavaLocalBinding::Untyped, |catch_type| {
+            // A multi-catch `A | B` has no single type.
+            if catch_type.contains('|') {
+                JavaLocalBinding::Untyped
+            } else {
+                JavaLocalBinding::Typed(catch_type)
+            }
+        });
+    Some(JavaLocal::new(declared_name, binding))
+}
+
+/// The locals `wanted` declared in `block` before the use site at
+/// `use_start`, nearest first. A declarator is in scope only once it has
+/// ended: `Foo foo = foo.bar()` doesn't see itself, `int a = 1, b = a` sees
+/// `a`.
+fn earlier_local_declarations<'tree>(
+    block: Node<'tree>,
+    use_start: usize,
+    wanted: &LocalName<'_>,
+    bytes: &[u8],
+) -> Vec<JavaLocal<'tree>> {
+    let mut declarations = Vec::new();
     let mut cursor = block.walk();
     for statement in block.named_children(&mut cursor) {
         if statement.start_byte() >= use_start {
             break;
         }
         if statement.kind() == LOCAL_VARIABLE_DECLARATION {
-            if let Some(local) = declared_local(statement, use_start, name, bytes) {
-                nearest = Some(local);
-            }
+            declarations.push(statement);
         }
     }
-    nearest
+    declarations
+        .into_iter()
+        .rev()
+        .flat_map(|declaration| declared_locals(declaration, use_start, wanted, bytes))
+        .collect()
 }
 
-/// The declarator of the local variable `declaration` that declares `name`
-/// and ends before `use_start`.
-fn declared_local<'tree>(
+/// The declarators of the local variable `declaration` that `wanted`
+/// accepts and that end before `use_start`, nearest first.
+fn declared_locals<'tree>(
     declaration: Node<'tree>,
     use_start: usize,
-    name: &str,
+    wanted: &LocalName<'_>,
     bytes: &[u8],
-) -> Option<JavaLocal<'tree>> {
-    let type_text = declaration
+) -> Vec<JavaLocal<'tree>> {
+    let Some(type_text) = declaration
         .child_by_field_name("type")
-        .and_then(|type_node| type_node.utf8_text_owned(bytes))?;
+        .and_then(|type_node| type_node.utf8_text_owned(bytes))
+    else {
+        return Vec::new();
+    };
     declaration
         .children_of_kind(VARIABLE_DECLARATOR)
         .into_iter()
+        .rev()
         .filter(|declarator| declarator.end_byte() <= use_start)
-        .find_map(|declarator| {
-            let declared_name = declared_name_node(declarator, name, bytes)?;
+        .filter_map(|declarator| {
+            let declared_name = declared_name_node(declarator, wanted, bytes)?;
             Some(JavaLocal::new(
                 declared_name,
                 binding_of_written_type(&type_text, declarator),
             ))
         })
+        .collect()
 }
 
 fn binding_of_written_type<'tree>(
@@ -598,17 +680,18 @@ fn typed_binding_of<'tree>(declaration: Node<'tree>, bytes: &[u8]) -> JavaLocalB
     JavaLocalBinding::Typed(type_text)
 }
 
-fn declared_parameter<'tree>(
+/// The parameters `wanted` of the `formal_parameters` node `parameters`.
+fn declared_parameters_of<'tree>(
     parameters: Node<'tree>,
-    name: &str,
+    wanted: &LocalName<'_>,
     bytes: &[u8],
-) -> Option<JavaLocal<'tree>> {
+) -> Vec<JavaLocal<'tree>> {
     let mut cursor = parameters.walk();
     let found = parameters
         .named_children(&mut cursor)
-        .find_map(|parameter| match parameter.kind() {
+        .filter_map(|parameter| match parameter.kind() {
             FORMAL_PARAMETER => {
-                let declared_name = declared_name_node(parameter, name, bytes)?;
+                let declared_name = declared_name_node(parameter, wanted, bytes)?;
                 Some(JavaLocal::new(
                     declared_name,
                     typed_binding_of(parameter, bytes),
@@ -617,7 +700,7 @@ fn declared_parameter<'tree>(
             SPREAD_PARAMETER => {
                 let declared_name = parameter
                     .first_child_of_kind(VARIABLE_DECLARATOR)
-                    .and_then(|declarator| declared_name_node(declarator, name, bytes))?;
+                    .and_then(|declarator| declared_name_node(declarator, wanted, bytes))?;
                 // `T... values` is a `T[]` inside the method.
                 let binding = parameter
                     .named_child(0)
@@ -629,30 +712,42 @@ fn declared_parameter<'tree>(
                 Some(JavaLocal::new(declared_name, binding))
             }
             _ => None,
-        });
+        })
+        .collect();
     found
 }
 
-fn lambda_parameter<'tree>(
+fn lambda_parameters<'tree>(
     lambda: Node<'tree>,
-    name: &str,
+    wanted: &LocalName<'_>,
     bytes: &[u8],
-) -> Option<JavaLocal<'tree>> {
-    let parameters = lambda.child_by_field_name("parameters")?;
+) -> Vec<JavaLocal<'tree>> {
+    let Some(parameters) = lambda.child_by_field_name("parameters") else {
+        return Vec::new();
+    };
+    let accepted = |parameter: &Node<'tree>| {
+        parameter
+            .utf8_text(bytes)
+            .is_ok_and(|text| wanted.accepts(text))
+    };
     match parameters.kind() {
-        IDENTIFIER => {
-            let declares_it = parameters.utf8_text(bytes).ok() == Some(name);
-            declares_it.then(|| JavaLocal::new(parameters, JavaLocalBinding::Untyped))
-        }
+        IDENTIFIER => std::iter::once(parameters)
+            .filter(accepted)
+            .map(|parameter| JavaLocal::new(parameter, JavaLocalBinding::Untyped))
+            .collect(),
         INFERRED_PARAMETERS => {
             let mut cursor = parameters.walk();
-            let declared_name = parameters
+            let declared: Vec<Node<'tree>> = parameters
                 .named_children(&mut cursor)
-                .find(|parameter| parameter.utf8_text(bytes).ok() == Some(name))?;
-            Some(JavaLocal::new(declared_name, JavaLocalBinding::Untyped))
+                .filter(accepted)
+                .collect();
+            declared
+                .into_iter()
+                .map(|parameter| JavaLocal::new(parameter, JavaLocalBinding::Untyped))
+                .collect()
         }
-        FORMAL_PARAMETERS => declared_parameter(parameters, name, bytes),
-        _ => None,
+        FORMAL_PARAMETERS => declared_parameters_of(parameters, wanted, bytes),
+        _ => Vec::new(),
     }
 }
 
