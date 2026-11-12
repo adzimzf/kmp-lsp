@@ -1889,6 +1889,11 @@ impl<'a> BareCompletionWalk<'a> {
         if self.completer.annotation_only {
             return;
         }
+        // Only Kotlin files can call the Kotlin stdlib's top-level functions:
+        // `buildList`, `let`, `require` are not names a Java file may write.
+        if crate::Language::from_path(self.from_uri.as_str()) != crate::Language::Kotlin {
+            return;
+        }
         for mut item in bare_completions(self.completer.snippets) {
             if self.completer.lowercase_mode && item.label.starts_with_uppercase() {
                 continue;

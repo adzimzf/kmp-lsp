@@ -19,6 +19,7 @@
 use tower_lsp::lsp_types::Url;
 use tree_sitter::Node;
 
+use crate::indexer::live_tree::LiveDoc;
 use crate::indexer::NodeExt;
 use crate::resolver::jvm_interop::PropertyAccess;
 use crate::types::Language;
@@ -473,18 +474,167 @@ pub(crate) fn java_local_at<'tree>(
     bytes: &[u8],
 ) -> Option<JavaLocal<'tree>> {
     let name = use_site.utf8_text_owned(bytes)?;
+    java_local_named_at(use_site, &name, bytes)
+}
+
+/// [`java_local_at`] for a name the use site does not spell itself — the
+/// half-typed prefix under a completion cursor names nothing yet.
+fn java_local_named_at<'tree>(
+    use_site: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<JavaLocal<'tree>> {
     let mut inner = use_site;
     while let Some(scope) = inner.parent() {
         let kind = scope.kind();
         if is_class_like_body(kind) || kind == PROGRAM {
             return None;
         }
-        if let Some(local) = local_in_scope(scope, inner, use_site.start_byte(), &name, bytes) {
+        if let Some(local) = local_in_scope(scope, inner, use_site.start_byte(), name, bytes) {
             return Some(local);
         }
         inner = scope;
     }
     None
+}
+
+/// A local or parameter a bare-word completion may name at the cursor.
+pub(crate) struct JavaScopeLocal {
+    pub(crate) name: String,
+    /// The type as written (`List<User>`), empty when the declaration writes
+    /// none (an inferred lambda parameter, a `var` local).
+    pub(crate) type_text: String,
+}
+
+/// The locals and parameters in scope at `point` in `doc`, nearest first —
+/// the names a Java bare-word completion there may offer.
+pub(crate) fn java_scope_locals_at(
+    doc: &LiveDoc,
+    point: tree_sitter::Point,
+) -> Vec<JavaScopeLocal> {
+    let Some(node) =
+        crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)
+    else {
+        return Vec::new();
+    };
+    // The cursor's own byte, not the covering node's start: inside a block the
+    // covering node starts before the locals declared above the cursor, and
+    // those are exactly the ones in scope.
+    let use_start = byte_of_point(&doc.bytes, point);
+    java_locals_in_scope(node, use_start, &doc.bytes)
+        .into_iter()
+        .filter_map(|local| {
+            Some(JavaScopeLocal {
+                name: local.declared_name.utf8_text_owned(&doc.bytes)?,
+                type_text: match local.binding {
+                    JavaLocalBinding::Typed(written) => written,
+                    _ => String::new(),
+                },
+            })
+        })
+        .collect()
+}
+
+/// The byte offset of `point`, clamped to its row's end.
+fn byte_of_point(bytes: &[u8], point: tree_sitter::Point) -> usize {
+    let mut offset = 0;
+    for _ in 0..point.row {
+        match bytes[offset..].iter().position(|byte| *byte == b'\n') {
+            Some(newline) => offset += newline + 1,
+            None => return bytes.len(),
+        }
+    }
+    let row_end = bytes[offset..]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map_or(bytes.len(), |newline| offset + newline);
+    (offset + point.column).min(row_end)
+}
+
+/// Every local and parameter in scope at `use_start`, nearest scope first —
+/// what a bare-word completion there may name. Each is typed by the same
+/// rules as [`java_local_at`]. `enclosing` is the node covering `use_start`.
+pub(crate) fn java_locals_in_scope<'tree>(
+    enclosing: Node<'tree>,
+    use_start: usize,
+    bytes: &[u8],
+) -> Vec<JavaLocal<'tree>> {
+    let mut in_scope = Vec::new();
+    let mut named = std::collections::HashSet::new();
+    let mut inner = enclosing;
+    let mut scope = Some(enclosing);
+    while let Some(current) = scope {
+        let kind = current.kind();
+        if is_class_like_body(kind) || kind == PROGRAM {
+            break;
+        }
+        for name in declared_names_under(current, bytes) {
+            if named.contains(&name) {
+                continue;
+            }
+            // `local_in_scope` decides whether the name really binds here:
+            // a candidate from a nested block or a later statement doesn't.
+            if let Some(local) = local_in_scope(current, inner, use_start, &name, bytes) {
+                named.insert(name);
+                in_scope.push(local);
+            }
+        }
+        inner = current;
+        scope = current.parent();
+    }
+    in_scope
+}
+
+/// Candidate binding names written by `scope` or anywhere under it (a nested
+/// class body excluded) — [`local_in_scope`] filters them down to the ones
+/// that bind at the use site.
+fn declared_names_under(scope: Node<'_>, bytes: &[u8]) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut pending = vec![scope];
+    while let Some(node) = pending.pop() {
+        match node.kind() {
+            VARIABLE_DECLARATOR
+            | FORMAL_PARAMETER
+            | CATCH_FORMAL_PARAMETER
+            | RESOURCE
+            | ENHANCED_FOR => {
+                if let Some(name) = node
+                    .child_by_field_name("name")
+                    .and_then(|name| name.utf8_text_owned(bytes))
+                {
+                    names.push(name);
+                }
+            }
+            LAMBDA_EXPRESSION => names.extend(lambda_parameter_names(node, bytes)),
+            _ => {}
+        }
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            if is_class_like_body(child.kind()) {
+                continue;
+            }
+            pending.push(child);
+        }
+    }
+    names
+}
+
+/// The names a lambda's parameter list declares, written types or not.
+fn lambda_parameter_names(lambda: Node<'_>, bytes: &[u8]) -> Vec<String> {
+    let Some(parameters) = lambda.child_by_field_name("parameters") else {
+        return Vec::new();
+    };
+    match parameters.kind() {
+        IDENTIFIER => parameters.utf8_text_owned(bytes).into_iter().collect(),
+        INFERRED_PARAMETERS => {
+            let mut cursor = parameters.walk();
+            parameters
+                .named_children(&mut cursor)
+                .filter_map(|parameter| parameter.utf8_text_owned(bytes))
+                .collect()
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// The name field of `declaration` when it reads `name`.
