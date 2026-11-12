@@ -30,6 +30,7 @@ import os
 import sys
 
 import features as extra
+import handwritten
 from score import Repo, label_name, matches_member, normalize_target
 
 BASE_FEATURES = ("definition", "references", "completion")
@@ -132,7 +133,10 @@ def generate(arguments):
     """Write (or update) the fixture: the selected features' cases are
     rebuilt, every other feature's cases and baselines are kept."""
     repo = Repo(arguments.repo)
-    query_kinds = {kind: [query for query in queries if query["language"] == arguments.language]
+    # Hand-written queries are asked in the same run but graded from their
+    # own file: never turned into generated cases.
+    query_kinds = {kind: [query for query in queries if query["language"] == arguments.language
+                          and not query["id"].startswith(handwritten.PREFIX)]
                    for kind, queries in json.load(open(arguments.queries))["queries"].items()}
     queries = {query["id"]: query for kind in query_kinds.values() for query in kind}
     result = json.load(open(arguments.result))
@@ -340,7 +344,25 @@ def check(arguments):
         for feature in members:
             print_feature(feature, report[feature], baseline, failed, arguments, repo)
     print_totals(report)
-    return finish(arguments, fixture, report, server, baseline, failed)
+    status = finish(arguments, fixture, report, server, baseline, failed, arguments.cases)
+    if getattr(arguments, "handwritten", None):
+        status = max(status, check_handwritten(arguments, repo, result, server))
+    return status
+
+def check_handwritten(arguments, repo, result, server):
+    """The hand-written cases, graded like the generated ones and held to
+    their own baseline (recorded in their own file)."""
+    _, fixture = handwritten.load(arguments.handwritten, repo)
+    report = score(repo, fixture, result)
+    baseline = fixture["baselines"].get(server)
+    failed = []
+    print(f"\n  ── hand-written cases ({os.path.basename(arguments.handwritten)})")
+    for feature in report:
+        print_feature(feature, report[feature], baseline, failed, arguments, repo)
+    print_totals(report)
+    with open(arguments.handwritten) as handle:
+        authored = json.load(handle)
+    return finish(arguments, authored, report, server, baseline, failed, arguments.handwritten)
 
 def print_feature(feature, scored, baseline, failed, arguments, repo):
     """One feature's score against its baseline, then its first failures."""
@@ -365,7 +387,7 @@ def print_totals(report):
     print(f"\n  {'total':20} {total_passed:>3}/{total_asked}"
           + (f" ({100 * total_passed / total_asked:.0f}%)" if total_asked else ""))
 
-def finish(arguments, fixture, report, server, baseline, failed):
+def finish(arguments, fixture, report, server, baseline, failed, path):
     """Record baselines when asked; else the exit status of the gate."""
     add_missing = getattr(arguments, "add_missing_baselines", False)
     if arguments.update_baseline or add_missing:
@@ -373,12 +395,12 @@ def finish(arguments, fixture, report, server, baseline, failed):
         for feature in report:
             if arguments.update_baseline or feature not in recorded:
                 recorded[feature] = report[feature][0]
-        with open(arguments.cases, "w") as handle:
+        with open(path, "w") as handle:
             json.dump(fixture, handle, indent=1)
-        print(f"\nbaseline for {server} written to {arguments.cases}")
+        print(f"\nbaseline for {server} written to {path}")
         return 0
     if baseline is None:
-        print(f"\nno baseline for {server} in {arguments.cases} — record one with --update-baseline")
+        print(f"\nno baseline for {server} in {path} — record one with --update-baseline")
         return 1
     if failed:
         print("\nbelow baseline: " + "; ".join(failed))
@@ -399,18 +421,29 @@ def main():
     generator.add_argument("--features", default="all",
                            help="features whose cases to (re)build, comma-separated; the rest are kept")
 
+    adder = commands.add_parser("add-queries", help="add the hand-written queries to a queries.py file")
+    adder.add_argument("--queries", required=True)
+    adder.add_argument("--repo", required=True)
+    adder.add_argument("--handwritten", required=True)
+
     checker = commands.add_parser("check")
     checker.add_argument("--repo", required=True)
     checker.add_argument("--cases", required=True)
     checker.add_argument("--result", required=True)
     checker.add_argument("--failures", type=int, default=10, help="failures to list per feature")
     checker.add_argument("--update-baseline", action="store_true")
+    checker.add_argument("--handwritten", help="hand-written cases (handwritten.py) to grade as well")
     checker.add_argument("--add-missing-baselines", action="store_true",
                          help="record the score of features without a baseline; leave the others alone")
 
     arguments = parser.parse_args()
     if arguments.command == "generate":
         generate(arguments)
+        return 0
+    if arguments.command == "add-queries":
+        queries, _ = handwritten.load(arguments.handwritten, Repo(arguments.repo))
+        added = handwritten.merge_queries(arguments.queries, queries)
+        print(f"{arguments.queries}: {added} hand-written queries added")
         return 0
     return check(arguments)
 
