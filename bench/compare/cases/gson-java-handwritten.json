@@ -1576,11 +1576,11 @@
    "completion": 15
   },
   "kmp-lsp": {
-   "definition": 81,
-   "references": 4,
+   "definition": 86,
+   "references": 14,
    "completion": 15,
-   "hover": 4,
-   "typeDefinition": 5,
+   "hover": 9,
+   "typeDefinition": 6,
    "implementation": 3,
    "signatureHelp": 7,
    "callHierarchy": 3

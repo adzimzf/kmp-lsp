@@ -175,3 +175,35 @@ async fn a_qualified_generic_array_type_goes_to_its_last_segment() {
     let found = type_definitions_at(&indexer, "Caller.java", caller, "entries;").await;
     assert_eq!(found, vec![("Outer.java".to_owned(), 2)]);
 }
+
+/// An untyped lambda parameter's type comes from the lambda's written
+/// target type: `src` of `(Serializer<Base>) (src, context) -> ..` fills
+/// `serialize(T src, ..)`'s `T` with `Base`; `context` is the `Context` the
+/// interface writes for it.
+#[tokio::test]
+async fn lambda_parameter_goes_to_the_type_its_target_gives_it() {
+    let serializer = "interface Serializer<T> {\n  Object serialize(T src, Context context);\n}\n";
+    let caller = "class Caller {\n\
+                  \x20 Object make() {\n\
+                  \x20   return (Serializer<Base>) (src, context) -> src.name + context.id;\n\
+                  \x20 }\n\
+                  }\n";
+    let indexer = java_workspace(&[
+        ("Serializer.java", serializer),
+        ("Base.java", "class Base {\n  String name;\n}\n"),
+        (
+            "Context.java",
+            "// context\nclass Context {\n  int id;\n}\n",
+        ),
+        ("Caller.java", caller),
+    ]);
+
+    assert_eq!(
+        type_definitions_at(&indexer, "Caller.java", caller, "src.name").await,
+        vec![("Base.java".to_owned(), 0)]
+    );
+    assert_eq!(
+        type_definitions_at(&indexer, "Caller.java", caller, "context.id").await,
+        vec![("Context.java".to_owned(), 1)]
+    );
+}

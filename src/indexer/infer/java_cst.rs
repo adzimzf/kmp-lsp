@@ -63,6 +63,8 @@ const RESOURCE_SPECIFICATION: &str = "resource_specification";
 const BLOCK: &str = "block";
 const CONSTRUCTOR_BODY: &str = "constructor_body";
 const SWITCH_BLOCK_GROUP: &str = "switch_block_statement_group";
+const SWITCH_LABEL: &str = "switch_label";
+const SWITCH_EXPRESSION: &str = "switch_expression";
 const METHOD_DECLARATION: &str = "method_declaration";
 const CONSTRUCTOR_DECLARATION: &str = "constructor_declaration";
 const COMPACT_CONSTRUCTOR: &str = "compact_constructor_declaration";
@@ -96,6 +98,12 @@ const MAX_EXPRESSION_DEPTH: usize = 32;
 /// Whether `uri` is a Java source file — the files this module classifies.
 pub(crate) fn is_java_file(uri: &Url) -> bool {
     Language::from_path(uri.path()) == Language::Java
+}
+
+/// Whether `node` is a name in a type position (a declared type, a type
+/// argument, `T.class`): the parser reads those as `type_identifier`.
+pub(crate) fn is_java_type_name(node: Node<'_>) -> bool {
+    node.kind() == TYPE_IDENTIFIER
 }
 
 /// Whether `node` is a Java identifier this module classifies.
@@ -220,6 +228,26 @@ fn member_access_of(node: Node<'_>) -> Option<MemberAccess<'_>> {
     }
 }
 
+/// The switch's selector when `node` is a bare constant of a `case` label:
+/// `case STRING:` in `switch (token)` names the constant `token`'s enum
+/// declares (JLS 14.11.1), not a field `STRING` of the enclosing class.
+fn switch_label_selector(node: Node<'_>) -> Option<Node<'_>> {
+    let label = node
+        .parent()
+        .filter(|parent| parent.kind() == SWITCH_LABEL)?;
+    if node.kind() != IDENTIFIER {
+        return None;
+    }
+    let mut ancestor = label.parent();
+    while let Some(current) = ancestor {
+        if current.kind() == SWITCH_EXPRESSION {
+            return current.child_by_field_name("condition");
+        }
+        ancestor = current.parent();
+    }
+    None
+}
+
 /// The argument count of a Java `method_invocation` / `new T(..)`.
 fn java_call_shape(invocation: Node<'_>) -> CallShape {
     let arg_count = invocation
@@ -271,6 +299,24 @@ pub(crate) fn classify_java_identifier(
             role: SymbolRole::ImportSegment,
         });
     }
+    if let Some(selector) = switch_label_selector(node) {
+        let enum_type = java_expr_type(selector, bytes, deps, uri)
+            .filter(|(type_name, origin)| known_type(&type_name.dotted_ident_prefix(), origin))
+            .map(|(type_name, origin)| {
+                crate::indexer::ResolvedType::from_inferred(type_name, origin)
+            });
+        if enum_type.is_some() {
+            return Some(SymbolAtCursor {
+                name,
+                role: SymbolRole::Reference {
+                    receiver_type: enum_type,
+                    is_call: false,
+                    shape: None,
+                    access: PropertyAccess::Read,
+                },
+            });
+        }
+    }
     if let Some(member) = member_access_of(node) {
         let receiver_type = java_expr_type(member.receiver, bytes, deps, uri)
             .filter(|(type_name, origin)| {
@@ -306,6 +352,15 @@ pub(crate) fn classify_java_identifier(
             access: PropertyAccess::Read,
         },
     })
+}
+
+/// Whether `node` is the name of a local variable or parameter (a lambda's
+/// included) at its declaration — not a type parameter, a field or a method.
+pub(crate) fn is_java_local_value_declaration(node: Node<'_>) -> bool {
+    node.kind() == IDENTIFIER
+        && node.parent().is_some_and(|parent| {
+            matches!(declaration_at(node, parent), Some(JavaDeclaration::Local))
+        })
 }
 
 /// Whether the Java declaration whose name is `node` is local: declared in a
@@ -771,9 +826,23 @@ fn identifier_type(
         JavaLocalBinding::Inferred(initializer) => {
             expr_type_at_depth(initializer, bytes, deps, uri, depth + 1)
         }
-        JavaLocalBinding::Untyped => None,
+        JavaLocalBinding::Untyped => lambda_parameter_type(node, bytes, deps, uri),
         JavaLocalBinding::NotLocal => member_or_type_named(node, bytes, deps, uri),
     }
+}
+
+/// The type of the untyped lambda parameter `node` reads, from the
+/// lambda's written target type ([`InferDeps::find_lambda_parameter_type`]).
+fn lambda_parameter_type(
+    node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+) -> Option<(String, Url)> {
+    let declared = java_local_at(node, bytes)?.declared_name;
+    let target = lambda_target(declared)?;
+    let target_type = target.target_type.utf8_text_owned(bytes)?;
+    deps.find_lambda_parameter_type(&target_type, target.parameter_index, uri)
 }
 
 /// A name no local binds: a field of an enclosing class (declared in this
@@ -1053,7 +1122,29 @@ const CLASS_SUPERTYPES: [&str; 6] = [
 /// A type as overload selection compares it: no annotations, modifiers,
 /// type arguments, package or nullability, Kotlin and boxed spellings folded
 /// into the Java primitive (`Int`, `Integer` → `int`), varargs as an array.
+/// Kotlin's `Int` is both `int` and `Integer` to a Java caller; a type
+/// written in Java keeps the box apart: [`java_overload_type_key`].
 pub(crate) fn overload_type_key(type_text: &str) -> String {
+    type_key(type_text, Boxes::Folded)
+}
+
+/// [`overload_type_key`] of a type written in Java source, where `Integer`
+/// and `int` are two types: `value(Boolean)` is a different overload from
+/// `value(boolean)`, and javac only boxes when nothing fits without it.
+pub(crate) fn java_overload_type_key(type_text: &str) -> String {
+    type_key(type_text, Boxes::Kept)
+}
+
+/// Whether a type key keeps Java's box classes apart from their primitives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Boxes {
+    /// `Integer` and `Long` read as `int` and `long` (Kotlin's spelling).
+    Folded,
+    /// `Integer` stays `Integer` (Java's).
+    Kept,
+}
+
+fn type_key(type_text: &str, boxes: Boxes) -> String {
     let joined: String = type_text
         .split_whitespace()
         .filter(|word| !word.starts_with('@') && *word != "final" && *word != "vararg")
@@ -1075,22 +1166,49 @@ pub(crate) fn overload_type_key(type_text: &str) -> String {
         .trim_end_matches('?')
         .last_segment()
         .to_owned();
-    let element = match element.as_str() {
-        "Int" | "Integer" => "int".to_owned(),
-        "Long" => "long".to_owned(),
-        "Double" => "double".to_owned(),
-        "Float" => "float".to_owned(),
-        "Short" => "short".to_owned(),
-        "Byte" => "byte".to_owned(),
-        "Boolean" => "boolean".to_owned(),
-        "Char" | "Character" => "char".to_owned(),
-        _ => element,
+    let kotlin_primitive = match element.as_str() {
+        "Int" => Some("int"),
+        "Char" => Some("char"),
+        _ => None,
+    };
+    let element = match (kotlin_primitive, boxes) {
+        (Some(primitive), _) => primitive.to_owned(),
+        (None, Boxes::Kept) => element,
+        (None, Boxes::Folded) => primitive_of_box(&element).map_or(element, str::to_owned),
     };
     if is_array {
         format!("{element}[]")
     } else {
         element
     }
+}
+
+/// Java's primitives and the classes that box them (JLS 5.1.7).
+const BOXES: [(&str, &str); 8] = [
+    ("int", "Integer"),
+    ("long", "Long"),
+    ("double", "Double"),
+    ("float", "Float"),
+    ("short", "Short"),
+    ("byte", "Byte"),
+    ("boolean", "Boolean"),
+    ("char", "Character"),
+];
+
+/// `int` for `Integer`: the primitive a box class holds.
+fn primitive_of_box(class: &str) -> Option<&'static str> {
+    BOXES
+        .iter()
+        .find(|(_, box_class)| *box_class == class)
+        .map(|(primitive, _)| *primitive)
+}
+
+/// `Integer` for `int`: the class a primitive is boxed into.
+fn box_of_primitive(primitive: &str) -> Option<&'static str> {
+    BOXES
+        .iter()
+        .find(|(key, _)| *key == primitive)
+        .map(|(_, box_class)| *box_class)
 }
 
 fn is_primitive_key(key: &str) -> bool {
@@ -1124,18 +1242,15 @@ fn fit(argument: &ArgumentType, parameter: &str, hierarchy: &impl ClassHierarchy
     if CATCH_ALL_TYPES.contains(&parameter) {
         return Fit::Loose;
     }
-    let widening_rank = |key: &str| NUMERIC_WIDENING.iter().position(|numeric| *numeric == key);
-    if let (Some(from), Some(to)) = (widening_rank(known), widening_rank(parameter)) {
-        return if from < to {
-            Fit::Widening
-        } else {
-            Fit::Impossible
-        };
+    if is_primitive_key(known) {
+        return primitive_fit(known, parameter);
     }
-    // A primitive or a `String` is exactly that class: anything else it fits
-    // only as one of the few supertypes it has.
-    let is_closed_class = is_primitive_key(known) || known == "String";
-    if is_closed_class {
+    if let Some(primitive) = primitive_of_box(known) {
+        return box_fit(primitive, parameter);
+    }
+    // A `String` is exactly that class: anything else it fits only as one
+    // of the few supertypes it has.
+    if known == "String" {
         return if PRIMITIVE_SUPERTYPES.contains(&parameter) {
             Fit::Loose
         } else {
@@ -1144,12 +1259,64 @@ fn fit(argument: &ArgumentType, parameter: &str, hierarchy: &impl ClassHierarchy
     }
     // Two other classes: the argument's may extend the parameter's.
     let is_class_supertype = known == "Class" && CLASS_SUPERTYPES.contains(&parameter);
-    if is_primitive_key(parameter) {
+    if is_primitive_key(parameter) || primitive_of_box(parameter).is_some() {
         Fit::Impossible
     } else if is_class_supertype || argument_class_extends(argument, parameter, hierarchy) {
         Fit::Subclass
     } else {
         Fit::Possible
+    }
+}
+
+/// A primitive argument (`known`) for a parameter of another type: widened
+/// without boxing (javac's first phase), else boxed (its second): `1` fits
+/// `long` better than `Integer` or `Number`, and never `Long`.
+fn primitive_fit(known: &str, parameter: &str) -> Fit {
+    if primitive_widens(known, parameter) {
+        return Fit::Widening;
+    }
+    if is_primitive_key(parameter) {
+        return Fit::Impossible;
+    }
+    let boxed = box_of_primitive(known).unwrap_or_default();
+    let is_box_supertype = box_supertypes(boxed).contains(&parameter);
+    if parameter == boxed || is_box_supertype {
+        Fit::Loose
+    } else {
+        Fit::Impossible
+    }
+}
+
+/// A box (`Double`, holding `primitive`) for a parameter of another type:
+/// one of the box class's own supertypes without unboxing (javac's first
+/// phase), else unboxed and widened (its second): `Double.valueOf(1.0)`
+/// fits `Number` better than `double`.
+fn box_fit(primitive: &str, parameter: &str) -> Fit {
+    let boxed = box_of_primitive(primitive).unwrap_or_default();
+    if box_supertypes(boxed).contains(&parameter) {
+        return Fit::Subclass;
+    }
+    if parameter == primitive || primitive_widens(primitive, parameter) {
+        return Fit::Loose;
+    }
+    Fit::Impossible
+}
+
+/// Whether primitive `from` widens to primitive `to` (JLS 5.1.2).
+fn primitive_widens(from: &str, to: &str) -> bool {
+    let widening_rank = |key: &str| NUMERIC_WIDENING.iter().position(|numeric| *numeric == key);
+    let char_widens = from == "char" && matches!(to, "int" | "long" | "float" | "double");
+    match (widening_rank(from), widening_rank(to)) {
+        (Some(from_rank), Some(to_rank)) => from_rank < to_rank,
+        _ => char_widens,
+    }
+}
+
+/// The reference types a box class is, besides itself and `Object`.
+fn box_supertypes(box_class: &str) -> &'static [&'static str] {
+    match box_class {
+        "Boolean" | "Character" => &["Comparable", "Serializable", "Constable"],
+        _ => &["Number", "Comparable", "Serializable", "Constable"],
     }
 }
 
@@ -1177,8 +1344,52 @@ pub(crate) fn overload_fit_score(
     Some(score)
 }
 
+/// Whether an overload with parameter keys `specific` is more specific than
+/// one with `general` (JLS 15.12.2.5): each of its parameters is the
+/// other's type or a subtype of it. Among `toJson(Object, Appendable)` and
+/// `toJson(JsonElement, Appendable)`, both fitting `toJson(null, writer)`,
+/// javac calls the second. `anchor` is the file `specific` is declared in.
+pub(crate) fn is_more_specific(
+    specific: &[String],
+    general: &[String],
+    anchor: &Url,
+    hierarchy: &impl ClassHierarchy,
+) -> bool {
+    specific.len() == general.len()
+        && specific
+            .iter()
+            .zip(general)
+            .all(|(narrow, wide)| parameter_is_subtype(narrow, wide, anchor, hierarchy))
+}
+
+/// Whether parameter type key `narrow` is `wide` or a subtype of it.
+fn parameter_is_subtype(
+    narrow: &str,
+    wide: &str,
+    anchor: &Url,
+    hierarchy: &impl ClassHierarchy,
+) -> bool {
+    if narrow == wide || primitive_widens(narrow, wide) {
+        return true;
+    }
+    if is_primitive_key(narrow) || is_primitive_key(wide) {
+        return false;
+    }
+    if CATCH_ALL_TYPES.contains(&wide) {
+        return true;
+    }
+    if primitive_of_box(narrow).is_some() {
+        return box_supertypes(narrow).contains(&wide);
+    }
+    if narrow == "String" {
+        return PRIMITIVE_SUPERTYPES.contains(&wide);
+    }
+    hierarchy.extends(narrow, anchor, wide)
+}
+
 /// The parameter type keys of a declaration's indexed parameter text — Java's
-/// `@Nullable String name, int count` or Kotlin's `name: String?, count: Int = 0`.
+/// `@Nullable String name, int count` (boxes kept: [`java_overload_type_key`])
+/// or Kotlin's `name: String?, count: Int = 0` (boxes folded).
 pub(crate) fn parameter_type_keys(params: &str) -> Vec<String> {
     if params.trim().is_empty() {
         return Vec::new();
@@ -1202,7 +1413,7 @@ pub(crate) fn parameter_type_keys(params: &str) -> Vec<String> {
                     let type_text = trimmed
                         .rsplit_once(char::is_whitespace)
                         .map_or(trimmed, |(type_text, _name)| type_text);
-                    overload_type_key(type_text)
+                    java_overload_type_key(type_text)
                 }
             }
         })
@@ -1299,6 +1510,141 @@ pub(crate) fn java_declared_type<'tree>(
     Some(declared)
 }
 
+/// What an untyped lambda parameter's type is read from: the lambda's
+/// target type as written in the source (`JsonSerializer<Map<String, Long>>`
+/// of a cast, or of the declaration the lambda initializes) and the
+/// parameter's position, from 0.
+pub(crate) struct LambdaTarget<'tree> {
+    /// The written target type (a `generic_type` or a type name).
+    pub(crate) target_type: Node<'tree>,
+    pub(crate) parameter_index: usize,
+}
+
+/// The [`LambdaTarget`] of the untyped lambda parameter named `name_node`,
+/// or `None` when it isn't one or the lambda's target type isn't written
+/// next to it (a lambda passed as a method argument).
+pub(crate) fn lambda_target<'tree>(name_node: Node<'tree>) -> Option<LambdaTarget<'tree>> {
+    let parent = name_node.parent()?;
+    if !lambda_parameter_name(name_node, parent) {
+        return None;
+    }
+    let (lambda, parameter_index) = if parent.kind() == INFERRED_PARAMETERS {
+        let mut cursor = parent.walk();
+        let index = parent
+            .named_children(&mut cursor)
+            .position(|parameter| parameter.id() == name_node.id())?;
+        (parent.parent()?, index)
+    } else {
+        (parent, 0)
+    };
+    let mut written_around = lambda.parent()?;
+    while written_around.kind() == PARENTHESIZED_EXPRESSION {
+        written_around = written_around.parent()?;
+    }
+    let target_type = match written_around.kind() {
+        CAST_EXPRESSION => written_around.child_by_field_name("type")?,
+        VARIABLE_DECLARATOR => written_around.parent()?.child_by_field_name("type")?,
+        _ => return None,
+    };
+    Some(LambdaTarget {
+        target_type,
+        parameter_index,
+    })
+}
+
+/// The type arguments written on `type_node` (`String`, `Long` of
+/// `Map<String, Long>`); empty for a raw type.
+pub(crate) fn written_type_arguments(type_node: Node<'_>) -> Vec<Node<'_>> {
+    if type_node.kind() != GENERIC_TYPE {
+        return Vec::new();
+    }
+    let mut cursor = type_node.walk();
+    let Some(arguments) = type_node
+        .named_children(&mut cursor)
+        .find(|child| child.kind() == "type_arguments")
+    else {
+        return Vec::new();
+    };
+    let mut cursor = arguments.walk();
+    arguments.named_children(&mut cursor).collect()
+}
+
+/// The functional interface method a lambda implements, read from the
+/// interface declaration whose name is `interface_name`: the type of its
+/// parameter `parameter_index`, and the interface's type parameter names
+/// (the type variables the target's type arguments fill).
+pub(crate) struct AbstractMethodParameter<'tree> {
+    pub(crate) parameter_type: Node<'tree>,
+    pub(crate) interface_type_parameters: Vec<String>,
+}
+
+/// See [`AbstractMethodParameter`]. `None` when `interface_name` doesn't
+/// name an interface with exactly one abstract method (`equals`,
+/// `hashCode` and `toString` aside, which `Object` implements).
+pub(crate) fn abstract_method_parameter<'tree>(
+    interface_name: Node<'tree>,
+    parameter_index: usize,
+    bytes: &[u8],
+) -> Option<AbstractMethodParameter<'tree>> {
+    let interface = interface_name
+        .parent()
+        .filter(|parent| parent.kind() == INTERFACE_DECLARATION)?;
+    let body = interface.child_by_field_name("body")?;
+    let mut cursor = body.walk();
+    let abstract_methods: Vec<Node<'tree>> = body
+        .named_children(&mut cursor)
+        .filter(|member| member.kind() == METHOD_DECLARATION)
+        .filter(|method| is_abstract_interface_method(*method, bytes))
+        .collect();
+    let [method] = abstract_methods.as_slice() else {
+        return None;
+    };
+    let parameters = method.child_by_field_name("parameters")?;
+    let mut cursor = parameters.walk();
+    let parameter = parameters
+        .named_children(&mut cursor)
+        .filter(|parameter| parameter.kind() == FORMAL_PARAMETER)
+        .nth(parameter_index)?;
+    let interface_type_parameters = interface
+        .child_by_field_name("type_parameters")
+        .map(|type_parameters| {
+            let mut cursor = type_parameters.walk();
+            type_parameters
+                .named_children(&mut cursor)
+                .filter(|type_parameter| type_parameter.kind() == TYPE_PARAMETER)
+                .filter_map(|type_parameter| type_parameter.named_child(0))
+                .filter_map(|name| name.utf8_text_owned(bytes))
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(AbstractMethodParameter {
+        parameter_type: parameter.child_by_field_name("type")?,
+        interface_type_parameters,
+    })
+}
+
+/// Whether an interface's `method` is abstract: no body, not `static` or
+/// `default`, and not one of the `Object` methods every class implements.
+fn is_abstract_interface_method(method: Node<'_>, bytes: &[u8]) -> bool {
+    const OBJECT_METHODS: [&str; 3] = ["equals", "hashCode", "toString"];
+    let has_body = method.child_by_field_name("body").is_some();
+    let mut cursor = method.walk();
+    let has_implementation_modifier = method
+        .named_children(&mut cursor)
+        .filter(|child| child.kind() == "modifiers")
+        .filter_map(|modifiers| modifiers.utf8_text(bytes).ok())
+        .any(|modifiers| {
+            modifiers
+                .split_whitespace()
+                .any(|word| word == "static" || word == "default")
+        });
+    let is_object_method = method
+        .child_by_field_name("name")
+        .and_then(|name| name.utf8_text(bytes).ok())
+        .is_some_and(|name| OBJECT_METHODS.contains(&name));
+    !has_body && !has_implementation_modifier && !is_object_method
+}
+
 /// Whether `name_node` is a parameter of a lambda without written types
 /// (`x -> ..`, `(x, y) -> ..`).
 fn lambda_parameter_name(name_node: Node<'_>, parent: Node<'_>) -> bool {
@@ -1352,7 +1698,7 @@ fn enclosing_type_name(member: Node<'_>) -> JavaDeclaredType<'_> {
 /// name, the last segment of a qualified one, the raw type of a generic one
 /// and the element type of an array. `None` for a primitive, `void` or
 /// `var`.
-fn type_name_node<'tree>(type_node: Node<'tree>, bytes: &[u8]) -> Option<Node<'tree>> {
+pub(crate) fn type_name_node<'tree>(type_node: Node<'tree>, bytes: &[u8]) -> Option<Node<'tree>> {
     match type_node.kind() {
         TYPE_IDENTIFIER => {
             let is_inferred = type_node.utf8_text(bytes).ok() == Some(INFERRED_LOCAL_TYPE);
@@ -1493,7 +1839,7 @@ fn argument_type(
             }),
         _ => match java_expr_type(argument, bytes, deps, uri) {
             Some((type_text, anchor)) => ArgumentType::Declared {
-                key: overload_type_key(&type_text),
+                key: java_overload_type_key(&type_text),
                 anchor,
             },
             None => ArgumentType::Unknown,

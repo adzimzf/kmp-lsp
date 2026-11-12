@@ -243,6 +243,17 @@ pub(crate) async fn find_definition(
         return Some(GotoDefinitionResponse::Scalar(declared));
     }
 
+    // A bare name in a Java type position names a type, whatever field or
+    // method the enclosing class declares by the same name.
+    let is_bare_type_name =
+        ctx.qualifier.is_none() && crate::indexer::is_java_type_name_at(index, uri, position);
+    if is_bare_type_name {
+        let types = crate::resolver::resolve_type_name(index, &ctx.word, uri);
+        if !types.is_empty() {
+            return locs_to_opt_response(types);
+        }
+    }
+
     // CST-resolved path first: precise for declarations and receiver-typed
     // member references. Falls through to the string-first path below for
     // everything the CST can't narrow (locals, untyped receivers, keywords).

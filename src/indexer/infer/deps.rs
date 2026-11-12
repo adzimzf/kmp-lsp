@@ -323,6 +323,21 @@ pub(crate) trait InferDeps {
         None
     }
 
+    /// The type of parameter `parameter_index` of a Java lambda whose target
+    /// type is written as `target_type` (a cast, or the declaration it
+    /// initializes): the matching parameter of the functional interface's
+    /// abstract method, its type variables filled from `target_type`
+    /// (`JsonSerializer<Base>` → `Base` for `serialize(T src, ..)`), with the
+    /// file it is written in. The default implementation returns `None`.
+    fn find_lambda_parameter_type(
+        &self,
+        _target_type: &str,
+        _parameter_index: usize,
+        _uri: &Url,
+    ) -> Option<(String, Url)> {
+        None
+    }
+
     fn find_method_return_type_with_origin_for_type(
         &self,
         class_name: &str,

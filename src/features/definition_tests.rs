@@ -834,3 +834,158 @@ async fn goto_definition_java_type_name_inside_its_class_is_the_class() {
     // narrowed away (type-definition on `right` needs it).
     assert!(lines.contains(&1), "must reach class Node; got {lines:?}");
 }
+
+/// Java's own overloads, as javac picks one (JLS 15.12.2): a box is a
+/// different type from its primitive and is only boxed into or unboxed from
+/// when nothing fits without it; among equal fits the most specific wins.
+#[tokio::test]
+async fn java_overloads_box_only_when_nothing_fits_without_it() {
+    let idx = Indexer::new();
+    let writer_uri = Url::parse("file:///t/Writer.java").unwrap();
+    let writer = "class Writer {\n\
+                  \x20 Writer value(boolean value) { return this; }\n\
+                  \x20 Writer value(Boolean value) { return this; }\n\
+                  \x20 Writer value(double value) { return this; }\n\
+                  \x20 Writer value(long value) { return this; }\n\
+                  \x20 Writer value(Number value) { return this; }\n\
+                  \x20 void write(Object value, int depth) {}\n\
+                  \x20 void write(String value, int depth) {}\n\
+                  }\n";
+    idx.index_content(&writer_uri, writer);
+    idx.store_live_tree(&writer_uri, writer);
+    let caller_uri = Url::parse("file:///t/Caller.java").unwrap();
+    let caller = "class Caller {\n\
+                  \x20 void run(Writer writer, Boolean flag, Double boxed) {\n\
+                  \x20   writer.value(false);\n\
+                  \x20   writer.value(flag);\n\
+                  \x20   writer.value(boxed);\n\
+                  \x20   writer.value(1);\n\
+                  \x20   writer.write(null, 0);\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+
+    // `boolean` as it is, not boxed into `Boolean`.
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 2, "value").await,
+        vec![1]
+    );
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 3, "value").await,
+        vec![2]
+    );
+    // A `Double` is a `Number` without unboxing, which `double` would need.
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 4, "value").await,
+        vec![5]
+    );
+    // `int` widens to `long` before it is ever boxed.
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 5, "value").await,
+        vec![4]
+    );
+    // `null` fits both; `String` is more specific than `Object`.
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 6, "write(null").await,
+        vec![7]
+    );
+}
+
+/// Names bound by the shape they are written in, not by the nearest
+/// declaration of that name: a `case` label names a constant of the
+/// switch's enum, `Link.class` and `Link` in a declared type name the type,
+/// and `holder.excluder` (no call) the field, not the method `excluder()`.
+#[tokio::test]
+async fn java_names_bind_by_the_position_they_are_written_in() {
+    let idx = Indexer::new();
+    let files = [
+        ("Token.java", "package t; public enum Token {\n  NAME,\n  STRING\n}\n"),
+        ("Link.java", "package t;\npublic class Link {}\n"),
+        (
+            "Holder.java",
+            "package t; class Holder {\n  Object excluder;\n  Object excluder() { return excluder; }\n}\n",
+        ),
+    ];
+    for (name, source) in files {
+        let uri = Url::parse(&format!("file:///t/{name}")).unwrap();
+        idx.index_content(&uri, source);
+        idx.store_live_tree(&uri, source);
+    }
+    let adapters_uri = Url::parse("file:///t/Adapters.java").unwrap();
+    let adapters = "package t; class Adapters {\n\
+                    \x20 static final Object STRING = null;\n\
+                    \x20 static final Link Link = null;\n\
+                    \x20 Object read(Token token, Holder holder) {\n\
+                    \x20   switch (token) {\n\
+                    \x20     case STRING:\n\
+                    \x20       return Link.class;\n\
+                    \x20     default:\n\
+                    \x20       return holder.excluder;\n\
+                    \x20   }\n\
+                    \x20 }\n\
+                    }\n";
+    idx.index_content(&adapters_uri, adapters);
+    idx.store_live_tree(&adapters_uri, adapters);
+
+    // Token.java's `STRING`, not the field on line 1.
+    assert_eq!(
+        definition_lines(&idx, &adapters_uri, adapters, 5, "STRING").await,
+        vec![2]
+    );
+    // Link.java's class, not the field `Link` on line 2.
+    assert_eq!(
+        definition_lines(&idx, &adapters_uri, adapters, 6, "Link").await,
+        vec![1]
+    );
+    assert_eq!(
+        definition_lines(&idx, &adapters_uri, adapters, 2, "Link").await,
+        vec![1]
+    );
+    // The field on line 1, not the method on line 2.
+    assert_eq!(
+        definition_lines(&idx, &adapters_uri, adapters, 8, "excluder").await,
+        vec![1]
+    );
+}
+
+/// An untyped lambda parameter has the type its written target gives it:
+/// `src` of `(Serializer<Base>) (src, context) -> ..` is a `Base`, so
+/// `src.count` (an `int`) picks `add(String, Number)`, not the `Character`
+/// overload.
+#[tokio::test]
+async fn java_lambda_parameter_takes_its_type_from_the_written_target() {
+    let idx = Indexer::new();
+    let files = [
+        (
+            "Serializer.java",
+            "interface Serializer<T> {\n  Object serialize(T src, Object context);\n}\n",
+        ),
+        ("Base.java", "class Base {\n  int count;\n}\n"),
+        (
+            "Obj.java",
+            "class Obj {\n  void add(String name, Character value) {}\n  void add(String name, Number value) {}\n}\n",
+        ),
+    ];
+    for (name, source) in files {
+        let uri = Url::parse(&format!("file:///t/{name}")).unwrap();
+        idx.index_content(&uri, source);
+        idx.store_live_tree(&uri, source);
+    }
+    let caller_uri = Url::parse("file:///t/Caller.java").unwrap();
+    let caller = "class Caller {\n\
+                  \x20 Object make(Obj obj) {\n\
+                  \x20   return (Serializer<Base>) (src, context) -> {\n\
+                  \x20     obj.add(\"n\", src.count);\n\
+                  \x20     return null;\n\
+                  \x20   };\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 3, "add").await,
+        vec![2]
+    );
+}

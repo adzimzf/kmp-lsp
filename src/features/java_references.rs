@@ -42,10 +42,72 @@ pub(crate) async fn find_java_references(
     position: Position,
     include_declaration: bool,
 ) -> Option<Vec<Location>> {
+    java_references(
+        index,
+        uri,
+        position,
+        include_declaration,
+        Accessors::Included,
+    )
+    .await
+}
+
+/// Whether a field's references include its getter and setter calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Accessors {
+    /// As jdtls's `java.references.includeAccessors` (on by default) has it.
+    Included,
+    /// Only the name itself: what renaming the field changes.
+    Excluded,
+}
+
+async fn java_references(
+    index: &Indexer,
+    uri: &Url,
+    position: Position,
+    include_declaration: bool,
+    accessors: Accessors,
+) -> Option<Vec<Location>> {
     if !is_java_file(uri) || index.is_library_uri(uri) {
         return None;
     }
+    if let Some(local) = crate::indexer::java_local_declaration_at(index, uri, position) {
+        return Some(local_references(index, &local, include_declaration));
+    }
     let target = JavaTarget::at(index, uri, position).await?;
+    let mut found = target_references(index, uri, &target, include_declaration).await?;
+    // A field's getter and setter calls read and write it (jdtls's default
+    // `java.references.includeAccessors`).
+    if target.kind == TargetKind::Field && accessors == Accessors::Included {
+        for accessor in field_accessors(index, &target) {
+            let Some(usages) = target_references(index, uri, &accessor, false).await else {
+                continue;
+            };
+            for location in usages {
+                if !found.contains(&location) {
+                    found.push(location);
+                }
+            }
+        }
+    }
+    // Usages spelled another way (Kotlin's `account.balance` for
+    // `getBalance()`) and those inside library sources.
+    for location in super::references::beyond_rg_reference_locations(index, uri, position).await {
+        if !found.contains(&location) {
+            found.push(location);
+        }
+    }
+    Some(found)
+}
+
+/// The usages of `target` in workspace code, found by a word search from
+/// `uri`'s source roots and resolved one by one.
+async fn target_references(
+    index: &Indexer,
+    uri: &Url,
+    target: &JavaTarget,
+    include_declaration: bool,
+) -> Option<Vec<Location>> {
     let file_path = uri.to_file_path().ok();
     let (workspace_root, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
     let workspace_root = workspace_root?;
@@ -70,16 +132,80 @@ pub(crate) async fn find_java_references(
         }
         None => occurrences,
     };
-    let mut found =
-        resolved_occurrences(index, &target, occurrences, include_declaration, false).await;
-    // Usages spelled another way (Kotlin's `account.balance` for
-    // `getBalance()`) and those inside library sources.
-    for location in super::references::beyond_rg_reference_locations(index, uri, position).await {
-        if !found.contains(&location) {
-            found.push(location);
+    Some(resolved_occurrences(index, target, occurrences, include_declaration, false).await)
+}
+
+/// The getter and setter methods the field `target`'s class declares for it
+/// (`getName` / `isName` / `setName` of `name`), as method targets.
+fn field_accessors(index: &Indexer, target: &JavaTarget) -> Vec<JavaTarget> {
+    let name = &target.symbol.name;
+    let mut capitalized = name.chars();
+    let Some(first) = capitalized.next() else {
+        return Vec::new();
+    };
+    let suffix: String = first.to_uppercase().chain(capitalized).collect();
+    let accessor_names = [
+        format!("get{suffix}"),
+        format!("is{suffix}"),
+        format!("set{suffix}"),
+    ];
+    index
+        .file_symbols(&target.location.uri)
+        .into_iter()
+        .filter(|symbol| {
+            matches!(symbol.kind, SymbolKind::METHOD | SymbolKind::FUNCTION)
+                && symbol.container == target.symbol.container
+                && accessor_names.contains(&symbol.name)
+        })
+        .map(|symbol| JavaTarget {
+            kind: TargetKind::Method,
+            location: Location::new(target.location.uri.clone(), symbol.selection_range),
+            symbol,
+            type_fqn: target.type_fqn.clone(),
+            package: target.package.clone(),
+        })
+        .collect()
+}
+
+/// The usages of the local or parameter declared at `declaration`: the
+/// occurrences of its name in its own file that bind to it — a same-named
+/// local of another method, a field it shadows, or a member access
+/// (`other.src`) does not.
+fn local_references(
+    index: &Indexer,
+    declaration: &Location,
+    include_declaration: bool,
+) -> Vec<Location> {
+    let Some(lines) = index.lines_for(&declaration.uri) else {
+        return Vec::new();
+    };
+    let Some(name) = lines
+        .get(declaration.range.start.line as usize)
+        .and_then(|line| {
+            let characters: Vec<u16> = line.encode_utf16().collect();
+            let start = declaration.range.start.character as usize;
+            let end = declaration.range.end.character as usize;
+            characters.get(start..end).map(String::from_utf16_lossy)
+        })
+    else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    if include_declaration {
+        found.push(declaration.clone());
+    }
+    for (rg_location, line) in word_occurrences(&declaration.uri, &lines, &name) {
+        let Some(occurrence) = Occurrence::new(rg_location, &line, &name) else {
+            continue;
+        };
+        let start = occurrence.location.range.start;
+        let binds_here = crate::indexer::java_local_definition(index, &declaration.uri, start)
+            .is_some_and(|bound| bound.range.start == declaration.range.start);
+        if binds_here && occurrence.location.range.start != declaration.range.start {
+            found.push(occurrence.location);
         }
     }
-    Some(found)
+    found
 }
 
 /// `textDocument/documentHighlight` for a Java declaration: its occurrences
@@ -147,6 +273,10 @@ pub(crate) async fn java_rename(
         return None;
     }
     let target = JavaTarget::at(index, uri, position).await?;
+    // A constructor is renamed with its class.
+    if target.kind == TargetKind::Constructor {
+        return None;
+    }
     let mut family = Vec::new();
     if target.kind == TargetKind::Method {
         family = match override_family(index, &target) {
@@ -154,9 +284,16 @@ pub(crate) async fn java_rename(
             Err(reason) => return Some(JavaRename::Refused(reason)),
         };
     }
-    let mut locations = find_java_references(index, uri, position, true).await?;
+    let mut locations = java_references(index, uri, position, true, Accessors::Excluded).await?;
     for member in family {
-        let references = find_java_references(index, &member.uri, member.range.start, true).await;
+        let references = java_references(
+            index,
+            &member.uri,
+            member.range.start,
+            true,
+            Accessors::Excluded,
+        )
+        .await;
         for location in references.unwrap_or_else(|| vec![member.clone()]) {
             if !locations.contains(&location) {
                 locations.push(location);
@@ -309,6 +446,11 @@ enum TargetKind {
     Type,
     /// A method (not a constructor).
     Method,
+    /// A field or an enum constant: used by its bare or qualified name,
+    /// never called, and imported with `import static`.
+    Field,
+    /// A constructor: used by the `new T(..)` its arguments select.
+    Constructor,
 }
 
 struct JavaTarget {
@@ -352,9 +494,16 @@ impl JavaTarget {
             | SymbolKind::STRUCT
             | SymbolKind::OBJECT => TargetKind::Type,
             SymbolKind::METHOD | SymbolKind::FUNCTION => TargetKind::Method,
+            SymbolKind::FIELD
+            | SymbolKind::PROPERTY
+            | SymbolKind::VARIABLE
+            | SymbolKind::CONSTANT
+            | SymbolKind::ENUM_MEMBER => TargetKind::Field,
+            SymbolKind::CONSTRUCTOR => TargetKind::Constructor,
             _ => return None,
         };
-        if kind == TargetKind::Method && symbol.container.is_none() {
+        let is_member = kind != TargetKind::Type;
+        if is_member && symbol.container.is_none() {
             return None;
         }
         let package = index.package_of(&location.uri).unwrap_or_default();
@@ -393,7 +542,9 @@ fn type_fqn(
     let mut chain: Vec<String> = Vec::new();
     let mut current = match kind {
         TargetKind::Type => Some(symbol.name.clone()),
-        TargetKind::Method => symbol.container.clone(),
+        TargetKind::Method | TargetKind::Field | TargetKind::Constructor => {
+            symbol.container.clone()
+        }
     };
     while let Some(name) = current {
         current = symbols
@@ -450,6 +601,8 @@ struct Occurrence {
     javadoc: Option<JavadocReference>,
     /// Written as a call (`name(`) or a method reference (`::name`).
     is_call_or_method_reference: bool,
+    /// Written as an instance creation (`new name(`).
+    is_creation: bool,
 }
 
 impl Occurrence {
@@ -471,12 +624,17 @@ impl Occurrence {
         let is_call = line[byte_column + name.len()..]
             .trim_start()
             .starts_with('(');
-        let is_method_reference = line[..byte_column].trim_end().ends_with("::");
+        let before = line[..byte_column].trim_end();
+        let is_method_reference = before.ends_with("::");
+        let follows_new = before.strip_suffix("new").is_some_and(|rest| {
+            !rest.ends_with(|character: char| character.is_alphanumeric() || character == '_')
+        });
         Some(Self {
             location,
             import_path: import_path(line),
             javadoc: javadoc_reference_at(line, byte_column, name),
             is_call_or_method_reference: is_call || is_method_reference,
+            is_creation: follows_new && is_call,
         })
     }
 }
@@ -691,12 +849,15 @@ impl TargetMatcher<'_> {
                     return self.import_names_target(path);
                 }
                 // A method is only ever used by calling it or referring to it
-                // with `::`; the bare name is a field or a local.
-                if self.target.kind == TargetKind::Method && !occurrence.is_call_or_method_reference
-                {
-                    return false;
-                }
-                self.code_resolves_to_target(&occurrence.location).await
+                // with `::`; the bare name is a field or a local. A field is
+                // never called: `excluder()` is a method of the same name.
+                let shape_fits = match self.target.kind {
+                    TargetKind::Method => occurrence.is_call_or_method_reference,
+                    TargetKind::Field => !occurrence.is_call_or_method_reference,
+                    TargetKind::Constructor => occurrence.is_creation,
+                    TargetKind::Type => true,
+                };
+                shape_fits && self.code_resolves_to_target(&occurrence.location).await
             }
         }
     }
@@ -705,7 +866,12 @@ impl TargetMatcher<'_> {
         let name = &self.target.symbol.name;
         match self.target.kind {
             TargetKind::Type => path == self.target.type_fqn,
-            TargetKind::Method => path == format!("{}.{name}", self.target.type_fqn),
+            // `import static pkg.Type.member;`
+            TargetKind::Method | TargetKind::Field => {
+                path == format!("{}.{name}", self.target.type_fqn)
+            }
+            // Importing the type doesn't use one of its constructors.
+            TargetKind::Constructor => false,
         }
     }
 
@@ -714,7 +880,10 @@ impl TargetMatcher<'_> {
             TargetKind::Type => {
                 reference.names_type && self.type_part_names_target(&reference.type_part, from)
             }
-            TargetKind::Method => {
+            // `{@link Type#Type(int)}` names a constructor, which
+            // `JavadocReference` doesn't tell from a type.
+            TargetKind::Constructor => false,
+            TargetKind::Method | TargetKind::Field => {
                 if !reference.names_member {
                     return false;
                 }
@@ -724,7 +893,11 @@ impl TargetMatcher<'_> {
                     self.type_part_names_target(&reference.type_part, from)
                         || self.type_part_is_supertype(&reference.type_part)
                 };
-                type_matches && self.parameters_match(reference.parameters.as_deref())
+                let parameters_match = match self.target.kind {
+                    TargetKind::Method => self.parameters_match(reference.parameters.as_deref()),
+                    _ => reference.parameters.is_none(),
+                };
+                type_matches && parameters_match
             }
         }
     }
@@ -841,6 +1014,9 @@ impl TargetMatcher<'_> {
                     && range_contains(target.symbol.range, definition.range.start)
             }
             TargetKind::Method => !self.exact && self.is_overridden_by_target(&symbol, definition),
+            // Fields are hidden, not overridden; a constructor is the one
+            // a creation selects: only the declaration itself (above) counts.
+            TargetKind::Field | TargetKind::Constructor => false,
         }
     }
 

@@ -692,7 +692,7 @@ pub(crate) fn resolve_identity_with_io(
             receiver_type: Some(receiver_type),
             shape,
             access,
-            ..
+            is_call,
         } => {
             let find_member = |name: &str| {
                 if index_only {
@@ -724,6 +724,12 @@ pub(crate) fn resolve_identity_with_io(
                 Some(shape) => shape_filter_locations(indexer, *shape, locations).resolved(),
                 None => locations,
             };
+            let is_java_field_read = !*is_call && super::java_cst::is_java_file(uri);
+            let locations = if is_java_field_read {
+                without_methods(indexer, locations)
+            } else {
+                locations
+            };
             if locations.is_empty() {
                 NavigationSource::NameScan(Definitions(locations))
             } else {
@@ -737,6 +743,35 @@ pub(crate) fn resolve_identity_with_io(
         | SymbolRole::ImportSegment => NavigationSource::NameScan(Definitions(
             find_definition_qualified(&symbol.name, None, uri),
         )),
+    }
+}
+
+/// `locations` minus its methods, unless nothing else is left: Java's
+/// `gson.excluder` (no call) reads the field `excluder`, never the method
+/// `excluder()` the same class declares (JLS 6.5.6).
+fn without_methods(indexer: &Indexer, locations: Vec<Location>) -> Vec<Location> {
+    let is_method = |location: &Location| {
+        indexer
+            .files
+            .get(location.uri.as_str())
+            .or_else(|| indexer.jar_files.get(location.uri.as_str()))
+            .and_then(|file| {
+                file.symbols
+                    .iter()
+                    .find(|symbol| symbol.selection_range == location.range)
+                    .map(|symbol| matches!(symbol.kind, SymbolKind::METHOD | SymbolKind::FUNCTION))
+            })
+            .unwrap_or(false)
+    };
+    let fields: Vec<Location> = locations
+        .iter()
+        .filter(|location| !is_method(location))
+        .cloned()
+        .collect();
+    if fields.is_empty() {
+        locations
+    } else {
+        fields
     }
 }
 
@@ -756,6 +791,27 @@ fn java_setter_for_assignment(
         .into_iter()
         .filter(|location| jvm_interop::language_of(&location.uri) == crate::types::Language::Java)
         .collect()
+}
+
+/// Whether the cursor is on a name in a Java type position — a declared
+/// type, a `T.class`, a type argument (not the `T` of `new T(..)`, whose
+/// constructor is the target): only a type, never a field or method, binds it.
+pub(crate) fn is_java_type_name_at(indexer: &Indexer, uri: &Url, position: Position) -> bool {
+    if !super::java_cst::is_java_file(uri) {
+        return false;
+    }
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return false;
+    };
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    // `new T(..)` goes to the constructor its arguments select instead.
+    super::cst_lambda::cursor_node_at(&doc, cursor).is_some_and(|node| {
+        super::java_cst::is_java_type_name(node)
+            && super::java_cst::object_creation_of_type_name(node).is_none()
+    })
 }
 
 /// At a Java method call, keep only the overloads in `locations` whose
@@ -852,6 +908,29 @@ pub(crate) fn java_local_definition(
     node_to_location(uri, declared, text)
 }
 
+/// The local variable or parameter the cursor is on or uses: its declared
+/// name, whether the cursor is on that name or on a use of it. `None` for any
+/// other name.
+pub(crate) fn java_local_declaration_at(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Location> {
+    if let Some(declared) = java_local_definition(indexer, uri, position) {
+        return Some(declared);
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let node = super::cst_lambda::cursor_node_at(&doc, cursor)?;
+    if !super::java_cst::is_java_local_value_declaration(node) {
+        return None;
+    }
+    node_to_location(uri, node, std::str::from_utf8(&doc.bytes).ok()?)
+}
+
 /// Where go-to-type-definition goes from the declaration at a definition
 /// site.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -904,8 +983,136 @@ pub(crate) fn type_definition_step(indexer: &Indexer, definition: &Location) -> 
             TypeDefinitionStep::Unreadable,
             TypeDefinitionStep::DeclaredAt,
         ),
-        JavaDeclaredType::Untyped => TypeDefinitionStep::Untyped,
+        JavaDeclaredType::Untyped => {
+            lambda_parameter_type_step(indexer, definition, name_node, &doc.bytes)
+                .unwrap_or(TypeDefinitionStep::Untyped)
+        }
     }
+}
+
+/// The type of an untyped lambda parameter, from the lambda's written
+/// target type: `src` of `(JsonSerializer<Map<String, Long>>) (src, type,
+/// context) -> ..` is the first parameter of `JsonSerializer`'s one abstract
+/// method, `serialize(T src, ..)`, with `T` the target's `Map<String, Long>`.
+/// `None` when no target type is written next to the lambda, or it isn't a
+/// functional interface the index declares.
+fn lambda_parameter_type_step(
+    indexer: &Indexer,
+    definition: &Location,
+    name_node: Node<'_>,
+    bytes: &[u8],
+) -> Option<TypeDefinitionStep> {
+    use super::java_cst::{lambda_target, type_name_node, written_type_arguments};
+    let target = lambda_target(name_node)?;
+    let interface_name = type_name_node(target.target_type, bytes)?.utf8_text_owned(bytes)?;
+    let type_name = match functional_parameter(
+        indexer,
+        &interface_name,
+        target.parameter_index,
+        &definition.uri,
+    )? {
+        FunctionalParameter::TypeVariable(index) => {
+            // The target's type argument in its place, written next to the lambda.
+            let argument = *written_type_arguments(target.target_type).get(index)?;
+            let argument_name = type_name_node(argument, bytes)?;
+            node_to_location(
+                &definition.uri,
+                argument_name,
+                std::str::from_utf8(bytes).ok()?,
+            )?
+        }
+        FunctionalParameter::Written { type_name, .. } => type_name,
+    };
+    Some(TypeDefinitionStep::TypeNamedAt(type_name))
+}
+
+/// See [`super::InferDeps::find_lambda_parameter_type`]: the type of
+/// parameter `parameter_index` of a lambda whose target type is written as
+/// `target_type` (`JsonSerializer<Base>` → `Base` for its first parameter).
+pub(crate) fn lambda_parameter_type(
+    indexer: &Indexer,
+    target_type: &str,
+    parameter_index: usize,
+    uri: &Url,
+) -> Option<(String, Url)> {
+    use crate::StrExt as _;
+    let interface_name = target_type
+        .split('<')
+        .next()?
+        .trim()
+        .last_segment()
+        .to_owned();
+    match functional_parameter(indexer, &interface_name, parameter_index, uri)? {
+        FunctionalParameter::TypeVariable(index) => {
+            let (_, arguments) = target_type.split_once('<')?;
+            let arguments = arguments.trim_end().strip_suffix('>')?;
+            let argument = crate::indexer::split_params_at_depth_zero(arguments)
+                .into_iter()
+                .nth(index)?
+                .trim()
+                .to_owned();
+            let is_wildcard = argument.starts_with('?');
+            (!is_wildcard).then(|| (argument, uri.clone()))
+        }
+        FunctionalParameter::Written {
+            type_text,
+            type_name,
+        } => Some((type_text, type_name.uri)),
+    }
+}
+
+/// A parameter of the one abstract method of a functional interface.
+enum FunctionalParameter {
+    /// Typed by the interface's type parameter at this position: the target
+    /// type's type argument there is the type.
+    TypeVariable(usize),
+    /// Typed by a type written in the interface (`Type typeOfSrc`).
+    Written {
+        /// The written type's name, in the interface's file.
+        type_name: Location,
+        type_text: String,
+    },
+}
+
+/// Parameter `parameter_index` of the abstract method of the functional
+/// interface `interface_name` (resolved as a type from `uri`).
+fn functional_parameter(
+    indexer: &Indexer,
+    interface_name: &str,
+    parameter_index: usize,
+    uri: &Url,
+) -> Option<FunctionalParameter> {
+    use super::java_cst::{abstract_method_parameter, type_name_node};
+    let interface = crate::resolver::resolve_type_name(indexer, interface_name, uri)
+        .into_iter()
+        .next()?;
+    if !super::java_cst::is_java_file(&interface.uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(&interface.uri)?;
+    let cursor = CursorPos {
+        line: interface.range.start.line as usize,
+        utf16_col: interface.range.start.character as usize,
+    };
+    let declared_name = super::cst_lambda::cursor_node_at(&doc, cursor)?;
+    let parameter = abstract_method_parameter(declared_name, parameter_index, &doc.bytes)?;
+    let type_name = type_name_node(parameter.parameter_type, &doc.bytes)?;
+    let type_name_text = type_name.utf8_text_owned(&doc.bytes)?;
+    if let Some(index) = parameter
+        .interface_type_parameters
+        .iter()
+        .position(|type_parameter| *type_parameter == type_name_text)
+    {
+        return Some(FunctionalParameter::TypeVariable(index));
+    }
+    Some(FunctionalParameter::Written {
+        type_name: node_to_location(
+            &interface.uri,
+            type_name,
+            std::str::from_utf8(&doc.bytes).ok()?,
+        )?,
+        type_text: parameter.parameter_type.utf8_text_owned(&doc.bytes)?,
+    })
 }
 
 /// At `new Writer(..)`, the constructors of the class in `locations` that
@@ -1017,7 +1224,47 @@ fn best_fitting_overloads(
             kept.push(overload);
         }
     }
-    kept.into_iter().map(|overload| overload.location).collect()
+    most_specific_overloads(&hierarchy, kept)
+        .into_iter()
+        .map(|overload| overload.location)
+        .collect()
+}
+
+/// The overloads of `tied` (equally good fits) that no other one of them is
+/// strictly more specific than, as javac breaks the tie
+/// ([`super::java_cst::is_more_specific`]).
+fn most_specific_overloads(
+    hierarchy: &IndexedHierarchy<'_>,
+    tied: Vec<ScoredOverload>,
+) -> Vec<ScoredOverload> {
+    if tied.len() < 2 {
+        return tied;
+    }
+    let strictly_more_specific =
+        |one: &ScoredOverload, other: &ScoredOverload| match (&one.parameters, &other.parameters) {
+            (Some(narrow), Some(wide)) => {
+                super::java_cst::is_more_specific(narrow, wide, &one.location.uri, hierarchy)
+                    && !super::java_cst::is_more_specific(
+                        wide,
+                        narrow,
+                        &other.location.uri,
+                        hierarchy,
+                    )
+            }
+            _ => false,
+        };
+    let beaten: Vec<bool> = tied
+        .iter()
+        .map(|overload| {
+            tied.iter()
+                .any(|other| strictly_more_specific(other, overload))
+        })
+        .collect();
+    tied.into_iter()
+        .zip(beaten)
+        .filter(|(_, is_beaten)| !is_beaten)
+        .map(|(overload, _)| overload)
+        .collect()
 }
 
 /// The indexed class hierarchy.
