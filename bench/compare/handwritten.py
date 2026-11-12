@@ -136,6 +136,9 @@ def holds_target(text, name, feature):
     implementation of a type, whose name differs), else the name itself."""
     if feature == "typeDefinition" or (feature == "implementation" and name[:1].isupper()):
         return bool(DECLARATION_KEYWORD.search(text))
+    if feature == "references" and any(word_columns(text, prefix + name[:1].upper() + name[1:])
+                                       for prefix in ("get", "set", "is")):
+        return True  # a field's accessor call (jdtls: java.references.includeAccessors)
     return bool(word_columns(text, name))
 
 

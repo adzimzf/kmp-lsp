@@ -990,30 +990,6 @@
    }
   },
   {
-   "id": "method-ref-unbound",
-   "kind": "definition",
-   "file": "gson/src/test/java/com/google/gson/JsonArrayAsListTest.java",
-   "line": 182,
-   "at": "isJsonNull",
-   "category": "member_access",
-   "why": "`JsonElement::isJsonNull`",
-   "expect": {
-    "definition": "gson/src/main/java/com/google/gson/JsonElement.java:146"
-   }
-  },
-  {
-   "id": "method-ref-overridden",
-   "kind": "definition",
-   "file": "gson/src/test/java/com/google/gson/JsonArrayAsListTest.java",
-   "line": 272,
-   "at": "getAsInt",
-   "category": "member_access",
-   "why": "`JsonElement::getAsInt`: JsonElement's, not an override in JsonArray or JsonPrimitive",
-   "expect": {
-    "definition": "gson/src/main/java/com/google/gson/JsonElement.java:305"
-   }
-  },
-  {
    "id": "method-ref-receiver-is-field",
    "kind": "definition",
    "file": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java",
@@ -1027,18 +1003,6 @@
    }
   },
   {
-   "id": "method-ref-bound",
-   "kind": "definition",
-   "file": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java",
-   "line": 76,
-   "at": "next",
-   "category": "member_access",
-   "why": "`parser::next`: JsonStreamParser.next",
-   "expect": {
-    "definition": "gson/src/main/java/com/google/gson/JsonStreamParser.java:83"
-   }
-  },
-  {
    "id": "method-ref-receiver-is-local",
    "kind": "definition",
    "file": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java",
@@ -1048,30 +1012,6 @@
    "why": "`parser::next` after a local parser shadows the field",
    "expect": {
     "definition": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:81"
-   }
-  },
-  {
-   "id": "method-ref-jsonreader",
-   "kind": "definition",
-   "file": "gson/src/test/java/com/google/gson/GsonTest.java",
-   "line": 469,
-   "at": "nextString",
-   "category": "member_access",
-   "why": "`jsonReader::nextString`",
-   "expect": {
-    "definition": "gson/src/main/java/com/google/gson/stream/JsonReader.java:996"
-   }
-  },
-  {
-   "id": "method-ref-jsonwriter",
-   "kind": "definition",
-   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
-   "line": 183,
-   "at": "beginArray",
-   "category": "member_access",
-   "why": "`jsonWriter::beginArray`",
-   "expect": {
-    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:407"
    }
   },
   {
@@ -1146,9 +1086,10 @@
    "line": 1240,
    "at": "delegate",
    "category": "field",
-   "why": "the private field: setDelegate's uses and `this.delegate`, not the local nor the method delegate()",
+   "why": "the private field: setDelegate's uses and `this.delegate`, not the local nor the method delegate(); a call of its setter setDelegate counts too (jdtls's java.references.includeAccessors, on by default)",
    "expect": {
     "references": [
+     "gson/src/main/java/com/google/gson/Gson.java:372",
      "gson/src/main/java/com/google/gson/Gson.java:1243",
      "gson/src/main/java/com/google/gson/Gson.java:1246",
      "gson/src/main/java/com/google/gson/Gson.java:1250"
@@ -1227,7 +1168,7 @@
    "line": 96,
    "at": "add",
    "category": "method",
-   "why": "JsonArray.add(Character): calls with a char argument only, not the other four add overloads",
+   "why": "JsonArray.add(Character): calls with a char or Character argument (literals, casts, `char c` variables), not the other four add overloads",
    "expect": {
     "references": [
      "gson/src/test/java/com/google/gson/internal/bind/JsonTreeReaderTest.java:49",
@@ -1239,9 +1180,16 @@
      "gson/src/test/java/com/google/gson/JsonArrayTest.java:266",
      "gson/src/test/java/com/google/gson/JsonArrayTest.java:267",
      "gson/src/test/java/com/google/gson/JsonArrayTest.java:278",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:281",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:286",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:300",
      "gson/src/test/java/com/google/gson/JsonArrayTest.java:328",
      "gson/src/test/java/com/google/gson/JsonArrayTest.java:329",
-     "gson/src/test/java/com/google/gson/JsonArrayTest.java:352"
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:352",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:398",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:567",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:576",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:577"
     ]
    }
   },
@@ -1488,9 +1436,9 @@
    "line": 386,
    "at": "values",
    "category": "member_call",
-   "why": "after `src.` where src is a lambda parameter typed by a cast to JsonSerializer<Map<String, Long>>",
+   "why": "after `src.` where src is a lambda parameter typed by a cast to JsonSerializer<Map<String, Long>>; ranked within 40 — Map has ~30 members and nothing in the context prefers one: the case checks the lambda parameter's type is inferred, so the member has to be offered",
    "expect": {
-    "completion": true
+    "completion": 40
    }
   },
   {
@@ -1500,9 +1448,9 @@
    "line": 330,
    "at": "toJson",
    "category": "member_call",
-   "why": "after `otherThreadAdapter.get().`: AtomicReference<TypeAdapter<?>>.get() is a TypeAdapter",
+   "why": "after `otherThreadAdapter.get().`: AtomicReference<TypeAdapter<?>>.get() is a TypeAdapter; ranked within 40 — TypeAdapter has ~20 members: the case checks the generic return type of get() is followed",
    "expect": {
-    "completion": true
+    "completion": 40
    }
   },
   {
@@ -1561,9 +1509,9 @@
    "line": 883,
    "at": "peek",
    "category": "member_call",
-   "why": "after `reader.` where a method reader() also exists",
+   "why": "after `reader.` where a method reader() also exists; ranked within 40 — JsonReader has ~40 members: the case checks the receiver is the local, not the method",
    "expect": {
-    "completion": true
+    "completion": 40
    }
   },
   {
@@ -1616,5 +1564,16 @@
    }
   }
  ],
- "baselines": {}
+ "baselines": {
+  "jdtls": {
+   "definition": 86,
+   "hover": 9,
+   "signatureHelp": 7,
+   "typeDefinition": 6,
+   "references": 14,
+   "callHierarchy": 3,
+   "implementation": 3,
+   "completion": 15
+  }
+ }
 }
