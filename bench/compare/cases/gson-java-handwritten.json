@@ -97,7 +97,7 @@
    "line": 422,
    "at": "value",
    "category": "member_call",
-   "why": "Double.valueOf(…) returns Double: value(Number) applies without unboxing (phase 1), so it wins over value(double)",
+   "why": "Double.valueOf(\u2026) returns Double: value(Number) applies without unboxing (phase 1), so it wins over value(double)",
    "expect": {
     "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:633"
    }
@@ -377,7 +377,7 @@
    "line": 539,
    "at": "fromJson",
    "category": "member_call",
-   "why": "(StringReader, TypeToken): fromJson(Reader, TypeToken) — a subclass argument",
+   "why": "(StringReader, TypeToken): fromJson(Reader, TypeToken) \u2014 a subclass argument",
    "expect": {
     "definition": "gson/src/main/java/com/google/gson/Gson.java:1001"
    }
@@ -401,7 +401,7 @@
    "line": 545,
    "at": "fromJson",
    "category": "member_call",
-   "why": "(JsonReader, TypeToken): fromJson(JsonReader, TypeToken) — JsonReader is no Reader",
+   "why": "(JsonReader, TypeToken): fromJson(JsonReader, TypeToken) \u2014 JsonReader is no Reader",
    "expect": {
     "definition": "gson/src/main/java/com/google/gson/Gson.java:1087"
    }
@@ -674,7 +674,7 @@
    "line": 883,
    "at": "STRING",
    "category": "member_access",
-   "why": "STRING through `import static …JsonToken.STRING`",
+   "why": "STRING through `import static \u2026JsonToken.STRING`",
    "expect": {
     "definition": "gson/src/main/java/com/google/gson/stream/JsonToken.java:58"
    }
@@ -687,7 +687,7 @@
    "at": "reader",
    "nth": 2,
    "category": "call",
-   "why": "`reader(\"…\")` in the initializer of a local named reader: the static helper method",
+   "why": "`reader(\"\u2026\")` in the initializer of a local named reader: the static helper method",
    "expect": {
     "definition": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java:2457"
    }
@@ -735,7 +735,7 @@
    "line": 441,
    "at": "NONEMPTY_OBJECT",
    "category": "member_access",
-   "why": "`import static …JsonScope.NONEMPTY_OBJECT`",
+   "why": "`import static \u2026JsonScope.NONEMPTY_OBJECT`",
    "expect": {
     "definition": "gson/src/main/java/com/google/gson/stream/JsonScope.java:41"
    }
@@ -946,7 +946,7 @@
    "line": 209,
    "at": "withVersion",
    "category": "member_call",
-   "why": "`excluder.withVersion(…)` on a field of type Excluder",
+   "why": "`excluder.withVersion(\u2026)` on a field of type Excluder",
    "expect": {
     "definition": "gson/src/main/java/com/google/gson/internal/Excluder.java:69"
    }
@@ -1436,7 +1436,7 @@
    "line": 386,
    "at": "values",
    "category": "member_call",
-   "why": "after `src.` where src is a lambda parameter typed by a cast to JsonSerializer<Map<String, Long>>; ranked within 40 — Map has ~30 members and nothing in the context prefers one: the case checks the lambda parameter's type is inferred, so the member has to be offered",
+   "why": "after `src.` where src is a lambda parameter typed by a cast to JsonSerializer<Map<String, Long>>; ranked within 40 \u2014 Map has ~30 members and nothing in the context prefers one: the case checks the lambda parameter's type is inferred, so the member has to be offered",
    "expect": {
     "completion": 40
    }
@@ -1448,7 +1448,7 @@
    "line": 330,
    "at": "toJson",
    "category": "member_call",
-   "why": "after `otherThreadAdapter.get().`: AtomicReference<TypeAdapter<?>>.get() is a TypeAdapter; ranked within 40 — TypeAdapter has ~20 members: the case checks the generic return type of get() is followed",
+   "why": "after `otherThreadAdapter.get().`: AtomicReference<TypeAdapter<?>>.get() is a TypeAdapter; ranked within 40 \u2014 TypeAdapter has ~20 members: the case checks the generic return type of get() is followed",
    "expect": {
     "completion": 40
    }
@@ -1509,7 +1509,7 @@
    "line": 883,
    "at": "peek",
    "category": "member_call",
-   "why": "after `reader.` where a method reader() also exists; ranked within 40 — JsonReader has ~40 members: the case checks the receiver is the local, not the method",
+   "why": "after `reader.` where a method reader() also exists; ranked within 40 \u2014 JsonReader has ~40 members: the case checks the receiver is the local, not the method",
    "expect": {
     "completion": 40
    }
@@ -1574,6 +1574,16 @@
    "callHierarchy": 3,
    "implementation": 3,
    "completion": 15
+  },
+  "kmp-lsp": {
+   "definition": 81,
+   "references": 4,
+   "completion": 15,
+   "hover": 4,
+   "typeDefinition": 5,
+   "implementation": 3,
+   "signatureHelp": 7,
+   "callHierarchy": 3
   }
  }
 }
