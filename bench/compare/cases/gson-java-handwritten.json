@@ -1,0 +1,1620 @@
+{
+ "target": "gson",
+ "note": "hand-written cases: each picked for the Java rule it exercises, expected answers written by hand from the sources (see handwritten.py); lines are 1-based",
+ "cases": [
+  {
+   "id": "value-false-picks-boolean",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 38,
+   "at": "value",
+   "category": "member_call",
+   "why": "a boolean literal: value(boolean), not value(Boolean)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:543",
+    "hover": "boolean",
+    "signatureHelp": 1
+   }
+  },
+  {
+   "id": "value-int-widens-to-long",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 95,
+   "at": "value",
+   "category": "member_call",
+   "why": "an int literal widens to long (most specific of long/float/double), no boxing",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:614",
+    "hover": "long"
+   }
+  },
+  {
+   "id": "value-double-literal",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 101,
+   "at": "value",
+   "category": "member_call",
+   "why": "a double literal: value(double)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:598",
+    "hover": "double"
+   }
+  },
+  {
+   "id": "value-string-literal",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 107,
+   "at": "value",
+   "category": "member_call",
+   "why": "a String literal: value(String)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:527"
+   }
+  },
+  {
+   "id": "value-cast-null-string",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 246,
+   "at": "value",
+   "category": "member_call",
+   "why": "(String) null: the cast picks value(String) among the reference overloads",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:527"
+   }
+  },
+  {
+   "id": "value-float-constant",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 268,
+   "at": "value",
+   "category": "member_call",
+   "why": "Float.NaN is a float: value(float), not value(double), inside a lambda",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:578"
+   }
+  },
+  {
+   "id": "value-cast-number",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 344,
+   "at": "value",
+   "category": "member_call",
+   "why": "(Number) cast: value(Number), though the operand is a Double",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:633"
+   }
+  },
+  {
+   "id": "value-boxed-double-no-unboxing",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 422,
+   "at": "value",
+   "category": "member_call",
+   "why": "Double.valueOf(…) returns Double: value(Number) applies without unboxing (phase 1), so it wins over value(double)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:633"
+   }
+  },
+  {
+   "id": "value-long-constant",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 498,
+   "at": "value",
+   "category": "member_call",
+   "why": "Long.MIN_VALUE: value(long)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:614"
+   }
+  },
+  {
+   "id": "value-biginteger",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 511,
+   "at": "value",
+   "category": "member_call",
+   "why": "a BigInteger is a Number: value(Number)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:633"
+   }
+  },
+  {
+   "id": "value-cast-boxed-boolean",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 618,
+   "at": "value",
+   "category": "member_call",
+   "why": "(Boolean) true: value(Boolean), not value(boolean)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:557",
+    "hover": "Boolean"
+   }
+  },
+  {
+   "id": "value-float-literal",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 435,
+   "at": "value",
+   "category": "member_call",
+   "why": "-0.0f: value(float)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:578"
+   }
+  },
+  {
+   "id": "value-in-anonymous-adapter",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/JsonAdapterAnnotationOnFieldsTest.java",
+   "line": 137,
+   "at": "value",
+   "category": "member_call",
+   "why": "`out` is a parameter of a method of an anonymous TypeAdapter subclass",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:527"
+   }
+  },
+  {
+   "id": "add-int-var-boxes-to-number",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+   "line": 202,
+   "at": "add",
+   "category": "member_call",
+   "why": "an int variable boxes to Integer, a Number: add(Number)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonArray.java:106",
+    "hover": "Number"
+   }
+  },
+  {
+   "id": "add-double-var-boxes-to-number",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+   "line": 226,
+   "at": "add",
+   "category": "member_call",
+   "why": "a double variable boxes to Double: add(Number)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonArray.java:106"
+   }
+  },
+  {
+   "id": "add-cast-null-string",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+   "line": 190,
+   "at": "add",
+   "category": "member_call",
+   "why": "(String) null: add(String)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonArray.java:116"
+   }
+  },
+  {
+   "id": "add-cast-null-boolean",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+   "line": 252,
+   "at": "add",
+   "category": "member_call",
+   "why": "(Boolean) null: add(Boolean)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonArray.java:86"
+   }
+  },
+  {
+   "id": "add-boolean-literal-boxes",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+   "line": 177,
+   "at": "add",
+   "category": "member_call",
+   "why": "true boxes to Boolean: add(Boolean)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonArray.java:86"
+   }
+  },
+  {
+   "id": "add-char-literal-boxes",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+   "line": 262,
+   "at": "add",
+   "category": "member_call",
+   "why": "'a' boxes to Character: add(Character)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonArray.java:96",
+    "hover": "Character"
+   }
+  },
+  {
+   "id": "add-cast-char",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+   "line": 265,
+   "at": "add",
+   "category": "member_call",
+   "why": "(char) 111: add(Character), not add(Number)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonArray.java:96"
+   }
+  },
+  {
+   "id": "add-json-null",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+   "line": 58,
+   "at": "add",
+   "category": "member_call",
+   "why": "JsonNull.INSTANCE is a JsonElement: add(JsonElement)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonArray.java:125"
+   }
+  },
+  {
+   "id": "addproperty-string-var",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonObjectTest.java",
+   "line": 105,
+   "at": "addProperty",
+   "category": "member_call",
+   "why": "a String variable: addProperty(String, String)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonObject.java:93"
+   }
+  },
+  {
+   "id": "addproperty-char-var",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonObjectTest.java",
+   "line": 120,
+   "at": "addProperty",
+   "category": "member_call",
+   "why": "a char variable boxes to Character: addProperty(String, Character)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonObject.java:126"
+   }
+  },
+  {
+   "id": "addproperty-boolean-literal",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonObjectTest.java",
+   "line": 90,
+   "at": "addProperty",
+   "category": "member_call",
+   "why": "true: addProperty(String, Boolean)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonObject.java:115"
+   }
+  },
+  {
+   "id": "addproperty-float-constant",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonObjectTest.java",
+   "line": 348,
+   "at": "addProperty",
+   "category": "member_call",
+   "why": "Float.NaN boxes to Float, a Number: addProperty(String, Number)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonObject.java:104"
+   }
+  },
+  {
+   "id": "object-add-not-array-add",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonObjectTest.java",
+   "line": 347,
+   "at": "add",
+   "category": "member_call",
+   "why": "add on a JsonObject receiver: JsonObject.add(String, JsonElement), not one of JsonArray's",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonObject.java:69"
+   }
+  },
+  {
+   "id": "fromjson-element-typetoken",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+   "line": 527,
+   "at": "fromJson",
+   "category": "member_call",
+   "why": "(JsonArray, TypeToken): fromJson(JsonElement, TypeToken) of the 13 overloads",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1212",
+    "signatureHelp": 2
+   }
+  },
+  {
+   "id": "fromjson-element-type",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+   "line": 528,
+   "at": "fromJson",
+   "category": "member_call",
+   "why": "(JsonArray, Type): fromJson(JsonElement, Type)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1186"
+   }
+  },
+  {
+   "id": "fromjson-string-typetoken",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+   "line": 534,
+   "at": "fromJson",
+   "category": "member_call",
+   "why": "(String, TypeToken): fromJson(String, TypeToken)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:909"
+   }
+  },
+  {
+   "id": "fromjson-string-type",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+   "line": 535,
+   "at": "fromJson",
+   "category": "member_call",
+   "why": "(String, Type): fromJson(String, Type)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:879"
+   }
+  },
+  {
+   "id": "fromjson-reader-typetoken",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+   "line": 539,
+   "at": "fromJson",
+   "category": "member_call",
+   "why": "(StringReader, TypeToken): fromJson(Reader, TypeToken) — a subclass argument",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1001"
+   }
+  },
+  {
+   "id": "fromjson-reader-type",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+   "line": 540,
+   "at": "fromJson",
+   "category": "member_call",
+   "why": "(StringReader, Type): fromJson(Reader, Type)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:971"
+   }
+  },
+  {
+   "id": "fromjson-jsonreader-typetoken",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+   "line": 545,
+   "at": "fromJson",
+   "category": "member_call",
+   "why": "(JsonReader, TypeToken): fromJson(JsonReader, TypeToken) — JsonReader is no Reader",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1087"
+   }
+  },
+  {
+   "id": "fromjson-jsonreader-type",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+   "line": 548,
+   "at": "fromJson",
+   "category": "member_call",
+   "why": "(JsonReader, Type): fromJson(JsonReader, Type)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1046"
+   }
+  },
+  {
+   "id": "fromjson-reader-class",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/PrimitiveTest.java",
+   "line": 792,
+   "at": "fromJson",
+   "category": "member_call",
+   "why": "(StringReader, int.class): fromJson(Reader, Class)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:940"
+   }
+  },
+  {
+   "id": "tojson-object-appendable",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ReadersWritersTest.java",
+   "line": 59,
+   "at": "toJson",
+   "category": "member_call",
+   "why": "(BagOfPrimitives, Writer): toJson(Object, Appendable)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:612",
+    "signatureHelp": 2
+   }
+  },
+  {
+   "id": "tojson-null-picks-jsonelement",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/ReadersWritersTest.java",
+   "line": 74,
+   "at": "toJson",
+   "category": "member_call",
+   "why": "(null, StringWriter): both toJson(Object, Appendable) and toJson(JsonElement, Appendable) apply; JsonElement is more specific",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:722",
+    "hover": "JsonElement",
+    "signatureHelp": 2
+   }
+  },
+  {
+   "id": "tojson-object",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/JsonTreeTest.java",
+   "line": 78,
+   "at": "toJson",
+   "category": "member_call",
+   "why": "a POJO: toJson(Object)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:565"
+   }
+  },
+  {
+   "id": "tojson-jsonelement",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/JsonTreeTest.java",
+   "line": 80,
+   "at": "toJson",
+   "category": "member_call",
+   "why": "a JsonElement variable: toJson(JsonElement), not toJson(Object)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:708"
+   }
+  },
+  {
+   "id": "tojsontree-two-args",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/JsonTreeTest.java",
+   "line": 79,
+   "at": "toJsonTree",
+   "category": "member_call",
+   "why": "two arguments: toJsonTree(Object, Type)",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:544"
+   }
+  },
+  {
+   "id": "typeadapter-tojson-wildcard",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/GsonTest.java",
+   "line": 325,
+   "at": "toJson",
+   "category": "member_call",
+   "why": "on a TypeAdapter<?>: TypeAdapter.toJson(T), not Gson.toJson",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/TypeAdapter.java:160",
+    "signatureHelp": 1
+   }
+  },
+  {
+   "id": "typeadapter-tojson-via-generic-get",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/GsonTest.java",
+   "line": 330,
+   "at": "toJson",
+   "category": "member_call",
+   "why": "AtomicReference<TypeAdapter<?>>.get() returns the type argument: TypeAdapter.toJson",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/TypeAdapter.java:160"
+   }
+  },
+  {
+   "id": "switch-label-string-is-enum-constant",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 104,
+   "at": "STRING",
+   "category": "member_access",
+   "why": "`case STRING:` on a JsonToken switch is JsonToken.STRING, though TypeAdapters declares its own STRING field",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonToken.java:58",
+    "hover": "JsonToken"
+   }
+  },
+  {
+   "id": "switch-label-boolean-is-enum-constant",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 118,
+   "at": "BOOLEAN",
+   "category": "member_access",
+   "why": "`case BOOLEAN:` is JsonToken.BOOLEAN, not TypeAdapters.BOOLEAN",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonToken.java:66"
+   }
+  },
+  {
+   "id": "switch-label-number",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 103,
+   "at": "NUMBER",
+   "category": "member_access",
+   "why": "`case NUMBER:` inside an anonymous TypeAdapter: JsonToken.NUMBER",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonToken.java:63"
+   }
+  },
+  {
+   "id": "type-named-like-field-class-literal",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 731,
+   "at": "URL",
+   "category": "type_reference",
+   "why": "`URL.class`: the java.net.URL type, though a field URL is in scope",
+   "expect": {
+    "definition": "external:URL"
+   }
+  },
+  {
+   "id": "field-named-like-type",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 731,
+   "at": "URL",
+   "nth": 2,
+   "category": "member_access",
+   "why": "the second `URL` is an expression: the TypeAdapters.URL field, not java.net.URL",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java:705",
+    "typeDefinition": "gson/src/main/java/com/google/gson/TypeAdapter.java:122"
+   }
+  },
+  {
+   "id": "field-named-like-type-uuid",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 824,
+   "at": "UUID",
+   "nth": 2,
+   "category": "member_access",
+   "why": "`UUID` as an argument: the TypeAdapters.UUID field",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java:801"
+   }
+  },
+  {
+   "id": "static-type-not-runtime-type",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 105,
+   "at": "nextInt",
+   "category": "member_call",
+   "why": "`in` is declared JsonReader: JsonReader.nextInt, not the JsonTreeReader override",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonReader.java:1414"
+   }
+  },
+  {
+   "id": "local-shadows-inherited-field",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+   "line": 333,
+   "at": "peeked",
+   "category": "member_access",
+   "why": "the local `peeked` of skipValue, not the one of another method (line 313) nor JsonReader's field",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java:332",
+    "typeDefinition": "gson/src/main/java/com/google/gson/stream/JsonToken.java:25"
+   }
+  },
+  {
+   "id": "override-in-same-class",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+   "line": 332,
+   "at": "peek",
+   "category": "call",
+   "why": "an unqualified peek() in JsonTreeReader: its own override",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java:129"
+   }
+  },
+  {
+   "id": "switch-label-name",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonTreeReader.java",
+   "line": 334,
+   "at": "NAME",
+   "category": "member_access",
+   "why": "`case NAME:`: JsonToken.NAME",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonToken.java:55"
+   }
+  },
+  {
+   "id": "field-read-in-own-class",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+   "line": 552,
+   "at": "peeked",
+   "category": "member_access",
+   "why": "`int p = peeked;`: the package-private field",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonReader.java:276"
+   }
+  },
+  {
+   "id": "int-constant-switch-label",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+   "line": 558,
+   "at": "PEEKED_BEGIN_OBJECT",
+   "category": "member_access",
+   "why": "a switch on an int: the label is the private static final constant",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonReader.java:216"
+   }
+  },
+  {
+   "id": "static-import-enum-constant",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+   "line": 883,
+   "at": "STRING",
+   "category": "member_access",
+   "why": "STRING through `import static …JsonToken.STRING`",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonToken.java:58"
+   }
+  },
+  {
+   "id": "method-named-like-local",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+   "line": 880,
+   "at": "reader",
+   "nth": 2,
+   "category": "call",
+   "why": "`reader(\"…\")` in the initializer of a local named reader: the static helper method",
+   "expect": {
+    "definition": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java:2457"
+   }
+  },
+  {
+   "id": "local-named-like-method",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+   "line": 883,
+   "at": "reader",
+   "category": "member_access",
+   "why": "`reader.peek()`: the local, not the helper method",
+   "expect": {
+    "definition": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java:880"
+   }
+  },
+  {
+   "id": "static-import-enum-constant-with-body",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/FieldNamingTest.java",
+   "line": 66,
+   "at": "UPPER_CASE_WITH_UNDERSCORES",
+   "category": "member_access",
+   "why": "a statically imported enum constant that has a class body",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/FieldNamingPolicy.java:94"
+   }
+  },
+  {
+   "id": "private-static-helper",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/FieldNamingTest.java",
+   "line": 66,
+   "at": "getGsonWithNamingPolicy",
+   "category": "call",
+   "why": "an unqualified call to a private static method of the same class",
+   "expect": {
+    "definition": "gson/src/test/java/com/google/gson/functional/FieldNamingTest.java:94"
+   }
+  },
+  {
+   "id": "static-import-int-constant",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+   "line": 441,
+   "at": "NONEMPTY_OBJECT",
+   "category": "member_access",
+   "why": "`import static …JsonScope.NONEMPTY_OBJECT`",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonScope.java:41"
+   }
+  },
+  {
+   "id": "private-method-same-class",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+   "line": 441,
+   "at": "closeScope",
+   "category": "call",
+   "why": "a private method of the same class",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:455"
+   }
+  },
+  {
+   "id": "this-field-vs-local",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1250,
+   "at": "delegate",
+   "nth": 2,
+   "category": "member_access",
+   "why": "`this.delegate` in the initializer of a local named delegate: the field",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1240"
+   }
+  },
+  {
+   "id": "local-shadows-field",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1251,
+   "at": "delegate",
+   "category": "member_access",
+   "why": "`delegate` after `TypeAdapter<T> delegate = this.delegate;`: the local",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1250",
+    "typeDefinition": "gson/src/main/java/com/google/gson/TypeAdapter.java:122"
+   }
+  },
+  {
+   "id": "local-shadows-field-return",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1259,
+   "at": "delegate",
+   "category": "member_access",
+   "why": "`return delegate;`: the local",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1250"
+   }
+  },
+  {
+   "id": "method-named-like-field",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1264,
+   "at": "delegate",
+   "category": "call",
+   "why": "`delegate()`: the private method, not the field of the same name",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1249"
+   }
+  },
+  {
+   "id": "member-of-private-method-result",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1269,
+   "at": "read",
+   "category": "member_call",
+   "why": "`delegate().read(in)`: TypeAdapter.read",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/TypeAdapter.java:195"
+   }
+  },
+  {
+   "id": "field-in-other-method",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1243,
+   "at": "delegate",
+   "category": "member_access",
+   "why": "`delegate` in setDelegate (no local there): the field",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1240"
+   }
+  },
+  {
+   "id": "qualified-field-of-parameter",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 248,
+   "at": "excluder",
+   "nth": 2,
+   "category": "member_access",
+   "why": "`builder.excluder`: the GsonBuilder field",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/GsonBuilder.java:129"
+   }
+  },
+  {
+   "id": "field-not-method-same-name",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 297,
+   "at": "excluder",
+   "category": "member_access",
+   "why": "`return excluder;` inside method excluder(): the field",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:183"
+   }
+  },
+  {
+   "id": "qualified-field-not-method",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+   "line": 167,
+   "at": "excluder",
+   "nth": 2,
+   "category": "member_access",
+   "why": "`gson.excluder`: Gson's field, not its method excluder()",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:183",
+    "typeDefinition": "gson/src/main/java/com/google/gson/internal/Excluder.java:49",
+    "hover": "Excluder"
+   }
+  },
+  {
+   "id": "unqualified-field-in-constructor",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 274,
+   "at": "instanceCreators",
+   "category": "member_access",
+   "why": "`instanceCreators` in the constructor: Gson's field (set a few lines up), not builder.instanceCreators",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:185"
+   }
+  },
+  {
+   "id": "constructor-overload-with-this",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 288,
+   "at": "GsonBuilder",
+   "category": "call",
+   "why": "`new GsonBuilder(this)`: the GsonBuilder(Gson) constructor, not GsonBuilder()",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/GsonBuilder.java:166",
+    "signatureHelp": 1
+   }
+  },
+  {
+   "id": "static-field-in-this-call",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 244,
+   "at": "DEFAULT",
+   "category": "member_access",
+   "why": "`this(GsonBuilder.DEFAULT)`",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/GsonBuilder.java:123"
+   }
+  },
+  {
+   "id": "nested-class-method",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 372,
+   "at": "setDelegate",
+   "category": "member_call",
+   "why": "a method of the static nested class FutureTypeAdapter",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1242"
+   }
+  },
+  {
+   "id": "interface-method",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 370,
+   "at": "create",
+   "category": "member_call",
+   "why": "`factory.create(this, type)`: the TypeAdapterFactory interface method",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/TypeAdapterFactory.java:170"
+   }
+  },
+  {
+   "id": "nested-class-type",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 366,
+   "at": "FutureTypeAdapter",
+   "category": "type_reference",
+   "why": "a static nested class used by its simple name",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/Gson.java:1239"
+   }
+  },
+  {
+   "id": "field-receiver-method",
+   "kind": "definition",
+   "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+   "line": 209,
+   "at": "withVersion",
+   "category": "member_call",
+   "why": "`excluder.withVersion(…)` on a field of type Excluder",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/internal/Excluder.java:69"
+   }
+  },
+  {
+   "id": "lambda-param-before-same-named-local",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+   "line": 386,
+   "at": "src",
+   "category": "member_access",
+   "why": "the lambda parameter `src`, not the local src declared later in the method",
+   "expect": {
+    "definition": "gson/src/test/java/com/google/gson/functional/MapTest.java:384",
+    "typeDefinition": "external:Map"
+   }
+  },
+  {
+   "id": "constructor-from-long",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+   "line": 387,
+   "at": "JsonPrimitive",
+   "category": "call",
+   "why": "`new JsonPrimitive(value)` with a long: the JsonPrimitive(Number) constructor",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonPrimitive.java:58",
+    "signatureHelp": 1
+   }
+  },
+  {
+   "id": "enhanced-for-variable",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+   "line": 387,
+   "at": "value",
+   "category": "member_access",
+   "why": "the enhanced-for variable inside the lambda",
+   "expect": {
+    "definition": "gson/src/test/java/com/google/gson/functional/MapTest.java:386"
+   }
+  },
+  {
+   "id": "method-ref-unbound",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayAsListTest.java",
+   "line": 182,
+   "at": "isJsonNull",
+   "category": "member_access",
+   "why": "`JsonElement::isJsonNull`",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonElement.java:146"
+   }
+  },
+  {
+   "id": "method-ref-overridden",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayAsListTest.java",
+   "line": 272,
+   "at": "getAsInt",
+   "category": "member_access",
+   "why": "`JsonElement::getAsInt`: JsonElement's, not an override in JsonArray or JsonPrimitive",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonElement.java:305"
+   }
+  },
+  {
+   "id": "method-ref-receiver-is-field",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java",
+   "line": 76,
+   "at": "parser",
+   "category": "member_access",
+   "why": "`parser::next` in a method without a local parser: the field",
+   "expect": {
+    "definition": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:32",
+    "typeDefinition": "gson/src/main/java/com/google/gson/JsonStreamParser.java:51"
+   }
+  },
+  {
+   "id": "method-ref-bound",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java",
+   "line": 76,
+   "at": "next",
+   "category": "member_access",
+   "why": "`parser::next`: JsonStreamParser.next",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonStreamParser.java:83"
+   }
+  },
+  {
+   "id": "method-ref-receiver-is-local",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java",
+   "line": 82,
+   "at": "parser",
+   "category": "member_access",
+   "why": "`parser::next` after a local parser shadows the field",
+   "expect": {
+    "definition": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:81"
+   }
+  },
+  {
+   "id": "method-ref-jsonreader",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/GsonTest.java",
+   "line": 469,
+   "at": "nextString",
+   "category": "member_access",
+   "why": "`jsonReader::nextString`",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonReader.java:996"
+   }
+  },
+  {
+   "id": "method-ref-jsonwriter",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonWriterTest.java",
+   "line": 183,
+   "at": "beginArray",
+   "category": "member_access",
+   "why": "`jsonWriter::beginArray`",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/stream/JsonWriter.java:407"
+   }
+  },
+  {
+   "id": "covariant-override-array",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonArrayTest.java",
+   "line": 109,
+   "at": "deepCopy",
+   "category": "member_call",
+   "why": "on a JsonArray: JsonArray.deepCopy, not the abstract JsonElement.deepCopy",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonArray.java:69"
+   }
+  },
+  {
+   "id": "covariant-override-object",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonObjectTest.java",
+   "line": 234,
+   "at": "deepCopy",
+   "category": "member_call",
+   "why": "on a JsonObject: JsonObject.deepCopy",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonObject.java:53"
+   }
+  },
+  {
+   "id": "covariant-override-primitive",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonPrimitiveTest.java",
+   "line": 347,
+   "at": "deepCopy",
+   "category": "member_call",
+   "why": "on a JsonPrimitive: JsonPrimitive.deepCopy",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonPrimitive.java:94"
+   }
+  },
+  {
+   "id": "inherited-not-overridden-receiver",
+   "kind": "definition",
+   "file": "gson/src/test/java/com/google/gson/JsonObjectTest.java",
+   "line": 111,
+   "at": "getAsString",
+   "category": "member_call",
+   "why": "on a JsonElement variable: JsonElement.getAsString",
+   "expect": {
+    "definition": "gson/src/main/java/com/google/gson/JsonElement.java:249"
+   }
+  },
+  {
+   "id": "refs-field-not-method",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 183,
+   "at": "excluder",
+   "category": "field",
+   "why": "Gson's field `excluder`: its reads, not calls of the method excluder() nor GsonBuilder's field",
+   "expect": {
+    "references": [
+     "gson/src/main/java/com/google/gson/Gson.java:248",
+     "gson/src/main/java/com/google/gson/Gson.java:297",
+     "gson/src/main/java/com/google/gson/GsonBuilder.java:167",
+     "gson/src/test/java/com/google/gson/GsonTest.java:72"
+    ]
+   }
+  },
+  {
+   "id": "refs-private-field",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1240,
+   "at": "delegate",
+   "category": "field",
+   "why": "the private field: setDelegate's uses and `this.delegate`, not the local nor the method delegate()",
+   "expect": {
+    "references": [
+     "gson/src/main/java/com/google/gson/Gson.java:1243",
+     "gson/src/main/java/com/google/gson/Gson.java:1246",
+     "gson/src/main/java/com/google/gson/Gson.java:1250"
+    ]
+   }
+  },
+  {
+   "id": "refs-private-method",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1249,
+   "at": "delegate",
+   "category": "method",
+   "why": "the method delegate(): its three calls, not the field",
+   "expect": {
+    "references": [
+     "gson/src/main/java/com/google/gson/Gson.java:1264",
+     "gson/src/main/java/com/google/gson/Gson.java:1269",
+     "gson/src/main/java/com/google/gson/Gson.java:1274"
+    ],
+    "callHierarchy": [
+     "gson/src/main/java/com/google/gson/Gson.java:1264",
+     "gson/src/main/java/com/google/gson/Gson.java:1269",
+     "gson/src/main/java/com/google/gson/Gson.java:1274"
+    ]
+   }
+  },
+  {
+   "id": "refs-local",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1250,
+   "at": "delegate",
+   "category": "local",
+   "why": "the local delegate: two reads in its method",
+   "expect": {
+    "references": [
+     "gson/src/main/java/com/google/gson/Gson.java:1251",
+     "gson/src/main/java/com/google/gson/Gson.java:1259"
+    ]
+   }
+  },
+  {
+   "id": "refs-constructor-overload",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+   "line": 166,
+   "at": "GsonBuilder",
+   "category": "constructor",
+   "why": "the GsonBuilder(Gson) constructor: only `new GsonBuilder(this)`, none of the many `new GsonBuilder()`",
+   "expect": {
+    "references": [
+     "gson/src/main/java/com/google/gson/Gson.java:288"
+    ]
+   }
+  },
+  {
+   "id": "refs-field-named-like-type",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 705,
+   "at": "URL",
+   "nth": 2,
+   "category": "field",
+   "why": "the field URL: one use, not the uses of the type java.net.URL",
+   "expect": {
+    "references": [
+     "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java:731"
+    ]
+   }
+  },
+  {
+   "id": "refs-overload-add-character",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/JsonArray.java",
+   "line": 96,
+   "at": "add",
+   "category": "method",
+   "why": "JsonArray.add(Character): calls with a char argument only, not the other four add overloads",
+   "expect": {
+    "references": [
+     "gson/src/test/java/com/google/gson/internal/bind/JsonTreeReaderTest.java:49",
+     "gson/src/test/java/com/google/gson/JsonObjectTest.java:350",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:262",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:263",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:264",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:265",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:266",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:267",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:278",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:328",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:329",
+     "gson/src/test/java/com/google/gson/JsonArrayTest.java:352"
+    ]
+   }
+  },
+  {
+   "id": "refs-overload-addproperty-character",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/JsonObject.java",
+   "line": 126,
+   "at": "addProperty",
+   "category": "method",
+   "why": "addProperty(String, Character): the one call with a char",
+   "expect": {
+    "references": [
+     "gson/src/test/java/com/google/gson/JsonObjectTest.java:120"
+    ]
+   }
+  },
+  {
+   "id": "refs-static-imported-constant",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/stream/JsonScope.java",
+   "line": 41,
+   "at": "NONEMPTY_OBJECT",
+   "category": "field",
+   "why": "used through a static import (JsonWriter) and qualified (JsonReader); mentions in comments are not uses",
+   "expect": {
+    "references": [
+     "gson/src/main/java/com/google/gson/stream/JsonWriter.java:25",
+     "gson/src/main/java/com/google/gson/stream/JsonWriter.java:441",
+     "gson/src/main/java/com/google/gson/stream/JsonWriter.java:505",
+     "gson/src/main/java/com/google/gson/stream/JsonWriter.java:792",
+     "gson/src/main/java/com/google/gson/stream/JsonWriter.java:829",
+     "gson/src/main/java/com/google/gson/stream/JsonReader.java:615",
+     "gson/src/main/java/com/google/gson/stream/JsonReader.java:619",
+     "gson/src/main/java/com/google/gson/stream/JsonReader.java:643",
+     "gson/src/main/java/com/google/gson/stream/JsonReader.java:662",
+     "gson/src/main/java/com/google/gson/stream/JsonReader.java:1801"
+    ]
+   }
+  },
+  {
+   "id": "refs-lambda-parameter",
+   "kind": "references",
+   "file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+   "line": 384,
+   "at": "src",
+   "category": "local",
+   "why": "the lambda parameter src: not the local src declared after the lambda",
+   "expect": {
+    "references": [
+     "gson/src/test/java/com/google/gson/functional/MapTest.java:386"
+    ]
+   }
+  },
+  {
+   "id": "refs-field-shadowed-in-some-methods",
+   "kind": "references",
+   "file": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java",
+   "line": 32,
+   "at": "parser",
+   "category": "field",
+   "why": "the field parser: not in the methods that declare a local parser",
+   "expect": {
+    "references": [
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:36",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:41",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:43",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:49",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:50",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:51",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:52",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:53",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:58",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:59",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:60",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:61",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:63",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:64",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:65",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:67",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:68",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:73",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:74",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:76"
+    ]
+   }
+  },
+  {
+   "id": "refs-shadowing-local",
+   "kind": "references",
+   "file": "gson/src/test/java/com/google/gson/JsonStreamParserTest.java",
+   "line": 81,
+   "at": "parser",
+   "category": "local",
+   "why": "the local parser of one method",
+   "expect": {
+    "references": [
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:82",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:85",
+     "gson/src/test/java/com/google/gson/JsonStreamParserTest.java:86"
+    ]
+   }
+  },
+  {
+   "id": "refs-private-method-closescope",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/stream/JsonWriter.java",
+   "line": 455,
+   "at": "closeScope",
+   "category": "method",
+   "why": "private closeScope: endArray and endObject",
+   "expect": {
+    "references": [
+     "gson/src/main/java/com/google/gson/stream/JsonWriter.java:419",
+     "gson/src/main/java/com/google/gson/stream/JsonWriter.java:441"
+    ],
+    "callHierarchy": [
+     "gson/src/main/java/com/google/gson/stream/JsonWriter.java:419",
+     "gson/src/main/java/com/google/gson/stream/JsonWriter.java:441"
+    ]
+   }
+  },
+  {
+   "id": "refs-nested-class-method",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1242,
+   "at": "setDelegate",
+   "category": "method",
+   "why": "FutureTypeAdapter.setDelegate: one call in getAdapter",
+   "expect": {
+    "references": [
+     "gson/src/main/java/com/google/gson/Gson.java:372"
+    ],
+    "callHierarchy": [
+     "gson/src/main/java/com/google/gson/Gson.java:372"
+    ]
+   }
+  },
+  {
+   "id": "impl-abstract-method",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/JsonElement.java",
+   "line": 111,
+   "at": "deepCopy",
+   "category": "method",
+   "why": "the abstract deepCopy: the four library overrides and a local class in a test",
+   "expect": {
+    "implementation": [
+     "gson/src/main/java/com/google/gson/JsonNull.java:50",
+     "gson/src/main/java/com/google/gson/JsonArray.java:69",
+     "gson/src/main/java/com/google/gson/JsonObject.java:53",
+     "gson/src/main/java/com/google/gson/JsonPrimitive.java:94",
+     "gson/src/test/java/com/google/gson/internal/bind/JsonTreeReaderTest.java:213"
+    ]
+   }
+  },
+  {
+   "id": "impl-abstract-method-nested-class",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/SerializationDelegatingTypeAdapter.java",
+   "line": 27,
+   "at": "getSerializationDelegate",
+   "category": "method",
+   "why": "overridden by a top-level class and by Gson's nested FutureTypeAdapter",
+   "expect": {
+    "implementation": [
+     "gson/src/main/java/com/google/gson/internal/bind/TreeTypeAdapter.java:127",
+     "gson/src/main/java/com/google/gson/Gson.java:1263"
+    ]
+   }
+  },
+  {
+   "id": "impl-abstract-class",
+   "kind": "references",
+   "file": "gson/src/main/java/com/google/gson/JsonElement.java",
+   "line": 96,
+   "at": "JsonElement",
+   "category": "class",
+   "why": "the subclasses of JsonElement, a local class in a test included",
+   "expect": {
+    "implementation": [
+     "gson/src/main/java/com/google/gson/JsonObject.java:40",
+     "gson/src/main/java/com/google/gson/JsonPrimitive.java:35",
+     "gson/src/main/java/com/google/gson/JsonNull.java:26",
+     "gson/src/main/java/com/google/gson/JsonArray.java:42",
+     "gson/src/test/java/com/google/gson/internal/bind/JsonTreeReaderTest.java:211"
+    ]
+   }
+  },
+  {
+   "id": "complete-on-private-method-result",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1269,
+   "at": "read",
+   "category": "member_call",
+   "why": "after `delegate().`: members of TypeAdapter<T>",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-after-this",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 1250,
+   "at": "delegate",
+   "nth": 2,
+   "category": "member_access",
+   "why": "after `this.` in a nested generic class",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-on-field",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+   "line": 209,
+   "at": "withVersion",
+   "category": "member_call",
+   "why": "after `excluder.` (a field)",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-enum-constant",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 100,
+   "at": "END_ARRAY",
+   "category": "member_access",
+   "why": "after `JsonToken.`: the enum's constants",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-on-lambda-param",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/functional/MapTest.java",
+   "line": 386,
+   "at": "values",
+   "category": "member_call",
+   "why": "after `src.` where src is a lambda parameter typed by a cast to JsonSerializer<Map<String, Long>>",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-on-generic-get",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/GsonTest.java",
+   "line": 330,
+   "at": "toJson",
+   "category": "member_call",
+   "why": "after `otherThreadAdapter.get().`: AtomicReference<TypeAdapter<?>>.get() is a TypeAdapter",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-in-anonymous-class",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 105,
+   "at": "nextInt",
+   "category": "member_call",
+   "why": "after `in.` inside a method of an anonymous TypeAdapter",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-on-typetoken",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/functional/ParameterizedTypesTest.java",
+   "line": 519,
+   "at": "getType",
+   "category": "member_call",
+   "why": "after `typeToken.` (a TypeToken<List<Quantity>> made with a diamond anonymous class)",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-package-private-field",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 248,
+   "at": "excluder",
+   "nth": 2,
+   "category": "member_access",
+   "why": "after `builder.`: GsonBuilder's package-private field",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-static-field",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 244,
+   "at": "DEFAULT",
+   "category": "member_access",
+   "why": "after `GsonBuilder.`: static members",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-on-local",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/stream/JsonReaderTest.java",
+   "line": 883,
+   "at": "peek",
+   "category": "member_call",
+   "why": "after `reader.` where a method reader() also exists",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-on-static-field-chain",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/InnerClassExclusionStrategyTest.java",
+   "line": 33,
+   "at": "disableInnerClassSerialization",
+   "category": "member_call",
+   "why": "after `Excluder.DEFAULT.`",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-field-not-method",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/GsonBuilder.java",
+   "line": 167,
+   "at": "excluder",
+   "nth": 2,
+   "category": "member_access",
+   "why": "after `gson.`: Gson's field excluder (it also has a method excluder())",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-nested-class-member",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 372,
+   "at": "setDelegate",
+   "category": "member_call",
+   "why": "after `call.` of type FutureTypeAdapter<T>",
+   "expect": {
+    "completion": true
+   }
+  },
+  {
+   "id": "complete-on-gson",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/functional/JsonTreeTest.java",
+   "line": 79,
+   "at": "toJsonTree",
+   "category": "member_call",
+   "why": "after `gson.`",
+   "expect": {
+    "completion": true
+   }
+  }
+ ],
+ "baselines": {}
+}

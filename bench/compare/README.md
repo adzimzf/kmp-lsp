@@ -209,6 +209,46 @@ JDTLS=/path/to/jdtls JAVA=/path/to/java25 BUILD_JDK=/path/to/jdk21 \
   so record a baseline from a fresh `--workdir`, not from the directory you
   have been iterating in.
 
+### Hand-written cases
+
+The generated fixture is a random sample: it catches what used to work and
+broke, but it never aims at a shape on purpose, and its expectations are
+whatever jdtls answered. `cases/gson-java-handwritten.json` holds cases
+written by hand instead (`handwritten.py` has the format): each one was
+picked by reading gson for a Java rule a resolver can get wrong, and its
+expected answer was worked out from the Java Language Specification, not
+taken from a server. They cover:
+
+- **overload resolution** — `JsonWriter.value(123)` widens to `value(long)`,
+  `value(Double.valueOf(…))` takes `value(Number)` without unboxing,
+  `toJson(null, writer)` picks the more specific `toJson(JsonElement, …)`,
+  every `fromJson` overload by argument type, `JsonArray.add`/`addProperty`
+  with boxing, a constructor overload taking `this`;
+- **names that mean two things** — `case STRING:` is `JsonToken.STRING`
+  though `TypeAdapters` declares a `STRING` field; `newFactory(URL.class,
+  URL)` is the type then the field; `gson.excluder` is a field though `Gson`
+  has a method `excluder()`; a local `reader` initialized by a method
+  `reader(…)`; a lambda parameter and a later local of the same name; a field
+  shadowed by a local in some methods only;
+- **static vs runtime type** — `in.nextInt()` on a `JsonReader` that is a
+  `JsonTreeReader` at runtime, covariant `deepCopy()` overrides;
+- method references, static imports, nested and anonymous classes;
+- **references** that must be exact (one overload's calls only, a field and
+  not the same-named method or local), **implementation** (an abstract
+  method and class, local classes in tests included), **call hierarchy**,
+  **typeDefinition**, **completion** after `this.`, `delegate().`, a lambda
+  parameter, `AtomicReference<TypeAdapter<?>>.get().`, and **hover** /
+  **signatureHelp** on the overload actually chosen.
+
+`itest.sh` adds them to the query set (`itest.py add-queries`, ids
+`hand-…`), so every run asks them, and `check --handwritten` grades them in
+their own section against their own baseline, kept in the same file.
+`--generate` never turns them into generated cases. Loading them checks
+each case against the sources — the line must hold the identifier, every
+expected line must hold the name (or a type declaration) — so a stale case
+fails loudly instead of grading against the wrong line. jdtls passes all of
+them; a case it fails is a case to re-read before anything else.
+
 kmp-lsp's state directory is primed with one throw-away run first, so the
 graded run starts from the dependency manifest and jar caches a first session
 leaves behind. Both runs wait for the library phase (`kmp-lsp/libraries`
