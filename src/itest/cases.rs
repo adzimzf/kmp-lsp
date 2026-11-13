@@ -20,10 +20,6 @@
 //! a whole directory, its cases in parallel, and names every file that
 //! disagreed.
 //!
-//! An expectation left empty (nothing after `//= expected`) is filled in by
-//! `UPDATE_EXPECT=1 cargo test itest`, which also rewrites the ones that
-//! disagree — read the diff before committing it.
-//!
 //! A suite is off unless `INTEGRATION=1` is set: a case is a whole server,
 //! and `cargo test` on its own stays a unit-test run.
 
@@ -37,7 +33,6 @@ use super::server::Session;
 
 const EXTENSION: &str = "case";
 const SEPARATOR: &str = "//= expected";
-const UPDATE_VARIABLE: &str = "UPDATE_EXPECT";
 const INTEGRATION_VARIABLE: &str = "INTEGRATION";
 /// How many cases of one suite are in flight; what runs is capped by the
 /// budget they share with every other suite.
@@ -162,25 +157,19 @@ fn suite(language: &str, kind_directory: &str, kind: Kind) {
     );
     assert!(
         disagreements.is_empty(),
-        "{} of {language}/{kind_directory} answered differently:\n\n{}\n\
-         Run again with {UPDATE_VARIABLE}=1 to write these answers down.",
+        "{} of {language}/{kind_directory} answered differently:\n\n{}",
         disagreements.len(),
         disagreements.join("\n")
     );
 }
 
-/// `None` when the case passes (or was just written down), otherwise what
-/// it answered instead.
+/// `None` when the case passes, otherwise what it answered instead.
 async fn run_case(file: &Path, kind: Kind) -> Option<String> {
     let case = Case::read(file);
     let fixture = Fixture::parse(&case.fixture);
     let mut session = Session::open(&fixture).await;
     let actual = kind.ask(&mut session, &fixture, case.settles()).await;
     if actual == case.expected {
-        return None;
-    }
-    if updating() {
-        case.write(file, &actual);
         return None;
     }
     Some(format!(
@@ -191,15 +180,11 @@ async fn run_case(file: &Path, kind: Kind) -> Option<String> {
     ))
 }
 
-fn updating() -> bool {
-    asked_for(UPDATE_VARIABLE)
-}
-
 /// Whether the cases were asked for: a suite starts a server per case, so
-/// it runs only under `INTEGRATION=1` (or `UPDATE_EXPECT=1`, which is no
-/// use without them) and otherwise says why it did nothing.
+/// it runs only under `INTEGRATION=1` and otherwise says why it did
+/// nothing.
 fn requested() -> bool {
-    asked_for(INTEGRATION_VARIABLE) || asked_for(UPDATE_VARIABLE)
+    asked_for(INTEGRATION_VARIABLE)
 }
 
 fn asked_for(variable: &str) -> bool {
@@ -233,12 +218,6 @@ impl Case {
         } else {
             Settles::WhenAnswered
         }
-    }
-
-    fn write(&self, file: &Path, answer: &str) {
-        let text = format!("{}{SEPARATOR}\n{answer}", self.fixture);
-        std::fs::write(file, text)
-            .unwrap_or_else(|error| panic!("{} is writable: {error}", file.display()));
     }
 }
 

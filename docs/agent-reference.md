@@ -211,7 +211,7 @@ Use `assert_labels_exact` when the full result set is known.
 
 **Completion tests** — new tests should use the `CompletionTester` builder, which automatically runs each scenario with `snippets=true` and `snippets=false`.
 
-**Whole-server cases** — `src/itest` asks a running server over LSP: sources in a string with a `$0` cursor, the answer as an `expect!` snapshot (`cargo test itest`; `UPDATE_EXPECT=1` rewrites snapshots). One rule per case, and every type a case uses is declared in it. See `bench/compare/README.md`.
+**Whole-server cases** — `src/itest` asks a running server over LSP: sources in a string with a `$0` cursor, the answer as an `expect!` snapshot (`cargo test itest`). One rule per case, and every type a case uses is declared in it. See `bench/compare/README.md`.
 
 **Regression tests** — name functions `regression_<issue_number>_<description>` and add a `// See: https://github.com/Hessesian/kmp-lsp/issues/N` comment.
 

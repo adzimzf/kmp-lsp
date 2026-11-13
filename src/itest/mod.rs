@@ -31,10 +31,6 @@
 //! - `INTEGRATION=1 cargo test itest` runs every case.
 //! - `INTEGRATION=1 cargo test itest::cases::kotlin::hover` runs one
 //!   directory.
-//! - `UPDATE_EXPECT=1 cargo test itest` writes the answers into the case
-//!   files (it implies `INTEGRATION=1`); read the diff before committing
-//!   it. A new case can be committed with nothing under its `//= expected`
-//!   line and filled in this way.
 //!
 //! Sources declare every type they use: a case must not depend on which JDK
 //! or Kotlin stdlib the machine has.
