@@ -1732,14 +1732,15 @@
    "id": "complete-edge-lambda-captures-param",
    "kind": "completion",
    "file": "gson/src/main/java/com/google/gson/internal/ConstructorConstructor.java",
-   "line": 188,
+   "line": 181,
    "at": "type",
    "category": "identifier",
-   "why": "`\"Invalid EnumSet type: \" + ty|` inside a lambda: the enclosing method's parameter type (jdtls answers nothing with the rest of this line cut)",
+   "why": "`if (ty|` as the lambda body's first statement, the condition unclosed: the enclosing method's parameter type, captured by the lambda",
    "expect": {
     "completion": true
    },
-   "typed": 2
+   "typed": 2,
+   "cut": "line"
   },
   {
    "id": "complete-edge-lambda-in-unclosed-call",
@@ -1958,12 +1959,12 @@
    "references": 14,
    "callHierarchy": 3,
    "implementation": 3,
-   "completion": 15
+   "completion": 41
   },
   "kmp-lsp": {
    "definition": 86,
    "references": 14,
-   "completion": 15,
+   "completion": 41,
    "hover": 9,
    "typeDefinition": 6,
    "implementation": 3,
