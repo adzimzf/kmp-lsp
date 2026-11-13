@@ -521,6 +521,32 @@ pub(crate) fn java_scope_locals_at(
     // covering node starts before the locals declared above the cursor, and
     // those are exactly the ones in scope.
     let use_start = byte_of_point(&doc.bytes, point);
+    // Mid-typing, the method around the cursor is often still unclosed, and
+    // tree-sitter then folds the whole class into one flat ERROR node with no
+    // block or method left to walk. Read the scope off a closed copy of the
+    // text before the cursor instead: only what precedes the cursor can be in
+    // scope there, so cutting the rest loses nothing. Any parse error counts,
+    // not just one above the cursor — on blank space the covering node can be
+    // the root itself.
+    if doc.tree.root_node().has_error() {
+        if let Some(closed) = closed_before(&doc.bytes[..use_start]) {
+            return java_scope_locals_at_cursor(&closed, point, use_start);
+        }
+    }
+    scope_locals_from(node, use_start, doc)
+}
+
+fn java_scope_locals_at_cursor(
+    doc: &LiveDoc,
+    point: tree_sitter::Point,
+    use_start: usize,
+) -> Vec<JavaScopeLocal> {
+    crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)
+        .map(|node| scope_locals_from(node, use_start, doc))
+        .unwrap_or_default()
+}
+
+fn scope_locals_from(node: Node<'_>, use_start: usize, doc: &LiveDoc) -> Vec<JavaScopeLocal> {
     java_locals_in_scope(node, use_start, &doc.bytes)
         .into_iter()
         .filter_map(|local| {
@@ -533,6 +559,69 @@ pub(crate) fn java_scope_locals_at(
             })
         })
         .collect()
+}
+
+/// `before` (the text up to the cursor) with every bracket it leaves open
+/// closed, innermost first and a `;` ahead of each `}` so an unfinished
+/// statement ends — `void run(int count) { log(mes` becomes
+/// `… log(mes\n);}`. Brackets in strings, character literals and comments
+/// don't count. Parsed as Java; `None` when the parser fails.
+fn closed_before(before: &[u8]) -> Option<LiveDoc> {
+    let mut open = Vec::new();
+    let mut index = 0;
+    while index < before.len() {
+        let rest = &before[index..];
+        if rest.starts_with(b"//") {
+            index += rest
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .unwrap_or(rest.len());
+        } else if rest.starts_with(b"/*") {
+            index += 2 + find_bytes(&rest[2..], b"*/").map_or(rest.len(), |end| end + 2);
+        } else if rest.starts_with(b"\"\"\"") {
+            index += 3 + find_bytes(&rest[3..], b"\"\"\"").map_or(rest.len(), |end| end + 3);
+        } else if rest[0] == b'"' || rest[0] == b'\'' {
+            index += 1 + quoted_len(&rest[1..], rest[0]);
+        } else {
+            match rest[0] {
+                b'(' => open.push(")"),
+                b'[' => open.push("]"),
+                b'{' => open.push(";}"),
+                b')' | b']' | b'}' => {
+                    open.pop();
+                }
+                _ => {}
+            }
+            index += 1;
+        }
+    }
+    let mut source = String::from_utf8_lossy(before).into_owned();
+    source.push('\n');
+    for closer in open.iter().rev() {
+        source.push_str(closer);
+    }
+    crate::indexer::live_tree::parse_live(&source, tree_sitter_java::LANGUAGE.into())
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+/// Bytes up to and including the closing `quote` (or to the line's end when
+/// the literal is still unterminated).
+fn quoted_len(rest: &[u8], quote: u8) -> usize {
+    let mut index = 0;
+    while index < rest.len() {
+        match rest[index] {
+            b'\\' => index += 2,
+            b'\n' => return index,
+            byte if byte == quote => return index + 1,
+            _ => index += 1,
+        }
+    }
+    rest.len()
 }
 
 /// The byte offset of `point`, clamped to its row's end.

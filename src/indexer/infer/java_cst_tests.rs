@@ -721,3 +721,52 @@ fn more_specific_overload_is_the_one_whose_parameters_are_subtypes() {
         &UnknownHierarchy
     ));
 }
+
+/// Mid-typing, the method is still unclosed and tree-sitter folds the class
+/// into one flat ERROR node: the scope still holds the locals and parameters
+/// written above the cursor.
+#[test]
+fn scope_locals_reach_into_an_unclosed_method() {
+    let head = "class Demo {
+  private int field;
+  void run(int count) {
+    String message = \"a { brace\"; // and ( here
+    int total = 0;
+    for (String each : items) {
+      |
+";
+    let closed_class = format!("{head}}}\n");
+    let open_call = head.replace('|', "log(total, |");
+    let open_lambda = head.replace('|', "items.forEach(item -> { |");
+    for (source, extra) in [
+        (head.to_owned(), None),
+        (closed_class, None),
+        (open_call, None),
+        (open_lambda, Some("item")),
+    ] {
+        let names = scope_local_names(&source);
+        for reaching in ["count", "message", "total", "each"]
+            .into_iter()
+            .chain(extra)
+        {
+            assert!(
+                names.contains(&reaching.to_owned()),
+                "{names:?} in\n{source}"
+            );
+        }
+        assert!(!names.contains(&"field".to_owned()), "{names:?}");
+    }
+}
+
+#[test]
+fn unclosed_method_does_not_leak_a_sibling_methods_locals() {
+    let names = scope_local_names(
+        "class Demo {
+  void done() { int finished = 1; }
+  void run(int count) {
+    |
+",
+    );
+    assert!(names.contains(&"count".to_owned()), "{names:?}");
+    assert!(!names.contains(&"finished".to_owned()), "{names:?}");
+}
