@@ -1,0 +1,17 @@
+//- /com/demo/Boxed.java
+package com.demo;
+
+public class Boxed {
+    Boxed() {
+    }
+}
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    void foo() {
+        Boxed boxed = new Box$0
+    }
+}
+//= expected
+Boxed

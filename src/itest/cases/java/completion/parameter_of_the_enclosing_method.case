@@ -1,0 +1,10 @@
+//- /com/demo/Test.java
+package com.demo;
+
+public class Test {
+    void test(String prefix, int width) {
+        int total = widt$0
+    }
+}
+//= expected
+width

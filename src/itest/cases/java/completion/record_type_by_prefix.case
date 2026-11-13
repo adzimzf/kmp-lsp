@@ -1,0 +1,10 @@
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    static record MyRecordKind(int i) {}
+
+    private MyRecordKin$0
+}
+//= expected
+MyRecordKind

@@ -1,0 +1,12 @@
+//- /com/demo/Test.java
+package com.demo;
+
+public class Test {
+    enum Zenum { A, B }
+
+    void test() {
+        Zenu$0
+    }
+}
+//= expected
+Zenum

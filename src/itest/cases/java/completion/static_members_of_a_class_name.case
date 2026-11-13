@@ -1,0 +1,28 @@
+//- /com/demo/Units.java
+package com.demo;
+
+public final class Units {
+    public static final int DAYS = 1;
+    public static final int HOURS = 2;
+    public int instanceField = 3;
+
+    public static int valueOf(String name) {
+        return 0;
+    }
+
+    public int instanceMethod() {
+        return 0;
+    }
+}
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    void foo() {
+        int value = Units.$0
+    }
+}
+//= expected
+DAYS
+HOURS
+valueOf

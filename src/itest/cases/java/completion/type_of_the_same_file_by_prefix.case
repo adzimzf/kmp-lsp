@@ -1,0 +1,6 @@
+//- /NoPackage.java
+public class NoPackage {
+    NoP$0
+}
+//= expected
+NoPackage

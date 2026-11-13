@@ -1,0 +1,18 @@
+//- /com/demo/Runner.java
+package com.demo;
+
+public interface Runner {
+    void run();
+
+    void stop();
+}
+//- /com/demo/Test.java
+package com.demo;
+
+public class Test {
+    void start(Runner runner) {
+        runner.ru$0
+    }
+}
+//= expected
+run
