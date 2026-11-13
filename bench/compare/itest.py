@@ -254,14 +254,27 @@ def references_failure(repo, case, answer, ungraded=frozenset()):
 def completion_failure(case, answer):
     rank = completion_rank(answer, case["name"])
     within = case["expect_rank_within"]
-    if rank is not None and rank <= within:
+    offered = {label_name(item) for item in answer["items"]}
+    wrong = [name for name in case.get("expect_absent", []) if name in offered]
+    if rank is not None and rank <= within and not wrong:
         return None
+    typed = case["name"][:case.get("typed", 0)]
     top = ", ".join(label_name(item) for item in sorted(
         answer["items"], key=lambda item: ((item.get("sortText") or item.get("label") or ""),
                                            item.get("label") or ""))[:5]) or "empty list"
-    return Failure(case, "completion", f"`{case['name']}` within the top {within}",
-                   f"rank {rank}" if rank else f"absent from {answer['total']} items",
-                   [f"top      {top}"])
+    expected = f"`{case['name']}` within the top {within}"
+    if typed:
+        expected += f" after typing `{typed}`"
+    if case.get("cut"):
+        expected += f" (rest of the {case['cut']} cut)"
+    if case.get("expect_absent"):
+        expected += f", none of {', '.join(case['expect_absent'])}"
+    shown = f"{len(answer['items'])} items starting with `{typed}`" if typed else f"{answer['total']} items"
+    actual = f"rank {rank}" if rank else f"absent from {shown}"
+    detail = [f"top      {top}"]
+    if wrong:
+        actual += f", offered out-of-scope {', '.join(wrong)}"
+    return Failure(case, "completion", expected, actual, detail)
 
 def grade(repo, feature, case, answer, ungraded=frozenset()):
     """The case's Failure, or None when the answer is right."""

@@ -1562,6 +1562,392 @@
    "expect": {
     "completion": true
    }
+  },
+  {
+   "id": "complete-edge-local-unclosed-method",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 372,
+   "at": "candidate",
+   "category": "identifier",
+   "why": "`ca|` with the rest of the file gone (getAdapter, its try and its for all unclosed): the local candidate is offered, and call (in scope) too",
+   "expect": {
+    "completion": true
+   },
+   "typed": 2,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-loop-var-unclosed",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 370,
+   "at": "factory",
+   "category": "identifier",
+   "why": "`fac|` inside an unclosed enhanced for: the loop variable factory (the field factories matches too)",
+   "expect": {
+    "completion": true
+   },
+   "typed": 3,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-try-block-local-gone",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 384,
+   "at": "candidate",
+   "category": "identifier",
+   "why": "`ca|` after the try block closed, method still open: candidate (method scope) yes; call was declared inside the try block, out of scope",
+   "expect": {
+    "completion": {
+     "absent": [
+      "call"
+     ]
+    }
+   },
+   "typed": 2,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-declared-later",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 345,
+   "at": "cached",
+   "category": "identifier",
+   "why": "`ca|` on the line of `adapter = (TypeAdapter<T>) cached`: cached yes; candidate and call are declared further down the method, not yet in scope",
+   "expect": {
+    "completion": {
+     "absent": [
+      "candidate",
+      "call"
+     ]
+    }
+   },
+   "typed": 2,
+   "cut": "line"
+  },
+  {
+   "id": "complete-edge-sibling-overload-local",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 408,
+   "at": "type",
+   "category": "identifier",
+   "why": "`t|` in getAdapter(Class): the parameter type; threadCalls is a local of the other getAdapter overload",
+   "expect": {
+    "completion": {
+     "absent": [
+      "threadCalls"
+     ]
+    }
+   },
+   "typed": 1,
+   "cut": "line"
+  },
+  {
+   "id": "complete-edge-field-unclosed",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 380,
+   "at": "threadLocalAdapterResults",
+   "category": "identifier",
+   "why": "`threadL|` in an unclosed finally: the field, without `this.`",
+   "expect": {
+    "completion": true
+   },
+   "typed": 7,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-finally-sees-method-local",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 379,
+   "at": "isInitialAdapterRequest",
+   "category": "identifier",
+   "why": "`isI|` as the condition of an if inside an unclosed finally: the method-level local",
+   "expect": {
+    "completion": true
+   },
+   "typed": 3,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-member-unclosed",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 372,
+   "at": "setDelegate",
+   "category": "member_call",
+   "why": "`call.|` with everything after it gone: members of the local's type FutureTypeAdapter<T>",
+   "expect": {
+    "completion": true
+   },
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-member-prefix-unclosed",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 372,
+   "at": "setDelegate",
+   "category": "member_call",
+   "why": "`call.setD|` partly typed in an unclosed method",
+   "expect": {
+    "completion": true
+   },
+   "typed": 4,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-catch-param",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/Gson.java",
+   "line": 645,
+   "at": "e",
+   "category": "identifier",
+   "why": "`new JsonIOException(|` unclosed inside a catch block: the catch parameter e",
+   "expect": {
+    "completion": true
+   },
+   "cut": "line"
+  },
+  {
+   "id": "complete-edge-lambda-body-local-unclosed",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/ConstructorConstructor.java",
+   "line": 185,
+   "at": "elementType",
+   "category": "identifier",
+   "why": "`el|` inside an unclosed lambda body, two ifs deep: the local elementType declared in the lambda",
+   "expect": {
+    "completion": true
+   },
+   "typed": 2,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-lambda-captures-param",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/ConstructorConstructor.java",
+   "line": 188,
+   "at": "type",
+   "category": "identifier",
+   "why": "`\"Invalid EnumSet type: \" + ty|` inside a lambda: the enclosing method's parameter type",
+   "expect": {
+    "completion": true
+   },
+   "typed": 2,
+   "cut": "line"
+  },
+  {
+   "id": "complete-edge-lambda-in-unclosed-call",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/JsonObjectAsMapTest.java",
+   "line": 107,
+   "at": "value",
+   "category": "identifier",
+   "why": "`assertThrows(\u2026, () -> map.put(null, va|` with both calls unclosed: the local value captured by the lambda",
+   "expect": {
+    "completion": true
+   },
+   "typed": 2,
+   "cut": "line"
+  },
+  {
+   "id": "complete-edge-nested-loops-unclosed",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+   "line": 117,
+   "at": "stack",
+   "category": "identifier",
+   "why": "`st|` three blocks deep (while, while, if) in an unclosed method: the local stack",
+   "expect": {
+    "completion": true
+   },
+   "typed": 2,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-loop-body-local-unclosed",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+   "line": 107,
+   "at": "value",
+   "category": "identifier",
+   "why": "`va|` in an if inside an unclosed while: the loop body's local value",
+   "expect": {
+    "completion": true
+   },
+   "typed": 2,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-inner-loop-local-gone",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+   "line": 124,
+   "at": "in",
+   "category": "identifier",
+   "why": "`i|` after the inner while closed: the parameter in; isNesting belonged to the closed loop body",
+   "expect": {
+    "completion": {
+     "absent": [
+      "isNesting"
+     ]
+    }
+   },
+   "typed": 1,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-later-local-and-sibling-local",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+   "line": 99,
+   "at": "name",
+   "category": "identifier",
+   "why": "`n|` assigning name: name yes; number is a local of the sibling method readTerminal",
+   "expect": {
+    "completion": {
+     "absent": [
+      "number"
+     ]
+    }
+   },
+   "typed": 1,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-private-method-prefix",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+   "line": 87,
+   "at": "tryBeginNesting",
+   "category": "identifier",
+   "why": "`try|` (also a keyword) where a private method of the class is called",
+   "expect": {
+    "completion": true
+   },
+   "typed": 3,
+   "cut": "line"
+  },
+  {
+   "id": "complete-edge-switch-label-constant",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+   "line": 62,
+   "at": "NUMBER",
+   "category": "identifier",
+   "why": "`case NU|` in a switch on a JsonToken: the enum constant, unqualified",
+   "expect": {
+    "completion": true
+   },
+   "typed": 2,
+   "cut": "line"
+  },
+  {
+   "id": "complete-edge-member-prefix-in-switch",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/JsonElementTypeAdapter.java",
+   "line": 47,
+   "at": "beginArray",
+   "category": "member_call",
+   "why": "`in.begin|` in an unclosed switch case",
+   "expect": {
+    "completion": true
+   },
+   "typed": 5,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-anonymous-switch-local",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 113,
+   "at": "intValue",
+   "category": "identifier",
+   "why": "`int|` (also a keyword) in an unclosed method of an anonymous TypeAdapter: the local declared in a case group",
+   "expect": {
+    "completion": true
+   },
+   "typed": 3,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-anonymous-case-local-gone",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 126,
+   "at": "i",
+   "category": "identifier",
+   "why": "`bitset.set(|` after the switch closed: the loop counter i (a single-letter name)",
+   "expect": {
+    "completion": true
+   },
+   "cut": "line"
+  },
+  {
+   "id": "complete-edge-anonymous-loop-local",
+   "kind": "completion",
+   "file": "gson/src/main/java/com/google/gson/internal/bind/TypeAdapters.java",
+   "line": 125,
+   "at": "set",
+   "category": "identifier",
+   "why": "`if (se|` in an unclosed while: the local set; intValue was declared in the closed switch",
+   "expect": {
+    "completion": true
+   },
+   "typed": 2,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-resource-var",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/integration/OSGiManifestIT.java",
+   "line": 173,
+   "at": "is",
+   "category": "identifier",
+   "why": "`new Manifest(i|` with the rest gone: the try-with-resources variable is",
+   "expect": {
+    "completion": true
+   },
+   "typed": 1,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-foreach-var-gone",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/integration/OSGiManifestIT.java",
+   "line": 184,
+   "at": "manifestResources",
+   "category": "identifier",
+   "why": "`manifestR|` after the for-each closed: the list manifestResources; the loop variable manifestResource is out of scope",
+   "expect": {
+    "completion": {
+     "absent": [
+      "manifestResource"
+     ]
+    }
+   },
+   "typed": 9,
+   "cut": "file"
+  },
+  {
+   "id": "complete-edge-foreach-var-in-scope",
+   "kind": "completion",
+   "file": "gson/src/test/java/com/google/gson/integration/OSGiManifestIT.java",
+   "line": 176,
+   "at": "manifestResource",
+   "category": "identifier",
+   "why": "`new ManifestData(manifestR|` inside the for-each: the loop variable (manifestResources matches too)",
+   "expect": {
+    "completion": true
+   },
+   "typed": 9,
+   "cut": "line"
   }
  ],
  "baselines": {
