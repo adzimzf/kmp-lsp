@@ -1,0 +1,22 @@
+//- /com/demo/Suit.java
+package com.demo;
+
+public enum Suit {
+    HEARTS,
+    SPADES;
+
+    public String pretty() {
+        return name();
+    }
+}
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    void foo() {
+        Suit suit = Suit.$0
+    }
+}
+//= expected
+HEARTS
+SPADES

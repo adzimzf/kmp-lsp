@@ -1,0 +1,8 @@
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    pub$0
+}
+//= expected
+public

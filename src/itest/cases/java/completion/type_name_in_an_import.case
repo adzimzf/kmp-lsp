@@ -1,0 +1,19 @@
+//- /com/demo/data/Row.java
+package com.demo.data;
+
+public class Row {
+}
+//- /com/demo/data/Table.java
+package com.demo.data;
+
+public class Table {
+}
+//- /com/demo/Foo.java
+package com.demo;
+
+import com.demo.data.Ro$0
+
+public class Foo {
+}
+//= expected
+Row

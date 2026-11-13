@@ -1,0 +1,10 @@
+//- /com/demo/Arr.java
+package com.demo;
+
+public class Arr {
+    int count(String[] names) {
+        return names.leng$0
+    }
+}
+//= expected
+length

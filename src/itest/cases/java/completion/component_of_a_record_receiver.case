@@ -1,0 +1,16 @@
+//- /com/demo/Point.java
+package com.demo;
+
+public record Point(int x, int y) {
+}
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    int read(Point point) {
+        return point.$0
+    }
+}
+//= expected
+x
+y

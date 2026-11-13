@@ -1,0 +1,27 @@
+//- /com/demo/Circle.java
+package com.demo;
+package com.google.gson.internal;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square {
+    double area() {
+        return 4.0;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double measure(Circle circle, Square square) {
+        return square.area() + circle.ar$0ea();
+    }
+}
+//= expected
+/com/demo/Circle.java:5:12  double area() {

@@ -1,0 +1,22 @@
+//- /com/demo/Counter.java
+package com.demo;
+
+class Counter {
+    int count;
+
+    int twice(int start) {
+        int count = start;
+        count = co$0unt + count;
+        return count;
+    }
+
+    int field() {
+        return count;
+    }
+}
+//= expected
+/com/demo/Counter.java:7:13  int count = start;
+/com/demo/Counter.java:8:9  count = count + count;
+/com/demo/Counter.java:8:17  count = count + count;
+/com/demo/Counter.java:8:25  count = count + count;
+/com/demo/Counter.java:9:16  return count;

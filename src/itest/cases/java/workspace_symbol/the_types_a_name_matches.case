@@ -1,0 +1,19 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+}
+//- /com/demo/CircleTest.java
+package com.demo;
+
+class CircleTest {
+    Circle$0 circle;
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square {
+}
+//= expected
+Circle  /com/demo/Circle.java:3
+CircleTest  /com/demo/CircleTest.java:3

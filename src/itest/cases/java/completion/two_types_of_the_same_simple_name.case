@@ -1,0 +1,22 @@
+//- /com/demo/util/Listing.java
+package com.demo.util;
+
+public class Listing {
+}
+//- /com/demo/other/Listing.java
+package com.demo.other;
+
+public class Listing {
+}
+//- /com/demo/Foo.java
+package com.demo;
+
+import com.demo.util.Listing;
+
+public class Foo {
+    void foo() {
+        Object listing = new Listin$0
+    }
+}
+//= expected
+Listing

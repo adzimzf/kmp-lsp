@@ -1,0 +1,31 @@
+//- /com/demo/Circle.kt
+package com.demo
+
+class Circle$0(private val radius: Double) {
+    fun area(): Double {
+        return PI * radius * radius
+    }
+
+    enum class Unit {
+        METRE,
+        FOOT
+    }
+
+    companion object {
+        const val PI = 3.14
+    }
+}
+//= expected
+class Circle
+symbol radius
+method area
+enum Unit
+symbol entries
+symbol values
+symbol valueOf
+symbol name
+symbol ordinal
+enum-member METRE
+enum-member FOOT
+symbol Companion
+constant PI

@@ -1,0 +1,30 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double radius;
+    private double cache;
+
+    double area() {
+        return 3.14 * radius * radius;
+    }
+
+    private void refresh() {
+    }
+
+    static Circle unit() {
+        return new Circle();
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double measure(Circle circle) {
+        return circle.$0
+    }
+}
+//= expected
+radius
+area
+unit

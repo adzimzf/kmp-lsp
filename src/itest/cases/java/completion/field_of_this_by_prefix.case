@@ -1,0 +1,12 @@
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    private String myTestString;
+
+    void foo() {
+        this.myTestS$0
+    }
+}
+//= expected
+myTestString

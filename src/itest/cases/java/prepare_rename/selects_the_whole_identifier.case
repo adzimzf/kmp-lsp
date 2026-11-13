@@ -1,0 +1,11 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int total(int first, int second) {
+        int subtotal = first + second;
+        return sub$0total;
+    }
+}
+//= expected
+/com/demo/Main.java:6:16  return subtotal;

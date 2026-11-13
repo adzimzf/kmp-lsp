@@ -1,0 +1,28 @@
+//- /java/lang/reflect/Array.java
+package java.lang.reflect;
+
+public final class Array {
+    public static Object newInstance(Class<?> componentType, int length) {
+        return null;
+    }
+}
+//- /com/demo/Array.java
+package com.demo;
+
+class Array {
+    static Object newInstance(Class<?> componentType, int length) {
+        return null;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+import java.lang.reflect.Array;
+
+class Main {
+    Object make() {
+        return Array.newIns$0tance(String.class, 3);
+    }
+}
+//= expected
+/java/lang/reflect/Array.java:4:26  public static Object newInstance(Class<?> componentType, int length) {

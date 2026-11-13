@@ -1,0 +1,23 @@
+//- /com/demo/Pair.java
+package com.demo;
+
+public class Pair<K, V> {
+    public V put(K key, V value) {
+        return value;
+    }
+
+    public V peek(K key) {
+        return null;
+    }
+}
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    void foo() {
+        Pair<String, String> pair = new Pair<String, String>();
+        pair.pu$0
+    }
+}
+//= expected
+put

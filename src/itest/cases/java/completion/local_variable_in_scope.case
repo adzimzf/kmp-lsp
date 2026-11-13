@@ -1,0 +1,12 @@
+//- /com/demo/Test.java
+package com.demo;
+
+public class Test {
+    void test() {
+        String greeting = "hello";
+        int counter = 0;
+        gree$0
+    }
+}
+//= expected
+greeting

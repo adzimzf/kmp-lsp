@@ -1,0 +1,22 @@
+//- /com/demo/App.java
+package com.demo;
+
+import java.util.function.Function;
+
+public class App {
+    public String getGreeting() {
+        return "foo";
+    }
+
+    public static void main(String[] args) {
+        Function<Integer, Integer> twice = new Function<>() {
+            @Override
+            public Integer apply(Integer value) {
+                new App().getGr$0eeting();
+                return value * 2;
+            }
+        };
+    }
+}
+//= expected
+/com/demo/App.java:6:19  public String getGreeting() {

@@ -1,0 +1,17 @@
+//- /com/demo/Printer.java
+package com.demo;
+
+class Printer {
+    void print(String text, int copies) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Printer printer) {
+        printer.print("page", 2$0);
+    }
+}
+//= expected
+print(String text, [int copies])

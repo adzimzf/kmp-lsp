@@ -1,0 +1,24 @@
+//- /com/demo/MovingObject.java
+package com.demo;
+
+public interface MovingObject {
+    int speed();
+}
+//- /com/demo/Vehicle.java
+package com.demo;
+
+public class Vehicle implements MovingObject {
+    public int speed() {
+        return 60;
+    }
+}
+//- /com/demo/Distance.java
+package com.demo;
+
+class Distance {
+    int of(MovingObject object) {
+        return object.sp$0eed() * 60;
+    }
+}
+//= expected
+/com/demo/MovingObject.java:4:9  int speed();

@@ -1,0 +1,15 @@
+//- /com/demo/data/ArrayListing.java
+package com.demo.data;
+
+public class ArrayListing {
+}
+//- /com/demo/Test.java
+package com.demo;
+
+public class Test {
+    public static void main(String[] args) {
+        Object listing = new com.demo.data.ArrayL$0
+    }
+}
+//= expected
+ArrayListing

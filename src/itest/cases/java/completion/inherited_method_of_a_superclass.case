@@ -1,0 +1,23 @@
+//- /com/demo/Baz.java
+package com.demo;
+
+public class Baz {
+    public String describe() {
+        return "baz";
+    }
+
+    private String hidden() {
+        return "hidden";
+    }
+}
+//- /com/demo/Test.java
+package com.demo;
+
+public class Test extends Baz {
+    void run(Test test) {
+        test.$0
+    }
+}
+//= expected
+run
+describe

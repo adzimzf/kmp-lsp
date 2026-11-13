@@ -1,0 +1,16 @@
+//- /com/demo/Consumer.java
+package com.demo;
+
+public interface Consumer<T> {
+    void accept(T value);
+}
+//- /com/demo/Test.java
+package com.demo;
+
+public class Test {
+    void run(Consumer<String> consumer) {
+        consumer.acce$0
+    }
+}
+//= expected
+accept

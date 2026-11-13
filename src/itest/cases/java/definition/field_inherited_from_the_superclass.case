@@ -1,0 +1,16 @@
+//- /com/demo/Vehicle.java
+package com.demo;
+
+public class Vehicle {
+    public String model;
+}
+//- /com/demo/Car.java
+package com.demo;
+
+public class Car extends Vehicle {
+    public void rename() {
+        this.mo$0del = "Ford Fusion";
+    }
+}
+//= expected
+/com/demo/Vehicle.java:4:19  public String model;

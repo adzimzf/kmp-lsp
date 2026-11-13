@@ -1,0 +1,11 @@
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    @Deprec$0
+    boolean getThing() {
+        return true;
+    }
+}
+//= expected
+Deprecated

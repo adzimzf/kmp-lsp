@@ -1,0 +1,15 @@
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    public void test() {
+        Inner inner = new Inne$0
+    }
+
+    class Inner {
+        public Inner() {
+        }
+    }
+}
+//= expected
+Inner

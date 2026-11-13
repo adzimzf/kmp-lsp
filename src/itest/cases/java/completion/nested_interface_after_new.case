@@ -1,0 +1,14 @@
+//- /com/demo/Foo.java
+package com.demo;
+
+public class Foo {
+    public static void main(String[] args) {
+        IFoo foo = new IFo$0
+    }
+
+    interface IFoo {
+        String getName();
+    }
+}
+//= expected
+IFoo

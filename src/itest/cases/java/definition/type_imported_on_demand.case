@@ -1,0 +1,17 @@
+//- /com/demo/one/Foo.java
+package com.demo.one;
+
+public class Foo {
+    public void hello() {
+    }
+}
+//- /com/demo/two/Foo2.java
+package com.demo.two;
+
+import com.demo.one.*;
+
+public class Foo2 {
+    F$0oo bar;
+}
+//= expected
+/com/demo/one/Foo.java:3:14  public class Foo {

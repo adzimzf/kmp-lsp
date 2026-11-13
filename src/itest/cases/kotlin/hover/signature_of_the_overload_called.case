@@ -1,0 +1,20 @@
+//- /com/demo/Printer.kt
+package com.demo
+
+class Printer {
+    fun print(number: Int) {
+    }
+
+    fun print(text: String, copies: Int) {
+    }
+}
+//- /com/demo/Main.kt
+package com.demo
+
+class Main {
+    fun run(printer: Printer) {
+        printer.pri$0nt("page", 2)
+    }
+}
+//= expected
+fun print(text: String, copies: Int)

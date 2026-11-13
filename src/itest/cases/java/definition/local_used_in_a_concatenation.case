@@ -1,0 +1,11 @@
+//- /com/demo/Single.java
+package com.demo;
+
+public class Single {
+    public static void main(String[] args) {
+        String greeting = "1";
+        System.out.println("Hello World!" + gree$0ting);
+    }
+}
+//= expected
+/com/demo/Single.java:5:16  String greeting = "1";

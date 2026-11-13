@@ -1,0 +1,25 @@
+//- /com/demo/Circle.kt
+package com.demo
+
+class Circle {
+    var radius: Double = 1.0
+    private var cache: Double = 0.0
+
+    fun area(): Double {
+        return 3.14 * radius * radius
+    }
+
+    private fun refresh() {
+    }
+}
+//- /com/demo/Main.kt
+package com.demo
+
+class Main {
+    fun measure(circle: Circle): Double {
+        return circle.$0
+    }
+}
+//= expected
+area
+radius

@@ -1,0 +1,20 @@
+//- /com/demo/Circle.kt
+package com.demo
+
+class Circle$0 {
+    var radius: Double = 1.0
+
+    fun area(): Double {
+        val square = radius * radius
+        return 3.14 * square
+    }
+
+    fun perimeter(): Double {
+        val diameter = radius * 2
+        return 3.14 * diameter
+    }
+}
+//= expected
+3..15
+6..9
+11..14

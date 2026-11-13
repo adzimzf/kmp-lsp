@@ -1,0 +1,15 @@
+//- /com/demo/data/Row.java
+package com.demo.data;
+
+public class Row {
+}
+//- /com/demo/Foo.java
+package com.demo;
+
+import com.dem$0
+
+public class Foo {
+}
+//= expected
+com.demo
+com.demo.data

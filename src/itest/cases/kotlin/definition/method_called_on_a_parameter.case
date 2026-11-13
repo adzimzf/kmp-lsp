@@ -1,0 +1,26 @@
+//- /com/demo/Circle.kt
+package com.demo
+
+class Circle {
+    fun area(): Double {
+        return 3.14
+    }
+}
+//- /com/demo/Square.kt
+package com.demo
+
+class Square {
+    fun area(): Double {
+        return 4.0
+    }
+}
+//- /com/demo/Main.kt
+package com.demo
+
+class Main {
+    fun measure(circle: Circle, square: Square): Double {
+        return square.area() + circle.ar$0ea()
+    }
+}
+//= expected
+/com/demo/Circle.kt:4:9  fun area(): Double {

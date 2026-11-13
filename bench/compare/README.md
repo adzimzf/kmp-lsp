@@ -157,6 +157,61 @@ Notes from running it:
   kotlin-server has expired" needs replacing with a newer one.
 - Results of a run: `results/moshi-2026-11-06.md`.
 
+## Integration cases in Rust: `src/itest`
+
+`itest.sh` (below) grades a run on a real project against a reference
+server. `src/itest` is the other half, written the way rust-analyzer writes
+its tests: each case is a few Java or Kotlin files with a `$0` cursor and
+the answer it expects, asked over LSP of the whole server. The server is
+always kmp-lsp itself, in the test process, behind an in-memory pipe: the
+sources arrive as `didOpen` text and no file is written, so the whole set
+takes a fraction of a second with no checkout, build tool, JDK or
+reference server.
+
+```sh
+INTEGRATION=1 cargo test itest                       # every case
+INTEGRATION=1 cargo test itest::cases::kotlin::hover # one directory
+UPDATE_EXPECT=1 cargo test itest                     # write the answers down
+cargo test itest                                     # skipped: no INTEGRATION
+```
+
+A case is a file, not Rust — `src/itest/cases/<language>/<request>/<name>.case`,
+where `<language>` is `java` or `kotlin` and `<request>` is the LSP request
+(`definition`, `hover`, `completion`, …; `cases.rs` lists them). The file is
+the fixture, then a `//= expected` line, then the answer:
+
+```text
+//- /com/demo/Greeter.java
+package com.demo;
+class Greeter { String greet() { return ""; } }
+//- /com/demo/Main.java
+package com.demo;
+class Main { void run(Greeter greeter) { greeter.gr$0eet(); } }
+//= expected
+/com/demo/Greeter.java:2:24  class Greeter { String greet() { return ""; } }
+```
+
+- One `#[test]` per language and request runs its whole directory, the cases
+  in parallel, so the set scales to thousands of files without any Rust
+  boilerplate; a new case needs no code at all.
+- A case is a whole server, so the suites are off unless `INTEGRATION=1` is
+  set: a plain `cargo test` prints what it skipped and stays a unit-test run.
+  `UPDATE_EXPECT=1` implies `INTEGRATION=1`.
+- Commit a new case with nothing under `//= expected` and
+  `UPDATE_EXPECT=1 cargo test itest` fills it in — read the diff, it is the
+  answer kmp-lsp gives today, not necessarily the right one.
+- A case whose answer is `(nothing)` is asked once; any other is asked again
+  until the server has something to say (it is still reading the files it was
+  just handed).
+- Answers are rendered as positions, source lines and names, not JSON, so an
+  expectation reads as the facts a reviewer would check by eye
+  (`request.rs` says what is left out).
+- Requests that search files on disk (cross-file references, implementations,
+  rename) have no cases: the in-memory server has no files to search.
+
+Use it to aim at one rule with a ten-line program; use `itest.sh` to catch
+what breaks on real code.
+
 ## Integration test: pass/fail, not a comparison
 
 `compare.sh` answers "how does kmp-lsp compare"; `itest.sh` answers "did

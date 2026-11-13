@@ -1,0 +1,17 @@
+//- /com/demo/Paths.java
+package com.demo;
+
+public final class Paths {
+    public static final char pathSeparatorChar = ':';
+    public static final String pathSeparator = ":";
+}
+//- /com/demo/Test.java
+package com.demo;
+
+public class Test {
+    void test() {
+        char separator = Paths.pathSeparatorC$0
+    }
+}
+//= expected
+pathSeparatorChar

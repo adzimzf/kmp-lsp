@@ -1,0 +1,10 @@
+//- /com/demo/Blank.java
+package com.demo;
+
+class Blank {
+    void nothing() {
+        // no $0name here
+    }
+}
+//= expected
+(nothing)

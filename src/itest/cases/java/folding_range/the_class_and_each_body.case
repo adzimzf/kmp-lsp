@@ -1,0 +1,20 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle$0 {
+    double radius;
+
+    double area() {
+        double square = radius * radius;
+        return 3.14 * square;
+    }
+
+    double perimeter() {
+        double diameter = radius * 2;
+        return 3.14 * diameter;
+    }
+}
+//= expected
+3..15
+6..9
+11..14
