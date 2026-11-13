@@ -1,0 +1,26 @@
+//- /com/demo/Service.java
+package com.demo;
+
+public class Service {
+    public void demoOnly() {
+    }
+}
+//- /com/other/Service.java
+package com.other;
+
+public class Service {
+    public void otherOnly() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+import com.other.Service;
+
+public class Main {
+    void run(Service service) {
+        service.$0
+    }
+}
+//= expected
+otherOnly

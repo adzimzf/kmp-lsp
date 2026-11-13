@@ -1,0 +1,13 @@
+//- /com/demo/Quoted.java
+package com.demo;
+
+class Quoted {
+    String run() {
+        String label = "label";
+        // label is written here too
+        return la$0bel;
+    }
+}
+//= expected
+/com/demo/Quoted.java:5:16  String label = "label";
+/com/demo/Quoted.java:7:16  return label;

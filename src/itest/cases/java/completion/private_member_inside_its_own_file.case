@@ -1,0 +1,15 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    private double cache;
+
+    private void refresh() {
+    }
+
+    double area() {
+        return this.ca$0
+    }
+}
+//= expected
+cache

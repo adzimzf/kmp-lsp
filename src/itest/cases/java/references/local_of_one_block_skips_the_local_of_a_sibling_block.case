@@ -1,0 +1,17 @@
+//- /com/demo/Blocks.java
+package com.demo;
+
+class Blocks {
+    int run(boolean first) {
+        if (first) {
+            int value = 1;
+            return va$0lue + value;
+        }
+        int value = 2;
+        return value;
+    }
+}
+//= expected
+/com/demo/Blocks.java:6:17  int value = 1;
+/com/demo/Blocks.java:7:20  return value + value;
+/com/demo/Blocks.java:7:28  return value + value;

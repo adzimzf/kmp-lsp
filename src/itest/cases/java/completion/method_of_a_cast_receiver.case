@@ -1,0 +1,24 @@
+//- /com/demo/Animal.java
+package com.demo;
+
+public class Animal {
+    public void eat() {
+    }
+}
+//- /com/demo/Dog.java
+package com.demo;
+
+public class Dog extends Animal {
+    public void bark() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void feed(Animal animal) {
+        ((Dog) animal).ba$0
+    }
+}
+//= expected
+bark

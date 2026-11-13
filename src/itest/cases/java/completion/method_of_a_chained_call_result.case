@@ -1,0 +1,28 @@
+//- /com/demo/Engine.java
+package com.demo;
+
+public class Engine {
+    public void start() {
+    }
+
+    public void shutdown() {
+    }
+}
+//- /com/demo/Car.java
+package com.demo;
+
+public class Car {
+    public Engine engine() {
+        return new Engine();
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void drive(Car car) {
+        car.engine().sta$0
+    }
+}
+//= expected
+start

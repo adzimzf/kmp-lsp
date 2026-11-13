@@ -1,0 +1,17 @@
+//- /com/demo/Animal.java
+package com.demo;
+
+public class Animal {
+    public void eat() {
+    }
+}
+//- /com/demo/Shelter.java
+package com.demo;
+
+public class Shelter {
+    <T extends Animal> void feed(T resident) {
+        resident.ea$0
+    }
+}
+//= expected
+eat

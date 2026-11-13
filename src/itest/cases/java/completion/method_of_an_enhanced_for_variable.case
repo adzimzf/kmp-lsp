@@ -1,0 +1,19 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+public class Dog {
+    public void bark() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void walk(Dog[] dogs) {
+        for (Dog dog : dogs) {
+            dog.ba$0
+        }
+    }
+}
+//= expected
+bark

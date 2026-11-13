@@ -1,0 +1,18 @@
+//- /com/demo/Mapper.java
+package com.demo;
+
+interface Mapper {
+    int map(int value);
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Mapper doubled(int value) {
+        return input -> inp$0ut + input;
+    }
+}
+//= expected
+/com/demo/Main.java:5:16  return input -> input + input;
+/com/demo/Main.java:5:25  return input -> input + input;
+/com/demo/Main.java:5:33  return input -> input + input;

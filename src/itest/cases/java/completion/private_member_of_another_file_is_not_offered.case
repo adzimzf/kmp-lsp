@@ -1,0 +1,20 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    private double cache;
+
+    double area() {
+        return 0.0;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double measure(Circle circle) {
+        return circle.ca$0
+    }
+}
+//= expected
+(nothing)

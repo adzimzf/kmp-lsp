@@ -1,0 +1,25 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+public class Dog {
+    public void bark() {
+    }
+}
+//- /com/demo/Boxes.java
+package com.demo;
+
+public final class Boxes {
+    public static <T> T unwrap(T value) {
+        return value;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void run(Dog dog) {
+        Boxes.unwrap(dog).ba$0
+    }
+}
+//= expected
+bark

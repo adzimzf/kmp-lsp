@@ -1,0 +1,34 @@
+//- /java/lang/Exception.java
+package java.lang;
+
+public class Exception {
+}
+//- /com/demo/DemoException.java
+package com.demo;
+
+public class DemoException extends Exception {
+    public int code() {
+        return 0;
+    }
+}
+//- /com/demo/Thrower.java
+package com.demo;
+
+public class Thrower {
+    public void act() throws DemoException {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void run(Thrower thrower) {
+        try {
+            thrower.act();
+        } catch (DemoException failure) {
+            failure.co$0
+        }
+    }
+}
+//= expected
+code

@@ -1,0 +1,15 @@
+//- /com/demo/Names.java
+package com.demo;
+
+class Names {
+    int length(String[] names) {
+        int total = 0;
+        for (String name : names) {
+            total = total + na$0me.length();
+        }
+        return total;
+    }
+}
+//= expected
+/com/demo/Names.java:6:21  for (String name : names) {
+/com/demo/Names.java:7:29  total = total + name.length();

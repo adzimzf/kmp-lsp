@@ -1,0 +1,21 @@
+//- /com/demo/Holder.java
+package com.demo;
+
+class Holder {
+    int count;
+}
+//- /com/demo/Reader.java
+package com.demo;
+
+class Reader {
+    int read(Holder holder) {
+        int count = 0;
+        count = cou$0nt + holder.count;
+        return count;
+    }
+}
+//= expected
+/com/demo/Reader.java:5:13  int count = 0;
+/com/demo/Reader.java:6:9  count = count + holder.count;
+/com/demo/Reader.java:6:17  count = count + holder.count;
+/com/demo/Reader.java:7:16  return count;

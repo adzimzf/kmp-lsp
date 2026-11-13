@@ -1,0 +1,22 @@
+//- /com/demo/Base.java
+package com.demo;
+
+public class Base {
+    protected int counter;
+
+    protected int reset() {
+        return 0;
+    }
+}
+//- /com/other/Derived.java
+package com.other;
+
+import com.demo.Base;
+
+public class Derived extends Base {
+    int run() {
+        return this.cou$0
+    }
+}
+//= expected
+counter
