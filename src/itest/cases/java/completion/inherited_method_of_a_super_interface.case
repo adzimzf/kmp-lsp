@@ -1,0 +1,23 @@
+//- /com/demo/Closeable.java
+package com.demo;
+
+public interface Closeable {
+    void close();
+}
+//- /com/demo/Channel.java
+package com.demo;
+
+public interface Channel extends Closeable {
+    void send();
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void run(Channel channel) {
+        channel.$0
+    }
+}
+//= expected
+send
+close

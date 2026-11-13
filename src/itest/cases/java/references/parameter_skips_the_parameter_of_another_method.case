@@ -1,0 +1,17 @@
+//- /com/demo/Totals.java
+package com.demo;
+
+class Totals {
+    int sum(int amount) {
+        int total = amo$0unt + amount;
+        return total;
+    }
+
+    int twice(int amount) {
+        return amount + amount;
+    }
+}
+//= expected
+/com/demo/Totals.java:4:17  int sum(int amount) {
+/com/demo/Totals.java:5:21  int total = amount + amount;
+/com/demo/Totals.java:5:30  int total = amount + amount;

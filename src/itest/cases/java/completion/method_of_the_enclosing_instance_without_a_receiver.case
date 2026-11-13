@@ -1,0 +1,16 @@
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    private int total;
+
+    private int tally() {
+        return total;
+    }
+
+    int run() {
+        return tal$0
+    }
+}
+//= expected
+tally

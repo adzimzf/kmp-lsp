@@ -1,0 +1,22 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+public class Outer {
+    public static class Inner {
+        public void ping() {
+        }
+    }
+
+    public void pong() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void run(Outer.Inner inner) {
+        inner.p$0
+    }
+}
+//= expected
+ping

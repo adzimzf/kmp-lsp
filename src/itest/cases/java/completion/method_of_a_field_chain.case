@@ -1,0 +1,19 @@
+//- /com/demo/Engine.java
+package com.demo;
+
+public class Engine {
+    public void ignite() {
+    }
+}
+//- /com/demo/Car.java
+package com.demo;
+
+public class Car {
+    private Engine engine = new Engine();
+
+    void drive() {
+        this.engine.ig$0
+    }
+}
+//= expected
+ignite

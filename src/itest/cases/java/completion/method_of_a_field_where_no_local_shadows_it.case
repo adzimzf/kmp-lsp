@@ -1,0 +1,30 @@
+//- /com/demo/Cat.java
+package com.demo;
+
+public class Cat {
+    public void meow() {
+    }
+}
+//- /com/demo/Dog.java
+package com.demo;
+
+public class Dog {
+    public void bark() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    private Cat pet = new Cat();
+
+    void shadow() {
+        Dog pet = new Dog();
+    }
+
+    void run() {
+        pet.$0
+    }
+}
+//= expected
+meow

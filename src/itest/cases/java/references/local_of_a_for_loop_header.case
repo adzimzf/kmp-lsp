@@ -1,0 +1,20 @@
+//- /com/demo/Loops.java
+package com.demo;
+
+class Loops {
+    int run() {
+        int total = 0;
+        for (int index = 0; ind$0ex < 3; index++) {
+            total = total + index;
+        }
+        for (int index = 0; index < 2; index++) {
+            total = total + 1;
+        }
+        return total;
+    }
+}
+//= expected
+/com/demo/Loops.java:6:18  for (int index = 0; index < 3; index++) {
+/com/demo/Loops.java:6:29  for (int index = 0; index < 3; index++) {
+/com/demo/Loops.java:6:40  for (int index = 0; index < 3; index++) {
+/com/demo/Loops.java:7:29  total = total + index;

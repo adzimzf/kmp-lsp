@@ -1,0 +1,21 @@
+//- /com/demo/Color.java
+package com.demo;
+
+public enum Color {
+    RED,
+    GREEN;
+
+    public int rgb() {
+        return 0;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    int run() {
+        return Color.RED.rg$0
+    }
+}
+//= expected
+rgb

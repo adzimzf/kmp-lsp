@@ -1,0 +1,18 @@
+//- /com/demo/Units.java
+package com.demo;
+
+public final class Units {
+    public static final int DAYS = 1;
+
+    public int instanceField = 2;
+}
+//- /com/other/Main.java
+package com.other;
+
+public class Main {
+    int run() {
+        return com.demo.Units.DA$0
+    }
+}
+//= expected
+DAYS

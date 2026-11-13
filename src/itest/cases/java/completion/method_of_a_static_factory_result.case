@@ -1,0 +1,25 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+public class Dog {
+    public void bark() {
+    }
+}
+//- /com/demo/Dogs.java
+package com.demo;
+
+public final class Dogs {
+    public static Dog create() {
+        return new Dog();
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void run() {
+        Dogs.create().ba$0
+    }
+}
+//= expected
+bark

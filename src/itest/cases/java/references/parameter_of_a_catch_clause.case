@@ -1,0 +1,27 @@
+//- /java/lang/Exception.java
+package java.lang;
+
+public class Exception {
+    public String getMessage() {
+        return "";
+    }
+}
+//- /com/demo/Guard.java
+package com.demo;
+
+class Guard {
+    void act() throws Exception {
+    }
+
+    String run(Guard guard) {
+        try {
+            guard.act();
+        } catch (Exception failure) {
+            return fail$0ure.getMessage();
+        }
+        return "";
+    }
+}
+//= expected
+/com/demo/Guard.java:10:28  } catch (Exception failure) {
+/com/demo/Guard.java:11:20  return failure.getMessage();
