@@ -1,3 +1,8 @@
+//- /java/lang/Deprecated.java
+package java.lang;
+
+public @interface Deprecated {
+}
 //- /com/demo/Foo.java
 package com.demo;
 

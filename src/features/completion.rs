@@ -26,6 +26,7 @@ use crate::features::traits::SignatureIndex;
 use crate::indexer::split_params_at_depth_zero;
 
 use super::completion_context::{CompletionContext, ScopeContext};
+use super::java_completion::{is_java_instantiation, java_keyword_completions};
 use super::traits::CompletionIndex;
 
 // Re-export so callers only need to import from one place.
@@ -231,8 +232,16 @@ pub(crate) fn run_completions(
             );
         }
         add_lambda_param_completions(&mut items, &ctx.scope, prefix);
-        add_java_scope_local_completions(&mut items, index, uri, position, prefix);
+        if is_java_instantiation(uri, before_prefix) {
+            items.retain(names_a_type);
+        } else {
+            add_java_scope_local_completions(&mut items, index, uri, position, prefix);
+        }
         add_named_arg_completions(index, &mut items, uri, prefix, ctx.call_info.as_ref());
+        let wants_keywords = !ctx.annotation_only && !is_java_instantiation(uri, before_prefix);
+        if wants_keywords {
+            add_missing_labels(&mut items, java_keyword_completions(index, uri, position));
+        }
     }
 
     store_in_cache(index, cache_key, &items, hit_cap, epoch);
@@ -452,6 +461,32 @@ fn add_java_scope_local_completions(
             sort_text: Some(format!("000:{}", local.name)),
             ..Default::default()
         });
+    }
+}
+
+/// Whether `item` names a type — what `new` may be followed by.
+fn names_a_type(item: &CompletionItem) -> bool {
+    !matches!(
+        item.kind,
+        Some(
+            CompletionItemKind::VARIABLE
+                | CompletionItemKind::FIELD
+                | CompletionItemKind::PROPERTY
+                | CompletionItemKind::METHOD
+                | CompletionItemKind::FUNCTION
+                | CompletionItemKind::KEYWORD
+                | CompletionItemKind::ENUM_MEMBER
+                | CompletionItemKind::CONSTANT
+        )
+    )
+}
+
+/// Appends the `extra` items whose label nothing in `items` has yet.
+fn add_missing_labels(items: &mut Vec<CompletionItem>, extra: Vec<CompletionItem>) {
+    for item in extra {
+        if !items.iter().any(|existing| existing.label == item.label) {
+            items.push(item);
+        }
     }
 }
 

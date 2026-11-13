@@ -168,7 +168,9 @@ async fn run_case(file: &Path, kind: Kind) -> Option<String> {
     let case = Case::read(file);
     let fixture = Fixture::parse(&case.fixture);
     let mut session = Session::open(&fixture).await;
-    let actual = kind.ask(&mut session, &fixture, case.settles()).await;
+    let actual = kind
+        .ask(&mut session, &fixture, &case.expected, case.settles())
+        .await;
     if actual == case.expected {
         return None;
     }

@@ -559,6 +559,54 @@ impl Indexer {
         self.files.get(uri.as_str())?.package.clone()
     }
 
+    /// Every package a workspace file declares, and every package above one
+    /// (`com` and `com.demo` for `com.demo.data`), sorted.
+    pub(crate) fn known_packages(&self) -> Vec<String> {
+        let mut packages: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for entry in self.packages.iter() {
+            let package = entry.key();
+            if package.is_empty() {
+                continue;
+            }
+            let mut end = 0;
+            while let Some(dot) = package[end..].find('.') {
+                end += dot;
+                packages.insert(package[..end].to_owned());
+                end += 1;
+            }
+            packages.insert(package.clone());
+        }
+        packages.into_iter().collect()
+    }
+
+    /// The top-level types declared by the workspace files of `package`, each
+    /// with the file that declares it.
+    pub(crate) fn top_level_types_in_package(&self, package: &str) -> Vec<(Url, SymbolEntry)> {
+        let Some(file_ids) = self.packages.get(package).map(|ids| ids.clone()) else {
+            return Vec::new();
+        };
+        let mut types = Vec::new();
+        for uri in file_ids
+            .into_iter()
+            .filter_map(|file_id| self.file_table.url(file_id))
+        {
+            let Some(data) = self.files.get(uri.as_str()) else {
+                continue;
+            };
+            let declared_here = data.package.as_deref() == Some(package);
+            if !declared_here {
+                continue;
+            }
+            types.extend(
+                data.symbols
+                    .iter()
+                    .filter(|symbol| symbol.container.is_none() && is_type_kind(symbol.kind))
+                    .map(|symbol| ((*uri).clone(), symbol.clone())),
+            );
+        }
+        types
+    }
+
     /// The fully qualified names of the top-level types called `name`, from
     /// the workspace, library sources and compiled libraries: what an import
     /// of `name` could name. Nested types (`ProcessBuilder.Redirect.Type`) are
