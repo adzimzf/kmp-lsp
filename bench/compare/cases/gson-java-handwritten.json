@@ -1681,11 +1681,11 @@
    "line": 372,
    "at": "setDelegate",
    "category": "member_call",
-   "why": "`call.|` with everything after it gone: members of the local's type FutureTypeAdapter<T>",
+   "why": "`call.|` with the rest of the line gone (`setDelegate(candidate);`), inside getAdapter's for and try: members of the local's type FutureTypeAdapter<T> (jdtls answers nothing when the whole rest of the file is cut here)",
    "expect": {
     "completion": true
    },
-   "cut": "file"
+   "cut": "line"
   },
   {
    "id": "complete-edge-member-prefix-unclosed",
@@ -1694,12 +1694,12 @@
    "line": 372,
    "at": "setDelegate",
    "category": "member_call",
-   "why": "`call.setD|` partly typed in an unclosed method",
+   "why": "`call.setD|` partly typed, the rest of the line gone (jdtls answers nothing when the whole rest of the file is cut here)",
    "expect": {
     "completion": true
    },
    "typed": 4,
-   "cut": "file"
+   "cut": "line"
   },
   {
    "id": "complete-edge-catch-param",
@@ -1735,12 +1735,11 @@
    "line": 188,
    "at": "type",
    "category": "identifier",
-   "why": "`\"Invalid EnumSet type: \" + ty|` inside a lambda: the enclosing method's parameter type",
+   "why": "`\"Invalid EnumSet type: \" + ty|` inside a lambda: the enclosing method's parameter type (jdtls answers nothing with the rest of this line cut)",
    "expect": {
     "completion": true
    },
-   "typed": 2,
-   "cut": "line"
+   "typed": 2
   },
   {
    "id": "complete-edge-lambda-in-unclosed-call",

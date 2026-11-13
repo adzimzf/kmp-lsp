@@ -216,3 +216,66 @@ fn types_compare_by_simple_name_with_primitives_boxed() {
     assert!(!same_type("T", "T"));
     assert!(!same_type("String[]", "String"));
 }
+
+/// The labels offered for a `case` label at the `|` in `src`, best first.
+fn case_labels(idx: &Indexer, path: &str, src: &str) -> Option<Vec<String>> {
+    let line = src.lines().position(|line| line.contains('|')).unwrap();
+    let character = src.lines().nth(line).unwrap().find('|').unwrap() as u32;
+    let uri = index(idx, path, &src.replacen('|', "", 1));
+    java_case_label_completions(idx, &uri, Position::new(line as u32, character), false)
+        .map(|items| items.into_iter().map(|item| item.label).collect())
+}
+
+const TOKEN: &str =
+    "package a;\npublic enum Token { STRING, NUMBER, NULL; static final int NUL = 0; }\n";
+
+#[test]
+fn case_label_offers_the_switched_enums_constants() {
+    let idx = Indexer::new();
+    index(&idx, "a/Token.java", TOKEN);
+    let shapes = [
+        // complete code
+        "  switch (token) {\n    case NU|:\n      return 1;\n    default:\n      return 0;\n  }\n}}\n",
+        // the rest of the line cut
+        "  switch (token) {\n    case NU|\n      return 1;\n    default:\n      return 0;\n  }\n}}\n",
+        // the rest of the file cut
+        "  switch (token) {\n    case NU|",
+        // a second label of the same case
+        "  switch (token) {\n    case STRING, NU|\n",
+    ];
+    for body in shapes {
+        let src = format!("package a;\nclass Use {{ int of(Token token) {{\n{body}");
+        let offered = case_labels(&idx, "a/Use.java", &src).unwrap_or_else(|| panic!("{src}"));
+        assert!(
+            offered.contains(&"NUMBER".to_string()),
+            "{src}\n{offered:?}"
+        );
+        assert!(offered.contains(&"NULL".to_string()), "{src}\n{offered:?}");
+        // the static field is no case label
+        assert!(!offered.contains(&"NUL".to_string()), "{src}\n{offered:?}");
+    }
+}
+
+#[test]
+fn case_label_on_a_non_enum_switch_is_left_to_general_completion() {
+    let idx = Indexer::new();
+    index(&idx, "a/Token.java", TOKEN);
+    let src = "package a;\nclass Use { int of(int n) {\n  switch (n) {\n    case LI|:\n      return 1;\n  }\n  return 0;\n}}\n";
+    assert_eq!(case_labels(&idx, "a/Use.java", src), None);
+    let src =
+        "package a;\nclass Use { int of(Token token) {\n  int caseCount = NU|;\n  return 0;\n}}\n";
+    assert_eq!(case_labels(&idx, "a/Use.java", src), None);
+}
+
+#[test]
+fn case_label_text_is_recognised() {
+    assert!(is_case_label(b"    case "));
+    assert!(is_case_label(b"    case NU"));
+    assert!(is_case_label(b"    case A, B, N"));
+    assert!(is_case_label(b"case N"));
+    // `case` itself is the keyword being typed
+    assert!(!is_case_label(b"    case"));
+    assert!(!is_case_label(b"    showcase N"));
+    assert!(!is_case_label(b"    int x = N"));
+    assert!(!is_case_label(b"    foo(a, N"));
+}

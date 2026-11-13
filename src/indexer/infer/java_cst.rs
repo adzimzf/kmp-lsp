@@ -566,7 +566,7 @@ fn scope_locals_from(node: Node<'_>, use_start: usize, doc: &LiveDoc) -> Vec<Jav
 /// statement ends — `void run(int count) { log(mes` becomes
 /// `… log(mes\n);}`. Brackets in strings, character literals and comments
 /// don't count. Parsed as Java; `None` when the parser fails.
-fn closed_before(before: &[u8]) -> Option<LiveDoc> {
+pub(crate) fn closed_before(before: &[u8]) -> Option<LiveDoc> {
     let mut open = Vec::new();
     let mut index = 0;
     while index < before.len() {
