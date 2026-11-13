@@ -1,0 +1,18 @@
+//- /com/demo/App.java
+package com.demo;
+
+public class App {
+    public String getGreeting() {
+        return "foo";
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String greet() {
+        return new Ap$0p().getGreeting();
+    }
+}
+//= expected
+/com/demo/App.java:3:14  public class App {

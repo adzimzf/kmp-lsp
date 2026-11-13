@@ -1,0 +1,28 @@
+//- /com/demo/Loops.java
+package com.demo;
+
+class Loops {
+    static void count() {
+        int i = 0;
+        outer: while (true) {
+            System.out.println(i);
+            while (true) {
+                i++;
+                if (i == 1) {
+                    cont$0inue;
+                }
+                if (i == 3) {
+                    continue outer;
+                }
+                if (i == 5) {
+                    break;
+                }
+                if (i == 7) {
+                    break outer;
+                }
+            }
+        }
+    }
+}
+//= expected
+/com/demo/Loops.java:8:13  while (true) {

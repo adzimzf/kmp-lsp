@@ -1,0 +1,21 @@
+//- /com/demo/TestSame.java
+package com.demo;
+
+class TestSame implements Doable {
+    public void someMethod() {
+    }
+}
+
+interface Doable {
+    void someMethod();
+}
+//- /com/demo/Caller.java
+package com.demo;
+
+class Caller {
+    void call(Doable doable) {
+        doable.someMe$0thod();
+    }
+}
+//= expected
+/com/demo/TestSame.java:9:10  void someMethod();
