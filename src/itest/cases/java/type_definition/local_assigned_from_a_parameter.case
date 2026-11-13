@@ -1,0 +1,16 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Circle copy(Circle circle) {
+        Circle same = circle;
+        return sa$0me;
+    }
+}
+//= expected
+/com/demo/Circle.java:3:7  class Circle {

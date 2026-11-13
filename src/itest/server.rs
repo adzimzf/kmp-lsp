@@ -1,23 +1,11 @@
 //! The server a case is asked of, and the LSP conversation with it.
 //!
-//! By default the server is this crate's own, run inside the test process
-//! and reached through an in-memory pipe: no executable is spawned and no
-//! fixture file touches the disk — the sources arrive as `didOpen` text.
-//!
-//! `KMP_ITEST_SERVER` picks another one for the whole run:
-//!
-//! | value     | server                                          |
-//! |-----------|-------------------------------------------------|
-//! | `memory`  | in-process kmp-lsp (the default)                |
-//! | `kmp-lsp` | the kmp-lsp executable named by `KMP_ITEST_BIN` |
-//! | `jdtls`   | jdtls's `bin/jdtls` launcher, in `KMP_ITEST_BIN` |
-//!
-//! An executable reads its workspace from disk, so for those the fixture is
-//! written to a temporary directory first.
+//! The server is this crate's own, run inside the test process and reached
+//! through an in-memory pipe: no executable is spawned and no fixture file
+//! touches the disk — the sources arrive as `didOpen` text.
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -32,63 +20,22 @@ use tower_lsp::{LspService, Server};
 use super::fixture::Fixture;
 use crate::indexer::Indexer;
 
-const SERVER_VARIABLE: &str = "KMP_ITEST_SERVER";
-const BINARY_VARIABLE: &str = "KMP_ITEST_BIN";
-
-/// Where the in-memory server is told its workspace is. Nothing is there.
+/// Where the server is told its workspace is. Nothing is there.
 const MEMORY_ROOT: &str = "/kmp-lsp-itest";
 const PIPE_CAPACITY: usize = 1 << 20;
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
-
-pub(super) enum Target {
-    Memory,
-    KmpLspBinary(PathBuf),
-    Jdtls(PathBuf),
-}
-
-impl Target {
-    pub(super) fn from_environment() -> Self {
-        let binary = || {
-            let path = std::env::var(BINARY_VARIABLE).unwrap_or_else(|_| {
-                panic!("{SERVER_VARIABLE} names an executable server: set {BINARY_VARIABLE} to it")
-            });
-            PathBuf::from(path)
-        };
-        match std::env::var(SERVER_VARIABLE).as_deref() {
-            Err(_) | Ok("memory") => Self::Memory,
-            Ok("kmp-lsp") => Self::KmpLspBinary(binary()),
-            Ok("jdtls") => Self::Jdtls(binary()),
-            Ok(other) => panic!("{SERVER_VARIABLE}={other}: expected memory, kmp-lsp or jdtls"),
-        }
-    }
-
-    /// How long a case waits for an answer before it takes "nothing" for one.
-    fn patience(&self) -> Duration {
-        match self {
-            Self::Memory => Duration::from_secs(5),
-            Self::KmpLspBinary(_) => Duration::from_secs(20),
-            Self::Jdtls(_) => Duration::from_secs(120),
-        }
-    }
-}
+/// How long a case waits for an answer before it takes "nothing" for one.
+const PATIENCE: Duration = Duration::from_secs(5);
 
 type Reader = Box<dyn AsyncRead + Send + Unpin>;
 type Writer = Box<dyn AsyncWrite + Send + Unpin>;
 
-/// What keeps a server alive for as long as its session.
-enum Host {
-    Task(tokio::task::JoinHandle<()>),
-    Process {
-        _child: tokio::process::Child,
-        _workspace: tempfile::TempDir,
-    },
-}
+/// The task serving a session, aborted with it.
+struct Host(tokio::task::JoinHandle<()>);
 
 impl Drop for Host {
     fn drop(&mut self) {
-        if let Self::Task(server) = self {
-            server.abort();
-        }
+        self.0.abort();
     }
 }
 
@@ -100,30 +47,21 @@ pub(super) struct Session {
     /// The URIs the server has published diagnostics for.
     diagnosed: HashSet<String>,
     root: Url,
-    patience: Duration,
     _host: Host,
 }
 
 impl Session {
-    pub(super) async fn open(target: &Target, fixture: &Fixture) -> Self {
-        let (reader, writer, root, host) = match target {
-            Target::Memory => in_memory(),
-            Target::KmpLspBinary(binary) => spawned(binary, &[], fixture),
-            Target::Jdtls(launcher) => spawned(launcher, &["-data"], fixture),
-        };
+    pub(super) async fn open(fixture: &Fixture) -> Self {
+        let (reader, writer, root, host) = in_memory();
         let mut session = Self {
             writer,
             incoming: frames(reader),
             next_id: 0,
             diagnosed: HashSet::new(),
             root,
-            patience: target.patience(),
             _host: host,
         };
         session.initialize().await;
-        if matches!(target, Target::Jdtls(_)) {
-            session.wait_for_jdtls().await;
-        }
         for file in &fixture.files {
             session.did_open(&file.path, &file.text).await;
         }
@@ -153,7 +91,7 @@ impl Session {
         params: Value,
         settled: impl Fn(&Value) -> bool,
     ) -> Value {
-        let deadline = Instant::now() + self.patience;
+        let deadline = Instant::now() + PATIENCE;
         loop {
             let result = self.request(method, params.clone(), deadline).await;
             if settled(&result) || Instant::now() >= deadline {
@@ -167,7 +105,7 @@ impl Session {
     /// and reports the file's diagnostics once it has. Waits for those, for
     /// every file, or until patience runs out.
     async fn wait_until_read(&mut self, fixture: &Fixture) {
-        let deadline = Instant::now() + self.patience;
+        let deadline = Instant::now() + PATIENCE;
         let all_read = |session: &Self| {
             fixture
                 .files
@@ -248,7 +186,7 @@ impl Session {
     }
 
     async fn initialize(&mut self) {
-        let deadline = Instant::now() + self.patience;
+        let deadline = Instant::now() + PATIENCE;
         let params = json!({
             "processId": std::process::id(),
             "rootUri": self.root.as_str().trim_end_matches('/'),
@@ -261,25 +199,9 @@ impl Session {
                 },
                 "workspace": {"workspaceEdit": {"documentChanges": true}},
             },
-            "initializationOptions": {
-                "settings": {"java": {"signatureHelp": {"enabled": true}}},
-            },
         });
         self.request("initialize", params, deadline).await;
         self.notify("initialized", json!({})).await;
-    }
-
-    /// jdtls answers nothing useful before it reports `ServiceReady`.
-    async fn wait_for_jdtls(&mut self) {
-        let deadline = Instant::now() + self.patience;
-        while let Some(message) = self.receive(deadline).await {
-            if message["method"] == "language/status" && message["params"]["type"] == "ServiceReady"
-            {
-                return;
-            }
-            self.answer_server(&message).await;
-        }
-        panic!("jdtls never reported ServiceReady");
     }
 
     async fn did_open(&mut self, path: &str, text: &str) {
@@ -311,7 +233,7 @@ fn in_memory() -> (Reader, Writer, Url, Host) {
     let server = tokio::spawn(Server::new(server_reader, server_writer, socket).serve(service));
     let (reader, writer) = tokio::io::split(client_side);
     let root = Url::parse(&format!("file://{MEMORY_ROOT}/")).expect("a file URI");
-    (Box::new(reader), Box::new(writer), root, Host::Task(server))
+    (Box::new(reader), Box::new(writer), root, Host(server))
 }
 
 /// An indexer that never looks for a workspace: with a root pinned to
@@ -321,40 +243,6 @@ fn rootless_indexer() -> Indexer {
     let indexer = Indexer::new();
     indexer.workspace_pinned.store(true, Ordering::Relaxed);
     indexer
-}
-
-/// `binary` started on a temporary directory holding the fixture's files.
-/// `data_flag` is how the server is told where to keep its own state.
-fn spawned(binary: &Path, data_flag: &[&str], fixture: &Fixture) -> (Reader, Writer, Url, Host) {
-    let workspace = tempfile::tempdir().expect("a temporary directory");
-    let project = workspace.path().join("project");
-    for file in &fixture.files {
-        let destination = project.join(&file.path);
-        std::fs::create_dir_all(destination.parent().expect("a file has a directory"))
-            .expect("the fixture's directories are created");
-        std::fs::write(&destination, &file.text).expect("the fixture's files are written");
-    }
-    let mut command = tokio::process::Command::new(binary);
-    command
-        .args(data_flag)
-        .args(data_flag.iter().map(|_| workspace.path().join("state")))
-        .env("KMP_LSP_WORKSPACE_ROOT", &project)
-        .env("XDG_CACHE_HOME", workspace.path().join("cache"))
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true);
-    let mut child = command
-        .spawn()
-        .unwrap_or_else(|error| panic!("{} did not start: {error}", binary.display()));
-    let reader = child.stdout.take().expect("stdout is piped");
-    let writer = child.stdin.take().expect("stdin is piped");
-    let root = Url::from_directory_path(&project).expect("an absolute path");
-    let host = Host::Process {
-        _child: child,
-        _workspace: workspace,
-    };
-    (Box::new(reader), Box::new(writer), root, host)
 }
 
 /// The `Content-Length` framed messages `reader` carries, one per item.

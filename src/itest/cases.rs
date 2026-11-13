@@ -1,338 +1,305 @@
-//! One case per request kind: a template for the next one of its kind.
+//! The cases: one file each, under `cases/<language>/<kind>/`.
+//!
+//! A case file is a fixture ([`super::fixture`]) followed by the answer it
+//! expects, separated by a `//= expected` line:
+//!
+//! ```text
+//! //- /com/demo/Greeter.java
+//! package com.demo;
+//! class Greeter { String greet() { return ""; } }
+//! //- /com/demo/Main.java
+//! package com.demo;
+//! class Main { void run(Greeter greeter) { greeter.gr$0eet(); } }
+//! //= expected
+//! /com/demo/Greeter.java:2:24  class Greeter { String greet() { return ""; } }
+//! ```
+//!
+//! The directory a case sits in says which request is asked of it and which
+//! language it is written in, so a new case is a new file and no Rust: the
+//! set scales to thousands of them. One `#[test]` per language and kind runs
+//! a whole directory, its cases in parallel, and names every file that
+//! disagreed.
+//!
+//! An expectation left empty (nothing after `//= expected`) is filled in by
+//! `UPDATE_EXPECT=1 cargo test itest`, which also rewrites the ones that
+//! disagree — read the diff before committing it.
+//!
+//! A suite is off unless `INTEGRATION=1` is set: a case is a whole server,
+//! and `cargo test` on its own stays a unit-test run.
 
-use expect_test::expect;
+use std::path::{Path, PathBuf};
 
-use super::{check, Kind};
+use futures::stream::{self, StreamExt};
 
+use super::fixture::Fixture;
+use super::request::{Kind, Settles, NOTHING};
+use super::server::Session;
+
+const EXTENSION: &str = "case";
+const SEPARATOR: &str = "//= expected";
+const UPDATE_VARIABLE: &str = "UPDATE_EXPECT";
+const INTEGRATION_VARIABLE: &str = "INTEGRATION";
+/// How many cases of one suite are in flight; what runs is capped by the
+/// budget they share with every other suite.
+const CASES_IN_FLIGHT: usize = 64;
+
+/// One runtime for every suite, and a cap on how many cases run at once.
+///
+/// A case is a server of its own, and the test harness runs the suites
+/// themselves in parallel: without a shared budget a thousand servers start
+/// at once, each waits longer than its patience for a machine busy with the
+/// others, and cases fail for want of a CPU rather than a wrong answer.
+fn shared() -> &'static (tokio::runtime::Runtime, tokio::sync::Semaphore) {
+    static SHARED: std::sync::OnceLock<(tokio::runtime::Runtime, tokio::sync::Semaphore)> =
+        std::sync::OnceLock::new();
+    SHARED.get_or_init(|| {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("a tokio runtime");
+        let at_once = std::thread::available_parallelism().map_or(4, std::num::NonZero::get);
+        (runtime, tokio::sync::Semaphore::new(at_once))
+    })
+}
+
+macro_rules! suites {
+    ($($language:ident { $($case_test:ident => $kind:ident),* $(,)? })*) => {
+        $(mod $language {
+            use super::{suite, Kind};
+            $(#[test]
+            fn $case_test() {
+                suite(stringify!($language), stringify!($case_test), Kind::$kind);
+            })*
+        })*
+
+        /// Every `<language>/<request>` a suite above runs.
+        const RUN_DIRECTORIES: &[(&str, &str)] = &[
+            $($((stringify!($language), stringify!($case_test)),)*)*
+        ];
+    };
+}
+
+suites! {
+    java {
+        definition => Definition,
+        type_definition => TypeDefinition,
+        references => References,
+        document_highlight => DocumentHighlight,
+        completion => Completion,
+        hover => Hover,
+        signature_help => SignatureHelp,
+        prepare_rename => PrepareRename,
+        document_symbol => DocumentSymbol,
+        folding_range => FoldingRange,
+        workspace_symbol => WorkspaceSymbol,
+    }
+    kotlin {
+        definition => Definition,
+        type_definition => TypeDefinition,
+        references => References,
+        document_highlight => DocumentHighlight,
+        completion => Completion,
+        hover => Hover,
+        signature_help => SignatureHelp,
+        prepare_rename => PrepareRename,
+        document_symbol => DocumentSymbol,
+        folding_range => FoldingRange,
+        workspace_symbol => WorkspaceSymbol,
+    }
+}
+
+/// A case directory no suite runs would hold cases nothing asks: the
+/// `suites!` list above and the `cases/` tree have to say the same thing.
 #[test]
-fn definition_of_a_method_called_on_a_parameter() {
-    check(
-        Kind::Definition,
-        r#"
-//- /com/demo/Circle.java
-package com.demo;
-
-class Circle {
-    double area() {
-        return 3.14;
+fn every_case_directory_is_run_by_a_suite() {
+    let mut unrun = Vec::new();
+    for language in read_directory(&cases_root()) {
+        for request in read_directory(&language) {
+            let pair = (directory_name(&language), directory_name(&request));
+            let listed = RUN_DIRECTORIES.iter().any(|(run_language, run_request)| {
+                (*run_language, *run_request) == (&pair.0[..], &pair.1[..])
+            });
+            if !listed {
+                unrun.push(format!("{}/{}", pair.0, pair.1));
+            }
+        }
     }
-}
-//- /com/demo/Square.java
-package com.demo;
-
-class Square {
-    double area() {
-        return 4.0;
-    }
-}
-//- /com/demo/Main.java
-package com.demo;
-
-class Main {
-    double measure(Circle circle, Square square) {
-        return square.area() + circle.ar$0ea();
-    }
-}
-"#,
-        expect![[r#"
-            /com/demo/Circle.java:4:12  double area() {
-        "#]],
+    assert!(
+        unrun.is_empty(),
+        "no suite asks these case directories: {}\nAdd them to `suites!` in {}.",
+        unrun.join(", "),
+        file!()
     );
 }
 
-#[test]
-fn type_definition_of_a_local() {
-    check(
-        Kind::TypeDefinition,
-        r#"
-//- /com/demo/Circle.java
-package com.demo;
-
-class Circle {
-}
-//- /com/demo/Main.java
-package com.demo;
-
-class Main {
-    Circle copy(Circle circle) {
-        Circle same = circle;
-        return sa$0me;
+/// Asks `kind` of every case in `cases/<language>/<kind_directory>` and
+/// fails with the ones whose answer is not what their file expects.
+fn suite(language: &str, kind_directory: &str, kind: Kind) {
+    if !requested() {
+        eprintln!(
+            "{language}/{kind_directory}: skipped, \
+             set {INTEGRATION_VARIABLE}=1 to ask the cases"
+        );
+        return;
     }
-}
-"#,
-        expect![[r#"
-            /com/demo/Circle.java:3:7  class Circle {
-        "#]],
+    let directory = cases_root().join(language).join(kind_directory);
+    let files = case_files(&directory);
+    assert!(
+        !files.is_empty(),
+        "{} holds no .{EXTENSION} file",
+        directory.display()
+    );
+    let (runtime, at_once) = shared();
+    let disagreements: Vec<String> = runtime.block_on(
+        stream::iter(files)
+            .map(|file| async move {
+                let _running = at_once.acquire().await.expect("the budget is never closed");
+                run_case(&file, kind).await
+            })
+            .buffer_unordered(CASES_IN_FLIGHT)
+            .filter_map(|outcome| async move { outcome })
+            .collect(),
+    );
+    assert!(
+        disagreements.is_empty(),
+        "{} of {language}/{kind_directory} answered differently:\n\n{}\n\
+         Run again with {UPDATE_VARIABLE}=1 to write these answers down.",
+        disagreements.len(),
+        disagreements.join("\n")
     );
 }
 
-#[test]
-fn references_to_a_local_skip_the_field_of_the_same_name() {
-    check(
-        Kind::References,
-        r#"
-//- /com/demo/Counter.java
-package com.demo;
+/// `None` when the case passes (or was just written down), otherwise what
+/// it answered instead.
+async fn run_case(file: &Path, kind: Kind) -> Option<String> {
+    let case = Case::read(file);
+    let fixture = Fixture::parse(&case.fixture);
+    let mut session = Session::open(&fixture).await;
+    let actual = kind.ask(&mut session, &fixture, case.settles()).await;
+    if actual == case.expected {
+        return None;
+    }
+    if updating() {
+        case.write(file, &actual);
+        return None;
+    }
+    Some(format!(
+        "{}\n  expected:\n{}  answered:\n{}",
+        file.display(),
+        indented(&case.expected),
+        indented(&actual)
+    ))
+}
 
-class Counter {
-    int count;
+fn updating() -> bool {
+    asked_for(UPDATE_VARIABLE)
+}
 
-    int twice(int start) {
-        int count = start;
-        count = co$0unt + count;
-        return count;
+/// Whether the cases were asked for: a suite starts a server per case, so
+/// it runs only under `INTEGRATION=1` (or `UPDATE_EXPECT=1`, which is no
+/// use without them) and otherwise says why it did nothing.
+fn requested() -> bool {
+    asked_for(INTEGRATION_VARIABLE) || asked_for(UPDATE_VARIABLE)
+}
+
+fn asked_for(variable: &str) -> bool {
+    std::env::var(variable).is_ok_and(|value| value != "0")
+}
+
+/// A case file split at its `//= expected` line.
+struct Case {
+    fixture: String,
+    expected: String,
+}
+
+impl Case {
+    fn read(file: &Path) -> Self {
+        let text = std::fs::read_to_string(file)
+            .unwrap_or_else(|error| panic!("{} is readable: {error}", file.display()));
+        let (fixture, expected) = text.split_once(SEPARATOR).unwrap_or_else(|| {
+            panic!("{} has a `{SEPARATOR}` line", file.display());
+        });
+        Self {
+            fixture: fixture.to_owned(),
+            expected: normalized(expected),
+        }
     }
 
-    int field() {
-        return count;
-    }
-}
-"#,
-        expect![[r#"
-            /com/demo/Counter.java:7:13  int count = start;
-            /com/demo/Counter.java:8:9  count = count + count;
-            /com/demo/Counter.java:8:17  count = count + count;
-            /com/demo/Counter.java:8:25  count = count + count;
-            /com/demo/Counter.java:9:16  return count;
-        "#]],
-    );
-}
-
-#[test]
-fn document_highlight_of_a_parameter() {
-    check(
-        Kind::DocumentHighlight,
-        r#"
-//- /com/demo/Scale.java
-package com.demo;
-
-class Scale {
-    double apply(double factor, double value) {
-        double scaled = value * fac$0tor;
-        return scaled + factor;
-    }
-}
-"#,
-        expect![[r#"
-            /com/demo/Scale.java:4:25  double apply(double factor, double value) {
-            /com/demo/Scale.java:5:33  double scaled = value * factor;
-            /com/demo/Scale.java:6:25  return scaled + factor;
-        "#]],
-    );
-}
-
-#[test]
-fn completion_offers_the_receivers_members_not_its_private_ones() {
-    check(
-        Kind::Completion,
-        r#"
-//- /com/demo/Circle.java
-package com.demo;
-
-class Circle {
-    double radius;
-    private double cache;
-
-    double area() {
-        return 3.14 * radius * radius;
+    /// A case whose answer is nothing is asked once; any other waits for
+    /// the server to have something to say.
+    fn settles(&self) -> Settles {
+        if self.expected.trim() == NOTHING {
+            Settles::Immediately
+        } else {
+            Settles::WhenAnswered
+        }
     }
 
-    private void refresh() {
-    }
-
-    static Circle unit() {
-        return new Circle();
-    }
-}
-//- /com/demo/Main.java
-package com.demo;
-
-class Main {
-    double measure(Circle circle) {
-        return circle.$0
+    fn write(&self, file: &Path, answer: &str) {
+        let text = format!("{}{SEPARATOR}\n{answer}", self.fixture);
+        std::fs::write(file, text)
+            .unwrap_or_else(|error| panic!("{} is writable: {error}", file.display()));
     }
 }
-"#,
-        expect![[r#"
-            radius
-            area
-            unit
-        "#]],
-    );
-}
 
-#[test]
-fn hover_shows_the_signature_of_the_overload_called() {
-    check(
-        Kind::Hover,
-        r#"
-//- /com/demo/Printer.java
-package com.demo;
-
-class Printer {
-    void print(int number) {
+/// An expectation as [`Kind::ask`] renders an answer: lines with no blank
+/// ones around them, ending in one newline. An empty one stays empty, so a
+/// case file committed without an answer disagrees with every answer.
+fn normalized(expected: &str) -> String {
+    let body = expected.trim();
+    if body.is_empty() {
+        return String::new();
     }
+    body.to_owned() + "\n"
+}
 
-    void print(String text, int copies) {
+fn indented(text: &str) -> String {
+    if text.is_empty() {
+        return "    (nothing written down yet)\n".to_owned();
     }
-}
-//- /com/demo/Main.java
-package com.demo;
-
-class Main {
-    void run(Printer printer) {
-        printer.pri$0nt("page", 2);
-    }
-}
-"#,
-        expect![[r#"
-            void print(String text, int copies)
-        "#]],
-    );
+    text.lines()
+        .map(|line| format!("    {line}\n"))
+        .collect::<String>()
 }
 
-#[test]
-fn signature_help_marks_the_argument_being_typed() {
-    check(
-        Kind::SignatureHelp,
-        r#"
-//- /com/demo/Printer.java
-package com.demo;
-
-class Printer {
-    void print(String text, int copies) {
-    }
-}
-//- /com/demo/Main.java
-package com.demo;
-
-class Main {
-    void run(Printer printer) {
-        printer.print("page", 2$0);
-    }
-}
-"#,
-        expect![[r#"
-            print(String text, [int copies])
-        "#]],
-    );
+fn cases_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("src/itest/cases")
 }
 
-#[test]
-fn prepare_rename_selects_the_whole_identifier() {
-    check(
-        Kind::PrepareRename,
-        r#"
-//- /com/demo/Main.java
-package com.demo;
-
-class Main {
-    int total(int first, int second) {
-        int subtotal = first + second;
-        return sub$0total;
-    }
-}
-"#,
-        expect![[r#"
-            /com/demo/Main.java:6:16  return subtotal;
-        "#]],
-    );
+/// The subdirectories of `directory`, in name order.
+fn read_directory(directory: &Path) -> Vec<PathBuf> {
+    let entries = std::fs::read_dir(directory)
+        .unwrap_or_else(|error| panic!("{} is a directory: {error}", directory.display()));
+    let mut directories: Vec<PathBuf> = entries
+        .filter_map(|entry| {
+            let path = entry.expect("a readable directory entry").path();
+            path.is_dir().then_some(path)
+        })
+        .collect();
+    directories.sort();
+    directories
 }
 
-#[test]
-fn document_symbol_outlines_a_class() {
-    check(
-        Kind::DocumentSymbol,
-        r#"
-//- /com/demo/Circle.java
-package com.demo;
-
-class Circle$0 {
-    static final double PI = 3.14;
-    private final double radius;
-
-    Circle(double radius) {
-        this.radius = radius;
-    }
-
-    double area() {
-        return PI * radius * radius;
-    }
-
-    enum Unit {
-        METRE,
-        FOOT
-    }
-}
-"#,
-        expect![[r#"
-            class Circle
-            constant PI
-            field radius
-            constructor Circle
-            method area
-            enum Unit
-            enum-member METRE
-            enum-member FOOT
-        "#]],
-    );
+fn directory_name(directory: &Path) -> String {
+    directory
+        .file_name()
+        .expect("a directory has a name")
+        .to_string_lossy()
+        .into_owned()
 }
 
-#[test]
-fn folding_range_folds_the_class_and_each_body() {
-    check(
-        Kind::FoldingRange,
-        r#"
-//- /com/demo/Circle.java
-package com.demo;
-
-class Circle$0 {
-    double radius;
-
-    double area() {
-        double square = radius * radius;
-        return 3.14 * square;
-    }
-
-    double perimeter() {
-        double diameter = radius * 2;
-        return 3.14 * diameter;
-    }
-}
-"#,
-        expect![[r#"
-            3..15
-            6..9
-            11..14
-        "#]],
-    );
-}
-
-#[test]
-fn workspace_symbol_finds_the_types_a_name_matches() {
-    check(
-        Kind::WorkspaceSymbol,
-        r#"
-//- /com/demo/Circle.java
-package com.demo;
-
-class Circle {
-}
-//- /com/demo/CircleTest.java
-package com.demo;
-
-class CircleTest {
-    Circle$0 circle;
-}
-//- /com/demo/Square.java
-package com.demo;
-
-class Square {
-}
-"#,
-        expect![[r#"
-            Circle  /com/demo/Circle.java:3
-            CircleTest  /com/demo/CircleTest.java:3
-        "#]],
-    );
+/// The case files of `directory`, in name order, so a failure list reads
+/// the same on every machine.
+fn case_files(directory: &Path) -> Vec<PathBuf> {
+    let entries = std::fs::read_dir(directory)
+        .unwrap_or_else(|error| panic!("{} is a directory: {error}", directory.display()));
+    let mut files: Vec<PathBuf> = entries
+        .filter_map(|entry| {
+            let path = entry.expect("a readable directory entry").path();
+            let is_case = path.extension().is_some_and(|suffix| suffix == EXTENSION);
+            is_case.then_some(path)
+        })
+        .collect();
+    files.sort();
+    files
 }

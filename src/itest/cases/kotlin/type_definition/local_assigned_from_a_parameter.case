@@ -1,0 +1,15 @@
+//- /com/demo/Circle.kt
+package com.demo
+
+class Circle
+//- /com/demo/Main.kt
+package com.demo
+
+class Main {
+    fun copy(circle: Circle): Circle {
+        val same: Circle = circle
+        return sa$0me
+    }
+}
+//= expected
+(nothing)

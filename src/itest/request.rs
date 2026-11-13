@@ -11,6 +11,9 @@ use serde_json::{json, Value};
 use super::fixture::Fixture;
 use super::server::Session;
 
+/// What an answer with nothing in it is rendered as.
+pub(super) const NOTHING: &str = "(nothing)";
+
 #[derive(Clone, Copy)]
 pub(super) enum Kind {
     Definition,
@@ -61,11 +64,18 @@ impl Kind {
     }
 
     /// Asks the request at the fixture's cursor and renders the answer.
-    pub(super) async fn ask(self, session: &mut Session, fixture: &Fixture) -> String {
+    pub(super) async fn ask(
+        self,
+        session: &mut Session,
+        fixture: &Fixture,
+        settles: Settles,
+    ) -> String {
         let params = self.params(session, fixture);
-        let answer = session
-            .request_until(self.method(), params, has_content)
-            .await;
+        let settled = |answer: &Value| match settles {
+            Settles::Immediately => true,
+            Settles::WhenAnswered => has_content(answer),
+        };
+        let answer = session.request_until(self.method(), params, settled).await;
         let view = View { session, fixture };
         let mut lines = match self {
             Self::Definition | Self::TypeDefinition | Self::References => view.locations(&answer),
@@ -79,10 +89,19 @@ impl Kind {
             Self::WorkspaceSymbol => view.workspace_types(&answer),
         };
         if lines.is_empty() {
-            lines.push("(nothing)".to_owned());
+            lines.push(NOTHING.to_owned());
         }
         lines.join("\n") + "\n"
     }
+}
+
+/// Whether an empty answer is the case's answer or the server still
+/// reading what was just opened. A case that expects nothing says so, and
+/// is asked once instead of for the whole patience.
+#[derive(Clone, Copy)]
+pub(super) enum Settles {
+    Immediately,
+    WhenAnswered,
 }
 
 /// `null`, `[]` and an empty completion list are what a server says while

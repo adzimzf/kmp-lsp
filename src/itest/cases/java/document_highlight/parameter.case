@@ -1,0 +1,13 @@
+//- /com/demo/Scale.java
+package com.demo;
+
+class Scale {
+    double apply(double factor, double value) {
+        double scaled = value * fac$0tor;
+        return scaled + factor;
+    }
+}
+//= expected
+/com/demo/Scale.java:4:25  double apply(double factor, double value) {
+/com/demo/Scale.java:5:33  double scaled = value * factor;
+/com/demo/Scale.java:6:25  return scaled + factor;

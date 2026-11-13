@@ -1,0 +1,29 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle$0 {
+    static final double PI = 3.14;
+    private final double radius;
+
+    Circle(double radius) {
+        this.radius = radius;
+    }
+
+    double area() {
+        return PI * radius * radius;
+    }
+
+    enum Unit {
+        METRE,
+        FOOT
+    }
+}
+//= expected
+class Circle
+constant PI
+field radius
+constructor Circle
+method area
+enum Unit
+enum-member METRE
+enum-member FOOT
