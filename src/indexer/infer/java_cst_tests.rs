@@ -33,6 +33,66 @@ fn identifier_at<'tree>(doc: &'tree LiveDoc, marker: &str, occurrence: usize) ->
     node
 }
 
+/// The names in scope where `|` sits in `source` (the marker is removed).
+fn scope_local_names(source: &str) -> Vec<String> {
+    let line = source.lines().position(|line| line.contains('|')).unwrap();
+    let column = source.lines().nth(line).unwrap().find('|').unwrap();
+    let doc = java_doc(&source.replacen('|', "", 1));
+    java_scope_locals_at(&doc, tree_sitter::Point { row: line, column })
+        .into_iter()
+        .map(|local| local.name)
+        .collect()
+}
+
+#[test]
+fn scope_locals_are_the_bindings_that_reach_the_cursor() {
+    let names = scope_local_names(
+        "class Caller {
+           private int field;
+           void use(String html, int count) {
+             String slug = html;
+             for (Entry entry : entries) {
+               try (Reader reader = open()) {
+                 |
+               } catch (IOException failure) {}
+             }
+             String later = slug;
+           }
+           void other(String elsewhere) {}
+         }
+",
+    );
+    for reaching in ["html", "count", "slug", "entry", "reader"] {
+        assert!(names.contains(&reaching.to_owned()), "{names:?}");
+    }
+    for unreachable in ["later", "failure", "elsewhere", "field"] {
+        assert!(!names.contains(&unreachable.to_owned()), "{names:?}");
+    }
+}
+
+#[test]
+fn scope_local_carries_its_written_type() {
+    let doc = java_doc(
+        "class Caller {
+  void use(java.util.List<User> users) {
+    var count = 1;
+    
+  }
+}
+",
+    );
+    let locals = java_scope_locals_at(&doc, tree_sitter::Point { row: 3, column: 4 });
+    let typed = |name: &str| {
+        locals
+            .iter()
+            .find(|local| local.name == name)
+            .map(|local| local.type_text.clone())
+    };
+    assert_eq!(typed("users"), Some("java.util.List<User>".to_owned()));
+    // `var` writes no type — the completion offers the name without a detail.
+    assert_eq!(typed("count"), Some(String::new()));
+}
+
 /// The receiver type the member identifier `marker` is classified with.
 fn receiver_type_of(
     source: &str,

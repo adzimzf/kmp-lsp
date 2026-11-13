@@ -231,6 +231,7 @@ pub(crate) fn run_completions(
             );
         }
         add_lambda_param_completions(&mut items, &ctx.scope, prefix);
+        add_java_scope_local_completions(&mut items, index, uri, position, prefix);
         add_named_arg_completions(index, &mut items, uri, prefix, ctx.call_info.as_ref());
     }
 
@@ -422,6 +423,35 @@ fn add_lambda_param_completions(
                 ..Default::default()
             });
         }
+    }
+}
+
+/// Offer the Java locals and parameters in scope at `position` — the index
+/// holds declarations, not method-body bindings, so the bare-word walk never
+/// sees them.
+fn add_java_scope_local_completions(
+    items: &mut Vec<CompletionItem>,
+    index: &Indexer,
+    uri: &Url,
+    position: Position,
+    prefix: &str,
+) {
+    for local in index.java_scope_locals(uri, position) {
+        if crate::resolver::complete::match_score(&local.name, prefix).is_none() {
+            continue;
+        }
+        if items.iter().any(|item| item.label == local.name) {
+            continue;
+        }
+        items.push(CompletionItem {
+            label: local.name.clone(),
+            kind: Some(CompletionItemKind::VARIABLE),
+            detail: (!local.type_text.is_empty()).then(|| local.type_text.clone()),
+            // Ahead of everything the index offers: a name in scope here is
+            // what the user is most likely typing.
+            sort_text: Some(format!("000:{}", local.name)),
+            ..Default::default()
+        });
     }
 }
 

@@ -99,6 +99,45 @@ fn local_vars_appear_in_completion() {
     );
 }
 
+/// A Java method's parameters and locals must appear in bare-word
+/// completions: the index holds declarations, not method-body bindings, so
+/// before `java_scope_locals` a Java body offered Kotlin stdlib names and
+/// nothing that was actually in scope there.
+#[test]
+fn java_locals_and_params_appear_in_completion() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_fixture(root, "workspace.json", r#"{"sourcePaths":[]}"#);
+
+    write_fixture(
+        root,
+        "src/Parse.java",
+        "package p;
+         public class Parse {
+             public static String parse(String html, String baseUri) {
+                 String slug = html;
+                 b
+                 return slug;
+             }
+         }
+",
+    );
+
+    index_root(root);
+
+    let file = root.join("src/Parse.java");
+    let items = complete_json(root, &file, 5, 10).unwrap_or_default();
+    let lbls = labels(&items);
+    assert!(
+        lbls.contains(&"baseUri"),
+        "parameter 'baseUri' must appear in Java completions; got: {lbls:?}"
+    );
+    assert!(
+        !lbls.contains(&"buildList"),
+        "Kotlin stdlib must not be offered in a Java file; got: {lbls:?}"
+    );
+}
+
 /// Symbols from a different package (simulating a library) must appear in
 /// bare-word completions once the index is built.  This is the regression that
 /// was reported: @Composable and Column were missing after a refactor.

@@ -29,6 +29,7 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
+pub(crate) use self::infer::java_cst::{java_scope_locals_at, JavaScopeLocal};
 pub(crate) use self::infer::speculative::{
     java_receiver_node_for_marker, lambda_doc_at, receiver_node_for_marker, speculative_doc,
     COMPLETION_MARKER,
@@ -1660,6 +1661,24 @@ impl Indexer {
                 }
             }
         }
+    }
+
+    /// The Java locals and parameters in scope at `position` — the names a
+    /// bare-word completion there may offer. Empty for a non-Java file.
+    pub(crate) fn java_scope_locals(&self, uri: &Url, position: Position) -> Vec<JavaScopeLocal> {
+        if crate::Language::from_path(uri.path()) != crate::Language::Java {
+            return Vec::new();
+        }
+        let Some(doc) = self.live_doc_or_parse(uri) else {
+            return Vec::new();
+        };
+        java_scope_locals_at(
+            &doc,
+            tree_sitter::Point {
+                row: position.line as usize,
+                column: position.character as usize,
+            },
+        )
     }
 
     /// Uses `live_lines` (updated synchronously on every keystroke) for the
