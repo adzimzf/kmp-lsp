@@ -28,8 +28,8 @@ use crate::features::signature_help::{
 };
 use crate::features::type_hierarchy::{declared_name, resolve_type, supertypes};
 use crate::indexer::{
-    java_receiver_node_for_marker, speculative_doc, split_params_at_depth_zero, CstQuery, Indexer,
-    LiveDoc, Resolution, COMPLETION_MARKER,
+    closed_before, java_receiver_node_for_marker, speculative_doc, split_params_at_depth_zero,
+    CstQuery, Indexer, LiveDoc, Resolution, COMPLETION_MARKER,
 };
 use crate::inlay_hints::{line_starts, ts_pos_to_lsp};
 use crate::resolver::complete::completion_item_for_nested_symbol;
@@ -118,6 +118,112 @@ pub(crate) fn java_member_completions(
     }
     items.sort_by(|a, b| a.sort_text.cmp(&b.sort_text));
     Some(items)
+}
+
+/// The constants of the enum a Java `switch` is on, when the cursor is a
+/// `case` label's name (`case NU|`, `case A, B|`): Java names them there
+/// unqualified, so they are the answer, not a ranking among the index's
+/// matches. `None` when the cursor is not on a case label, the switch isn't
+/// on an enum, or the subject's type doesn't resolve — the general
+/// completion answers then.
+pub(crate) fn java_case_label_completions(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+    snippets: bool,
+) -> Option<Vec<CompletionItem>> {
+    if crate::Language::from_path(uri.path()) != crate::Language::Java {
+        return None;
+    }
+    let (doc, marker_byte) = marked_doc(indexer, uri, position)?;
+    let line_start = doc.bytes[..marker_byte]
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(0, |at| at + 1);
+    if !is_case_label(doc.bytes.get(line_start..marker_byte)?) {
+        return None;
+    }
+    // Still being typed, the switch is often lost to an ERROR node: the
+    // text up to the cursor, every bracket closed, parses it again.
+    let closed;
+    let doc = match switch_subject(&doc, marker_byte) {
+        Some(_) => &doc,
+        None => {
+            let mut before = doc.bytes[..marker_byte + COMPLETION_MARKER.len()].to_vec();
+            before.push(b':');
+            closed = closed_before(&before)?;
+            &closed
+        }
+    };
+    let subject = switch_subject(doc, marker_byte)?;
+    let resolved = match CstQuery::new(subject, doc, indexer, uri).expr_type() {
+        Resolution::Resolved(resolved) => resolved,
+        _ => return None,
+    };
+    let enum_type = resolve_type(
+        indexer,
+        simple_type_name(resolved.as_type_str())?,
+        resolved.declaring_uri(),
+    )?;
+    let caller = CallerContext {
+        uri: Some(uri.as_str()),
+        cursor_line: Some(position.line),
+    };
+    let items: Vec<CompletionItem> = members(indexer, &enum_type)
+        .into_iter()
+        .filter(|(owner, member)| {
+            member.kind == SymbolKind::ENUM_MEMBER
+                && owner.uri == enum_type.uri
+                && owner.range == enum_type.range
+        })
+        .map(|(owner, member)| {
+            let mut item =
+                completion_item_for_nested_symbol(indexer, &member, owner.uri.as_str(), caller);
+            item.sort_text = Some(format!("00:{}", member.name));
+            if !snippets {
+                item.insert_text = None;
+                item.insert_text_format = None;
+            }
+            item
+        })
+        .collect();
+    (!items.is_empty()).then_some(items)
+}
+
+/// Whether `line` (up to the cursor) ends in a `case` label's name being
+/// typed: `case`, then names separated by commas, the last one partial.
+fn is_case_label(line: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(line) else {
+        return false;
+    };
+    let is_word = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
+    let text = text.trim_end_matches(is_word).trim_end();
+    let mut rest = text;
+    while let Some(before) = rest.strip_suffix(',') {
+        // An earlier label of the same `case A, B`.
+        rest = before.trim_end().trim_end_matches(is_word).trim_end();
+    }
+    rest.strip_suffix("case")
+        .is_some_and(|before| before.is_empty() || before.ends_with(|c: char| !is_word(c)))
+}
+
+/// The expression a `switch` is on, from the switch around `marker_byte`.
+fn switch_subject(doc: &LiveDoc, marker_byte: usize) -> Option<Node<'_>> {
+    let mut node = doc
+        .tree
+        .root_node()
+        .descendant_for_byte_range(marker_byte, marker_byte + COMPLETION_MARKER.len())?;
+    loop {
+        if matches!(node.kind(), "switch_expression" | "switch_statement") {
+            let condition = node.child_by_field_name("condition")?;
+            return if condition.kind() == "parenthesized_expression" {
+                condition.named_child(0)
+            } else {
+                Some(condition)
+            };
+        }
+        node = node.parent()?;
+    }
 }
 
 /// The types of the parameter the call around `position` takes where the

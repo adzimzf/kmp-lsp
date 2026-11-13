@@ -238,7 +238,16 @@ taken from a server. They cover:
   method and class, local classes in tests included), **call hierarchy**,
   **typeDefinition**, **completion** after `this.`, `delegate().`, a lambda
   parameter, `AtomicReference<TypeAdapter<?>>.get().`, and **hover** /
-  **signatureHelp** on the overload actually chosen.
+  **signatureHelp** on the overload actually chosen;
+- **completion on code being typed** (`complete-edge-…`): a case can keep
+  the first characters of the name (`typed`) and drop the rest of the line
+  or of the whole file (`cut`), so the method, its loops and lambdas are
+  still unclosed when completion is asked, as in an editor. They check
+  that a local, parameter, loop, catch or try-with-resources variable is
+  offered from inside unclosed blocks, lambdas, switch case groups and
+  anonymous classes, and — with `absent` — that names out of scope there
+  are not: a local of a block that already closed, one declared further
+  down, a for-each variable after its loop, a sibling method's local.
 
 `itest.sh` adds them to the query set (`itest.py add-queries`, ids
 `hand-…`), so every run asks them, and `check --handwritten` grades them in

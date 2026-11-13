@@ -41,13 +41,21 @@ impl Backend {
             // An empty member list is not an answer — the receiver resolved to
             // a type whose members this pass couldn't read, and the general
             // pipeline (its own Java dot path included) still can.
-            let java_members = crate::features::java_completion::java_member_completions(
+            let java_members = crate::features::java_completion::java_case_label_completions(
                 indexer.as_ref(),
                 &uri,
                 position,
                 snippets,
-                expected_arguments,
             )
+            .or_else(|| {
+                crate::features::java_completion::java_member_completions(
+                    indexer.as_ref(),
+                    &uri,
+                    position,
+                    snippets,
+                    expected_arguments,
+                )
+            })
             .filter(|items| !items.is_empty());
             if let Some(items) = java_members {
                 return crate::features::completion::completion_list(

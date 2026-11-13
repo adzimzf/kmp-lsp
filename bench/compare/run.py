@@ -32,14 +32,40 @@ def language_id(path):
     return "kotlin" if path.endswith(".kt") else "java"
 
 
-def completion_labels(result, limit=300):
+def completion_labels(result, limit=300, prefix=""):
+    """The first `limit` items, as recorded; with a typed `prefix`, only the
+    ones a client keeps for it (label or filterText starting with it, any
+    case). `total` counts every item the server sent."""
     items = result.get("items", []) if isinstance(result, dict) else (result or [])
+    kept = [item for item in items if not prefix or any(
+        (text or "").lower().startswith(prefix.lower()) for text in (item.get("filterText"), item.get("label")))]
     labels = []
-    for item in items[:limit]:
+    for item in kept[:limit]:
         labels.append({"label": item.get("label", ""), "filterText": item.get("filterText"),
                        "insertText": item.get("insertText"), "sortText": item.get("sortText"),
                        "kind": item.get("kind")})
     return labels, len(items)
+
+
+def lines_of(text):
+    return text.split("\n")
+
+
+def completion_edit(original, query):
+    """(text, typed): the file with the asked name deleted (`receiver.member(`
+    → `receiver.(`), its first `typed` characters kept, and — for a `cut`
+    query — the rest of the line or of the file dropped, as code being typed
+    looks (handwritten.py)."""
+    lines = lines_of(original)
+    line = lines[query["line"]]
+    typed = query["name"][:query.get("typed", 0)]
+    before = line[:query["character"]] + typed
+    after = line[query["character"] + len(query["name"]):]
+    cut = query.get("cut")
+    if cut == "file":
+        return "\n".join(lines[:query["line"]] + [before]), typed
+    lines[query["line"]] = before + ("" if cut == "line" else after)
+    return "\n".join(lines), typed
 
 
 class Documents:
@@ -239,14 +265,15 @@ def main():
         for query in filter(ask, query_set["completion"]):
             documents.open(query["file"])
             original = documents.texts[query["file"]]
-            lines = original.split("\n")
-            line = lines[query["line"]]
-            # Delete the member name: `receiver.member(` → `receiver.(`.
-            lines[query["line"]] = line[:query["character"]] + line[query["character"] + len(query["name"]):]
-            documents.change(query["file"], "\n".join(lines))
-            answer = timed(server, "textDocument/completion", dict(position(query), context={
-                "triggerKind": 2, "triggerCharacter": "."}), arguments.request_timeout)
-            labels, total = completion_labels(answer["result"])
+            edited, typed = completion_edit(original, query)
+            documents.change(query["file"], edited)
+            at = dict(position(query))
+            at["position"] = dict(at["position"], character=query["character"] + len(typed))
+            after_dot = not typed and lines_of(original)[query["line"]][:query["character"]].rstrip().endswith(".")
+            context = {"triggerKind": 2, "triggerCharacter": "."} if after_dot else {"triggerKind": 1}
+            answer = timed(server, "textDocument/completion", dict(at, context=context),
+                           arguments.request_timeout)
+            labels, total = completion_labels(answer["result"], prefix=typed)
             completions.append({"id": query["id"], "seconds": answer["seconds"], "error": answer.get("error"),
                                 "items": labels, "total": total})
             documents.change(query["file"], original)

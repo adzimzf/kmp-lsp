@@ -29,7 +29,7 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
-pub(crate) use self::infer::java_cst::{java_scope_locals_at, JavaScopeLocal};
+pub(crate) use self::infer::java_cst::{closed_before, java_scope_locals_at, JavaScopeLocal};
 pub(crate) use self::infer::speculative::{
     java_receiver_node_for_marker, lambda_doc_at, receiver_node_for_marker, speculative_doc,
     COMPLETION_MARKER,

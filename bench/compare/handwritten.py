@@ -31,7 +31,21 @@ editor shows them:
              sources may answer with the compiled class)
   references, implementation, callHierarchy
              the complete in-repo list of "path:line" (the asked line excluded)
-  completion true (the deleted member ranks in the top 10) or the rank to beat
+  completion true (the deleted name ranks in the top 10), the rank to beat, or
+             {"within": 10, "absent": ["name", …]}: names that must not be
+             offered at all (a local out of scope there, one declared later,
+             a sibling method's local)
+
+A completion case deletes the name at `at` and asks there. Two optional entry
+keys turn it into code being typed:
+
+  "typed": 3      the first 3 characters of the name stay, as if being typed;
+                  the answer is ranked among the items a client keeps for that
+                  prefix (label or filterText starting with it, any case)
+  "cut": "line"   everything after the cursor on that line is dropped (an
+                  unclosed call or statement);
+         "file"   everything after the cursor is dropped (the method, the
+                  class and every block around the cursor are still open)
   signatureHelp
              the parameter count of the overload the arguments select
   hover      a word the hover text must contain
@@ -54,6 +68,7 @@ ASKED_ON = {
 }
 LOCATION_FEATURES = {"definition", "declaration", "typeDefinition"}
 SET_FEATURES = {"references", "implementation", "callHierarchy"}
+CUTS = ("line", "file")
 DECLARATION_KEYWORD = re.compile(r"\b(class|interface|enum|record|@interface)\b")
 
 
@@ -106,9 +121,21 @@ def query_of(entry, repo):
     nth = entry.get("nth", 1)
     if len(columns) < nth:
         raise AuthoringError(f"`{entry['at']}` (#{nth}) not on line {entry['line']}: {text.strip()}")
-    return {"id": PREFIX + entry["id"], "language": "java", "file": entry["file"],
-            "line": entry["line"] - 1, "character": columns[nth - 1],
-            "name": entry["at"], "category": entry["category"]}
+    query = {"id": PREFIX + entry["id"], "language": "java", "file": entry["file"],
+             "line": entry["line"] - 1, "character": columns[nth - 1],
+             "name": entry["at"], "category": entry["category"]}
+    if "typed" in entry or "cut" in entry:
+        if kind != "completion":
+            raise AuthoringError("typed / cut apply to completion cases only")
+        typed = entry.get("typed", 0)
+        if not 0 <= typed < len(entry["at"]):
+            raise AuthoringError(f"typed {typed}: keep fewer characters than `{entry['at']}` has")
+        if entry.get("cut", "line") not in CUTS:
+            raise AuthoringError(f"cut must be one of {', '.join(CUTS)}")
+        query["typed"] = typed
+        if "cut" in entry:
+            query["cut"] = entry["cut"]
+    return query
 
 
 def target(spec, repo, name, feature):
@@ -156,7 +183,22 @@ def case_of(entry, query, feature, expected, repo):
             raise AuthoringError(f"{feature}: a line listed twice")
         case["expect"] = sorted(usages)
     elif feature == "completion":
+        if isinstance(expected, dict):
+            absent = expected.get("absent", [])
+            typed = query["name"][:query.get("typed", 0)].lower()
+            if absent and not typed:
+                raise AuthoringError("absent needs a typed prefix: an unfiltered list is cut at "
+                                     "300 items, so a name missing from it proves nothing")
+            for name in absent:
+                if name == query["name"] or not name.lower().startswith(typed):
+                    raise AuthoringError(f"absent `{name}`: must differ from the answer and match "
+                                         f"what is typed ({typed!r}), or no client would show it")
+            case["expect_absent"] = absent
+            expected = expected.get("within", True)
         case["expect_rank_within"] = COMPLETION_RANK if expected is True else int(expected)
+        for key in ("typed", "cut"):
+            if key in query:
+                case[key] = query[key]
     elif feature == "signatureHelp":
         if query["category"] not in ("call", "member_call"):
             raise AuthoringError("signatureHelp is asked on calls only")
