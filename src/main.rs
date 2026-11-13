@@ -10,6 +10,8 @@ mod dependency_sync;
 mod features;
 mod indexer;
 mod inlay_hints;
+#[cfg(test)]
+mod itest;
 mod jar_extract;
 mod language;
 mod lines_ext;
@@ -169,7 +171,11 @@ fn install_panic_hook() {
 }
 
 fn make_backend(client: tower_lsp::Client) -> backend::Backend {
-    let indexer = Arc::new(indexer::Indexer::new());
+    backend_over(Arc::new(indexer::Indexer::new()), client)
+}
+
+/// The LSP backend and its workspace actor, serving `indexer`.
+fn backend_over(indexer: Arc<indexer::Indexer>, client: tower_lsp::Client) -> backend::Backend {
     let (event_tx, event_rx) = mpsc::channel(64);
     let actor = workspace::Actor::new(
         Arc::clone(&indexer),

@@ -157,6 +157,36 @@ Notes from running it:
   kotlin-server has expired" needs replacing with a newer one.
 - Results of a run: `results/moshi-2026-11-06.md`.
 
+## Integration cases in Rust: `src/itest`
+
+`itest.sh` (below) grades a run on a real project against a reference
+server. `src/itest` is the other half, written the way rust-analyzer writes
+its tests: each case is a few Java files in a string with a `$0` cursor and
+a snapshot of the answer, asked over LSP of a whole server.
+
+```sh
+cargo test itest                     # in-process kmp-lsp, nothing on disk
+UPDATE_EXPECT=1 cargo test itest     # rewrite the snapshots; read the diff
+KMP_ITEST_SERVER=kmp-lsp KMP_ITEST_BIN=target/release/kmp-lsp cargo test itest
+KMP_ITEST_SERVER=jdtls   KMP_ITEST_BIN=/path/to/jdtls/bin/jdtls cargo test itest -- --test-threads=3
+```
+
+- The default server runs inside the test process behind an in-memory pipe;
+  the sources arrive as `didOpen` text and no file is written. The whole
+  set takes a fraction of a second, with no checkout, build tool, JDK or
+  reference server.
+- `KMP_ITEST_SERVER` asks an executable instead (the fixture is then written
+  to a temporary directory). Run a new case against jdtls once to check its
+  expectation is Java's and not just what kmp-lsp answers today.
+- Answers are rendered as positions, source lines and names, so one
+  snapshot holds for every server (`request.rs` says what is left out).
+- `cases.rs` has one case per request kind as a template. Requests that
+  search files on disk (cross-file references, implementations, rename) have
+  none yet: the in-memory server has no files to search.
+
+Use it to aim at one rule with a ten-line program; use `itest.sh` to catch
+what breaks on real code.
+
 ## Integration test: pass/fail, not a comparison
 
 `compare.sh` answers "how does kmp-lsp compare"; `itest.sh` answers "did
