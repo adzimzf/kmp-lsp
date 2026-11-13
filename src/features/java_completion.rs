@@ -18,7 +18,10 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use tower_lsp::lsp_types::{CompletionItem, Position, SymbolKind, TypeHierarchyItem, Url};
+use tower_lsp::lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionTextEdit, Position, Range, SymbolKind, TextEdit,
+    TypeHierarchyItem, Url,
+};
 use tree_sitter::Node;
 
 use crate::features::implementation::{is_class_kind, range_contains};
@@ -42,6 +45,8 @@ const MAX_SUPERTYPES: usize = 32;
 const EXPECTED_TYPE: u8 = 30;
 const NON_STATIC: u8 = 11;
 const PREFERRED_KIND: u8 = 5;
+/// Declared by the receiver's own class rather than inherited.
+const NON_INHERITED: u8 = 2;
 
 /// Member completions for the Java `receiver.` at `position`, or `None` when
 /// `uri` isn't Java, nothing before the cursor is a `receiver.`, or the
@@ -59,11 +64,17 @@ pub(crate) fn java_member_completions(
         return None;
     }
     let query = MemberQuery::at(indexer, uri, position, expected_arguments)?;
-    let receiver = resolve_type(
-        indexer,
-        simple_type_name(&query.receiver_type)?,
-        &query.anchor,
-    )?;
+    let is_array = is_array_type(&query.receiver_type);
+    let receiver_class = if is_array {
+        "Object"
+    } else {
+        simple_type_name(&query.receiver_type)?
+    };
+    let receiver = resolve_type(indexer, receiver_class, &query.anchor);
+    if is_array && receiver.is_none() {
+        return Some(array_length_completion(&query.typed).into_iter().collect());
+    }
+    let receiver = receiver?;
     let caller_package = indexer.package_of(uri);
     let mut seen: HashSet<(String, bool)> = HashSet::new();
     let mut items = Vec::new();
@@ -85,6 +96,9 @@ pub(crate) fn java_member_completions(
             same_package: member_package == caller_package,
             through_this: query.through_this,
         };
+        if !query.typed.admits(&member.name) {
+            continue;
+        }
         if !access.allows(member.visibility) || !seen.insert((member.name.clone(), is_method)) {
             continue;
         }
@@ -103,6 +117,10 @@ pub(crate) fn java_member_completions(
         if is_method == query.wants_call {
             score += PREFERRED_KIND;
         }
+        let declared_by_receiver = owner.uri == receiver.uri && owner.range == receiver.range;
+        if declared_by_receiver {
+            score += NON_INHERITED;
+        }
         let caller = CallerContext {
             uri: Some(uri.as_str()),
             cursor_line: Some(position.line),
@@ -116,8 +134,434 @@ pub(crate) fn java_member_completions(
         }
         items.push(item);
     }
+    if is_array {
+        items.extend(array_length_completion(&query.typed));
+    }
     items.sort_by(|a, b| a.sort_text.cmp(&b.sort_text));
     Some(items)
+}
+
+/// Completions where Java names a package or a type by its qualified name:
+/// the `package` declaration, an `import`, and `new a.b.Type`. `None`
+/// anywhere else, or when nothing matches — the general completion answers
+/// then.
+pub(crate) fn java_qualified_name_completions(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Vec<CompletionItem>> {
+    if crate::Language::from_path(uri.path()) != crate::Language::Java {
+        return None;
+    }
+    let base = indexer.live_doc_or_parse(uri)?;
+    let cursor = byte_of(&base.bytes, position)?;
+    let line = line_before(&base.bytes, cursor)?;
+    let site = QualifiedNameSite::of(line)?;
+    let replaced = Range::new(
+        Position::new(
+            position.line,
+            position.character.saturating_sub(site.typed_len_utf16()),
+        ),
+        position,
+    );
+    let mut items = Vec::new();
+    if site.kind == QualifiedNameKind::PackageDeclaration {
+        // The package the file's directory names, as jdtls offers it: the
+        // one a new file is about to declare, before any file declares it.
+        items.extend(
+            package_of_directory(indexer, uri)
+                .filter(|package| starts_with_ignoring_case(package, site.dotted))
+                .map(|package| package_item(package, replaced)),
+        );
+    }
+    if site.offers_packages() {
+        items.extend(
+            indexer
+                .known_packages()
+                .into_iter()
+                .filter(|package| starts_with_ignoring_case(package, site.dotted))
+                // The package being declared is in the index already, as
+                // far as it is typed: offering it would complete nothing.
+                .filter(|package| !package.eq_ignore_ascii_case(site.dotted))
+                .map(|package| package_item(package, replaced)),
+        );
+    }
+    if site.offers_types() {
+        if let Some((package, simple)) = site.dotted.rsplit_once('.') {
+            let typed = TypedPrefix(simple.to_owned());
+            let mut types: Vec<(Url, SymbolEntry)> = indexer
+                .top_level_types_in_package(package)
+                .into_iter()
+                .filter(|(_, symbol)| typed.admits(&symbol.name))
+                .collect();
+            types.sort_by(|(_, left), (_, right)| left.name.cmp(&right.name));
+            types.dedup_by(|(_, left), (_, right)| left.name == right.name);
+            items.extend(
+                types
+                    .into_iter()
+                    .map(|(_, symbol)| type_item(&symbol, package)),
+            );
+        }
+    }
+    let mut labels = HashSet::new();
+    items.retain(|item| labels.insert(item.label.clone()));
+    (!items.is_empty()).then_some(items)
+}
+
+/// A line that names a package or type by its qualified name, up to the
+/// cursor.
+#[derive(Debug, PartialEq, Eq)]
+struct QualifiedNameSite<'a> {
+    kind: QualifiedNameKind,
+    /// The qualified name typed so far: `com.demo.Ro` of `import com.demo.Ro`.
+    dotted: &'a str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum QualifiedNameKind {
+    /// `package com.dem` — only packages.
+    PackageDeclaration,
+    /// `import com.demo.Ro` — packages, and the types of the package named
+    /// before the last dot.
+    Import,
+    /// `new com.demo.Ro` — the types of the package named before the last
+    /// dot.
+    Instantiation,
+}
+
+impl<'a> QualifiedNameSite<'a> {
+    fn of(line: &'a str) -> Option<Self> {
+        let is_name_char = |char: char| char.is_alphanumeric() || matches!(char, '_' | '$' | '.');
+        let dotted_start = line
+            .char_indices()
+            .rev()
+            .take_while(|(_, char)| is_name_char(*char))
+            .last()
+            .map_or(line.len(), |(at, _)| at);
+        let dotted = &line[dotted_start..];
+        let keyword = line[..dotted_start].trim_end();
+        let kind = if keyword.trim_start() == "package" {
+            QualifiedNameKind::PackageDeclaration
+        } else if keyword.trim_start() == "import" || keyword.trim_start() == "import static" {
+            QualifiedNameKind::Import
+        } else if ends_with_word(keyword, "new") && dotted.contains('.') {
+            QualifiedNameKind::Instantiation
+        } else {
+            return None;
+        };
+        let separated_from_keyword = dotted_start > keyword.len();
+        separated_from_keyword.then_some(Self { kind, dotted })
+    }
+
+    fn offers_packages(&self) -> bool {
+        matches!(
+            self.kind,
+            QualifiedNameKind::PackageDeclaration | QualifiedNameKind::Import
+        )
+    }
+
+    fn offers_types(&self) -> bool {
+        matches!(
+            self.kind,
+            QualifiedNameKind::Import | QualifiedNameKind::Instantiation
+        )
+    }
+
+    fn typed_len_utf16(&self) -> u32 {
+        self.dotted.encode_utf16().count() as u32
+    }
+}
+
+/// The package the directory of `uri` names: below its source set
+/// (`src/main/java/`, …), or else below the workspace root.
+fn package_of_directory(indexer: &Indexer, uri: &Url) -> Option<String> {
+    if let Some(package) = crate::features::code_actions::resolve_package_from_path(uri.path()) {
+        return Some(package);
+    }
+    let root = indexer.workspace_root.get()?;
+    let file = uri.to_file_path().ok()?;
+    let directory = file.strip_prefix(&root).ok()?.parent()?;
+    let segments: Vec<&str> = directory
+        .components()
+        .map(|component| component.as_os_str().to_str())
+        .collect::<Option<_>>()?;
+    let all_identifiers = segments.iter().all(|segment| is_java_identifier(segment));
+    (!segments.is_empty() && all_identifiers).then(|| segments.join("."))
+}
+
+fn is_java_identifier(text: &str) -> bool {
+    let mut chars = text.chars();
+    let starts_well = chars
+        .next()
+        .is_some_and(|first| first.is_alphabetic() || first == '_' || first == '$');
+    starts_well && chars.all(|char| char.is_alphanumeric() || char == '_' || char == '$')
+}
+
+/// A package, labelled and inserted by its whole name over the qualified
+/// name typed so far.
+fn package_item(package: String, replaced: Range) -> CompletionItem {
+    CompletionItem {
+        label: package.clone(),
+        kind: Some(CompletionItemKind::MODULE),
+        filter_text: Some(package.clone()),
+        sort_text: Some(format!("10:{package}")),
+        text_edit: Some(CompletionTextEdit::Edit(TextEdit::new(replaced, package))),
+        ..Default::default()
+    }
+}
+
+/// A top-level type of `package`, named simply: what comes after the last
+/// dot is the word being replaced.
+fn type_item(symbol: &SymbolEntry, package: &str) -> CompletionItem {
+    let kind = match symbol.kind {
+        SymbolKind::INTERFACE => CompletionItemKind::INTERFACE,
+        SymbolKind::ENUM => CompletionItemKind::ENUM,
+        SymbolKind::STRUCT => CompletionItemKind::STRUCT,
+        _ => CompletionItemKind::CLASS,
+    };
+    CompletionItem {
+        label: symbol.name.clone(),
+        kind: Some(kind),
+        detail: Some(format!("{package}.{}", symbol.name)),
+        sort_text: Some(format!("00:{}", symbol.name)),
+        ..Default::default()
+    }
+}
+
+/// Whether `line` ends in the whole word `word`.
+fn ends_with_word(line: &str, word: &str) -> bool {
+    line.strip_suffix(word).is_some_and(|before| {
+        before
+            .chars()
+            .next_back()
+            .is_none_or(|char| !(char.is_alphanumeric() || char == '_' || char == '$'))
+    })
+}
+
+fn starts_with_ignoring_case(text: &str, prefix: &str) -> bool {
+    text.len() >= prefix.len()
+        && text.is_char_boundary(prefix.len())
+        && text[..prefix.len()].eq_ignore_ascii_case(prefix)
+}
+
+/// The byte offset of the LSP `position` in `bytes`.
+fn byte_of(bytes: &[u8], position: Position) -> Option<usize> {
+    let starts = line_starts(bytes);
+    let line_start = *starts.get(position.line as usize)?;
+    let line_end = bytes[line_start..]
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map_or(bytes.len(), |at| line_start + at);
+    let line = std::str::from_utf8(&bytes[line_start..line_end]).ok()?;
+    let mut units = 0;
+    for (offset, char) in line.char_indices() {
+        if units >= position.character as usize {
+            return Some(line_start + offset);
+        }
+        units += char.len_utf16();
+    }
+    Some(line_end)
+}
+
+/// The text of the line that holds `byte`, up to it.
+fn line_before(bytes: &[u8], byte: usize) -> Option<&str> {
+    let start = bytes[..byte]
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map_or(0, |at| at + 1);
+    std::str::from_utf8(&bytes[start..byte]).ok()
+}
+
+/// The Java keywords that can start what is being typed at `position` and
+/// match `typed`: declarations at the top of a file and in a class body,
+/// statements in a block. None when nothing is typed yet, or when what
+/// precedes the word on its line isn't the start of a declaration or a
+/// statement (`x = fo|`, `new Bo|`).
+pub(crate) fn java_keyword_completions(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Vec<CompletionItem> {
+    if crate::Language::from_path(uri.path()) != crate::Language::Java {
+        return Vec::new();
+    }
+    let Some(base) = indexer.live_doc_or_parse(uri) else {
+        return Vec::new();
+    };
+    let Some(cursor) = byte_of(&base.bytes, position) else {
+        return Vec::new();
+    };
+    let typed = TypedPrefix::before(&base.bytes[..cursor]);
+    if typed.0.is_empty() {
+        return Vec::new();
+    }
+    let word_start = cursor - typed.0.len();
+    let Some(line) = line_before(&base.bytes, word_start) else {
+        return Vec::new();
+    };
+    if !starts_a_declaration_or_statement(line) {
+        return Vec::new();
+    }
+    let scope = KeywordScope::at(&base, word_start);
+    let nothing_before = base.bytes[..word_start].iter().all(u8::is_ascii_whitespace);
+    scope
+        .keywords()
+        .into_iter()
+        .filter(|keyword| *keyword != PACKAGE || nothing_before)
+        .filter(|keyword| typed.admits(keyword))
+        .map(|keyword| CompletionItem {
+            label: (*keyword).to_owned(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            sort_text: Some(format!("900:{keyword}")),
+            ..Default::default()
+        })
+        .collect()
+}
+
+const PACKAGE: &str = "package";
+
+const MODIFIERS: &[&str] = &[
+    "public",
+    "protected",
+    "private",
+    "static",
+    "final",
+    "abstract",
+    "sealed",
+    "synchronized",
+    "native",
+    "transient",
+    "volatile",
+    "default",
+    "strictfp",
+];
+
+/// What a file may start a top-level type with.
+const TOP_LEVEL_MODIFIERS: &[&str] = &["public", "abstract", "final", "sealed", "strictfp"];
+
+const TYPE_DECLARATIONS: &[&str] = &["class", "interface", "enum", "record"];
+
+const PRIMITIVE_TYPES: &[&str] = &[
+    "void", "boolean", "byte", "char", "short", "int", "long", "float", "double",
+];
+
+const STATEMENT_KEYWORDS: &[&str] = &[
+    "if",
+    "else",
+    "for",
+    "while",
+    "do",
+    "switch",
+    "case",
+    "return",
+    "break",
+    "continue",
+    "try",
+    "catch",
+    "finally",
+    "throw",
+    "new",
+    "final",
+    "var",
+    "this",
+    "super",
+    "true",
+    "false",
+    "null",
+    "synchronized",
+    "assert",
+    "yield",
+    "class",
+    "record",
+];
+
+/// Where a keyword is being typed: what may be declared or done there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeywordScope {
+    /// Outside every type: `package`, `import`, type declarations.
+    File,
+    /// Directly in a class, interface, enum or record body: members.
+    TypeBody,
+    /// In a method, constructor, initializer or lambda body: statements.
+    Block,
+}
+
+impl KeywordScope {
+    /// The innermost scope around `byte` in `doc`.
+    fn at(doc: &LiveDoc, byte: usize) -> Self {
+        let start = byte.saturating_sub(1);
+        let Some(mut node) = doc.tree.root_node().descendant_for_byte_range(start, byte) else {
+            return Self::File;
+        };
+        loop {
+            match node.kind() {
+                "block" | "constructor_body" | "switch_block" | "lambda_expression" => {
+                    return Self::Block
+                }
+                "class_body"
+                | "interface_body"
+                | "enum_body"
+                | "enum_body_declarations"
+                | "annotation_type_body" => return Self::TypeBody,
+                "program" => return Self::File,
+                _ => {}
+            }
+            match node.parent() {
+                Some(parent) => node = parent,
+                None => return Self::File,
+            }
+        }
+    }
+
+    fn keywords(self) -> Vec<&'static str> {
+        let groups: &[&[&'static str]] = match self {
+            Self::File => &[&[PACKAGE, "import"], TOP_LEVEL_MODIFIERS, TYPE_DECLARATIONS],
+            Self::TypeBody => &[MODIFIERS, TYPE_DECLARATIONS, PRIMITIVE_TYPES],
+            Self::Block => &[STATEMENT_KEYWORDS, PRIMITIVE_TYPES],
+        };
+        groups.concat()
+    }
+}
+
+/// Whether the text of a line before a word lets the word start a
+/// declaration or a statement: nothing, the end of one (`;`, `{`, `}`), or
+/// modifiers (`public sta|`).
+fn starts_a_declaration_or_statement(line: &str) -> bool {
+    let before = line.trim_end();
+    if before.is_empty() || before.ends_with(['{', '}', ';']) {
+        return true;
+    }
+    let last_word = before
+        .rsplit(|char: char| !(char.is_alphanumeric() || char == '_' || char == '$'))
+        .next()
+        .unwrap_or_default();
+    MODIFIERS.contains(&last_word)
+}
+
+/// Whether the word being typed follows `new`: only a type can be named
+/// there, never a local or a member.
+pub(crate) fn is_java_instantiation(uri: &Url, before_word: &str) -> bool {
+    crate::Language::from_path(uri.path()) == crate::Language::Java
+        && ends_with_word(before_word.trim_end(), "new")
+}
+
+/// Whether `type_text` is an array (`String[]`, `int[][]`, `T...`).
+fn is_array_type(type_text: &str) -> bool {
+    let unannotated = type_text.trim();
+    unannotated.ends_with("[]") || unannotated.ends_with("...")
+}
+
+/// The `length` every array has (JLS §10.7). The rest of an array's
+/// members are `Object`'s, read from wherever the JDK is.
+fn array_length_completion(typed: &TypedPrefix) -> Option<CompletionItem> {
+    const LENGTH: &str = "length";
+    typed.admits(LENGTH).then(|| CompletionItem {
+        label: LENGTH.to_owned(),
+        kind: Some(CompletionItemKind::FIELD),
+        detail: Some("int length".to_owned()),
+        sort_text: Some(format!("{:02}:{LENGTH}", 99 - NON_STATIC)),
+        ..Default::default()
+    })
 }
 
 /// The constants of the enum a Java `switch` is on, when the cursor is a
@@ -307,6 +751,8 @@ struct MemberQuery {
     expected: Vec<String>,
     /// A `(` already follows the cursor: a method is being named.
     wants_call: bool,
+    /// The part of the member's name already typed before the cursor.
+    typed: TypedPrefix,
 }
 
 impl MemberQuery {
@@ -343,6 +789,7 @@ impl MemberQuery {
             .skip_while(|byte| byte.is_ascii_alphanumeric() || **byte == b'_')
             .find(|byte| !byte.is_ascii_whitespace())
             == Some(&b'(');
+        let typed = TypedPrefix::before(doc.bytes.get(..marker_byte)?);
         Some(MemberQuery {
             receiver_type,
             anchor: resolved.declaring_uri().clone(),
@@ -350,7 +797,36 @@ impl MemberQuery {
             through_this: receiver.kind() == "this",
             expected,
             wants_call,
+            typed,
         })
+    }
+}
+
+/// The identifier being typed at the cursor, which a name has to match to
+/// be offered — as jdtls filters, by prefix (any case) or by the initials
+/// of its camel-case words (`mSF` for `myStateFlow`), not by a substring.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TypedPrefix(String);
+
+/// How well a name matches what was typed, from `match_score`.
+const PREFIX_MATCH: u8 = 0;
+const CAMEL_CASE_MATCH: u8 = 1;
+
+impl TypedPrefix {
+    /// The identifier characters at the end of `before`.
+    pub(crate) fn before(before: &[u8]) -> Self {
+        let start = before
+            .iter()
+            .rposition(|byte| !is_identifier_byte(*byte))
+            .map_or(0, |at| at + 1);
+        Self(String::from_utf8_lossy(&before[start..]).into_owned())
+    }
+
+    pub(crate) fn admits(&self, name: &str) -> bool {
+        matches!(
+            crate::resolver::complete::match_score(name, &self.0),
+            Some(PREFIX_MATCH | CAMEL_CASE_MATCH)
+        )
     }
 }
 
@@ -567,6 +1043,11 @@ fn simple_type_name(text: &str) -> Option<&str> {
     let raw = raw.trim_end_matches("[]").trim_end_matches("...").trim();
     let name = raw.rsplit('.').next()?.trim();
     (!name.is_empty()).then_some(name)
+}
+
+/// A byte of a Java identifier; any byte of a non-ASCII character counts.
+fn is_identifier_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$' || !byte.is_ascii()
 }
 
 /// The parameter text of the method or constructor declared at `location`.

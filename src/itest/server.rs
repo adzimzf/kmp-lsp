@@ -5,7 +5,7 @@
 //! touches the disk — the sources arrive as `didOpen` text.
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -238,10 +238,14 @@ fn in_memory() -> (Reader, Writer, Url, Host) {
 
 /// An indexer that never looks for a workspace: with a root pinned to
 /// nowhere, opening a file indexes its text and nothing else — no directory
-/// scan, no Gradle cache, no JDK sources.
+/// scan, no Gradle cache, no JDK sources. The root is still the fixture's,
+/// so what the server derives from it (a file's package from its directory)
+/// and what it searches below it (nothing is there) is the fixture's alone,
+/// never the directory the tests run in.
 fn rootless_indexer() -> Indexer {
     let indexer = Indexer::new();
     indexer.workspace_pinned.store(true, Ordering::Relaxed);
+    indexer.workspace_root.set(PathBuf::from(MEMORY_ROOT));
     indexer
 }
 

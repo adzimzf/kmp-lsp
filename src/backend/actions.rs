@@ -56,7 +56,14 @@ impl Backend {
                     expected_arguments,
                 )
             })
-            .filter(|items| !items.is_empty());
+            .filter(|items| !items.is_empty())
+            .or_else(|| {
+                crate::features::java_completion::java_qualified_name_completions(
+                    indexer.as_ref(),
+                    &uri,
+                    position,
+                )
+            });
             if let Some(items) = java_members {
                 return crate::features::completion::completion_list(
                     items,

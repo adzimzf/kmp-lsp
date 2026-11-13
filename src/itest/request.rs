@@ -64,10 +64,13 @@ impl Kind {
     }
 
     /// Asks the request at the fixture's cursor and renders the answer.
+    /// `expected` is the answer the case writes down: a name it lists is
+    /// one it asks about, whoever else spells it.
     pub(super) async fn ask(
         self,
         session: &mut Session,
         fixture: &Fixture,
+        expected: &str,
         settles: Settles,
     ) -> String {
         let params = self.params(session, fixture);
@@ -76,7 +79,11 @@ impl Kind {
             Settles::WhenAnswered => has_content(answer),
         };
         let answer = session.request_until(self.method(), params, settled).await;
-        let view = View { session, fixture };
+        let view = View {
+            session,
+            fixture,
+            expected,
+        };
         let mut lines = match self {
             Self::Definition | Self::TypeDefinition | Self::References => view.locations(&answer),
             Self::DocumentHighlight => view.ranges(&fixture.cursor.path, &answer),
@@ -132,6 +139,7 @@ fn as_list(answer: &Value) -> Vec<&Value> {
 struct View<'a> {
     session: &'a Session,
     fixture: &'a Fixture,
+    expected: &'a str,
 }
 
 impl View<'_> {
@@ -179,23 +187,31 @@ impl View<'_> {
     }
 
     /// The names offered, best first, as a client would sort them — only
-    /// those the fixture itself spells: what a JDK adds (`hashCode`,
-    /// `getClass`, …) depends on the JDK the server found.
+    /// those the fixture itself spells or the case asks for: what a JDK
+    /// adds (`hashCode`, `getClass`, …) depends on the JDK the server found,
+    /// while a keyword (`package`), what every array has (`length`) or a
+    /// package name (`com.demo`) is the answer a case can ask for without
+    /// writing it in its sources.
     fn completion_names(&self, answer: &Value) -> Vec<String> {
         let items = answer.get("items").unwrap_or(answer);
         let mut offered: Vec<(String, String)> = as_list(items)
             .into_iter()
             .filter_map(|item| {
-                let name = identifier_prefix(item["label"].as_str()?);
+                let name = qualified_name_prefix(item["label"].as_str()?);
                 let sort_key = item["sortText"].as_str().unwrap_or(name);
                 Some((sort_key.to_owned(), name.to_owned()))
             })
-            .filter(|(_, name)| self.fixture.spells(name))
+            .filter(|(_, name)| self.fixture.spells(name) || self.asks_for(name))
             .collect();
         offered.sort();
         let mut names: Vec<String> = offered.into_iter().map(|(_, name)| name).collect();
         names.dedup();
         names
+    }
+
+    /// Whether the case's expected answer lists `name` on a line of its own.
+    fn asks_for(&self, name: &str) -> bool {
+        self.expected.lines().any(|line| line.trim() == name)
     }
 
     /// Where the identifier a rename would change starts.
@@ -248,6 +264,15 @@ impl Place {
 }
 
 /// `scaled` of `scaled(double, int) : Circle`.
+/// The dotted name a completion label starts with: `com.demo` of a package,
+/// `put` of `put(K key, V value)`.
+fn qualified_name_prefix(label: &str) -> &str {
+    let end = label
+        .find(|character: char| !character.is_alphanumeric() && !matches!(character, '_' | '.'))
+        .unwrap_or(label.len());
+    label[..end].trim_end_matches('.')
+}
+
 fn identifier_prefix(label: &str) -> &str {
     let end = label
         .find(|character: char| !character.is_alphanumeric() && character != '_')

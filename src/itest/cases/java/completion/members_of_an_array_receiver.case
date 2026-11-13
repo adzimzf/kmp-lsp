@@ -1,3 +1,11 @@
+//- /java/lang/Object.java
+package java.lang;
+
+public class Object {
+    public native int hashCode();
+
+    protected native Object clone();
+}
 //- /com/demo/Arr.java
 package com.demo;
 
