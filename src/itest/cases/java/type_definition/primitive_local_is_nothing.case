@@ -1,0 +1,11 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run(int first) {
+        int total = first + 1;
+        return to$0tal;
+    }
+}
+//= expected
+(nothing)

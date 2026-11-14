@@ -1,0 +1,29 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Shape {
+    double area();
+
+    default String describe() {
+        return "shape of " + area();
+    }
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle implements Shape {
+    @Override
+    public double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run(Circle circle) {
+        return circle.desc$0ribe();
+    }
+}
+//= expected
+/com/demo/Shape.java:6:20  default String describe() {

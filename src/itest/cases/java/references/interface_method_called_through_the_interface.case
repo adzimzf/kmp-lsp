@@ -1,0 +1,21 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Shape {
+    double ar$0ea();
+
+    String name();
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double total(Shape first, Shape second) {
+        String names = first.name() + second.name();
+        return first.area() + second.area();
+    }
+}
+//= expected
+/com/demo/Main.java:6:22  return first.area() + second.area();
+/com/demo/Main.java:6:38  return first.area() + second.area();
+/com/demo/Shape.java:4:12  double area();

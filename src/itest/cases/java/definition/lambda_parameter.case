@@ -1,0 +1,18 @@
+//- /com/demo/Transform.java
+package com.demo;
+
+interface Transform {
+    int apply(int value);
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int value;
+
+    Transform twice() {
+        return value -> val$0ue * 2;
+    }
+}
+//= expected
+/com/demo/Main.java:7:16  return value -> value * 2;

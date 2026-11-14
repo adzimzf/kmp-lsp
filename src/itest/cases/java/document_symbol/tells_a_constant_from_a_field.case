@@ -1,0 +1,23 @@
+//- /com/demo/Limits.java
+package com.demo;
+
+abstract class Limits$0 {
+    static final int MAXIMUM = 10;
+    static int shared;
+    final int fixed = 1;
+    int current;
+
+    abstract int next();
+
+    int next(int step) {
+        return current + step;
+    }
+}
+//= expected
+class Limits
+constant MAXIMUM
+field shared
+field fixed
+field current
+method next
+method next

@@ -1,0 +1,11 @@
+//- /com/demo/R.java
+package com.demo;
+
+record R(int value) {
+    int other(int value) {
+        return value$0 + 1;
+    }
+}
+//= expected
+/com/demo/R.java:4:19  int other(int value) {
+/com/demo/R.java:5:16  return value + 1;

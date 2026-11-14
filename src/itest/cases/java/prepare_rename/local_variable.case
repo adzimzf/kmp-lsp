@@ -1,0 +1,16 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    int bar() {
+        String str = new String();
+        return str.length();
+    }
+
+    int foo() {
+        String str = new String();
+        return str$0.length();
+    }
+}
+//= expected
+/com/demo/E.java:11:16  return str.length();

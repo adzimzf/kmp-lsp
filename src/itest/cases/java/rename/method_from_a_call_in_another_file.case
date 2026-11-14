@@ -1,0 +1,19 @@
+//- /com/demo/A.java
+package com.demo;
+
+class A {
+    void foo() {
+    }
+}
+//- /com/demo/B.java
+package com.demo;
+
+class B {
+    void foo() {
+        A a = new A();
+        a.foo$0();
+    }
+}
+//= expected
+/com/demo/A.java:4:10  void foo() {
+/com/demo/B.java:6:11  a.foo();

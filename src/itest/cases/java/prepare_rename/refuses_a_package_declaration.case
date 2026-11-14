@@ -1,0 +1,20 @@
+//- /com/demo/parent/B.java
+package com.demo.parent$0;
+
+public class B {
+    public void foo() {
+    }
+}
+//- /com/demo/A.java
+package com.demo;
+
+import com.demo.parent.B;
+
+class A {
+    void foo() {
+        B b = new B();
+        b.foo();
+    }
+}
+//= expected
+(nothing)

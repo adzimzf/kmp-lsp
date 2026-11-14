@@ -1,0 +1,14 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    int count;
+
+    class Inner {
+        int next() {
+            return cou$0nt + 1;
+        }
+    }
+}
+//= expected
+/com/demo/Outer.java:4:9  int count;

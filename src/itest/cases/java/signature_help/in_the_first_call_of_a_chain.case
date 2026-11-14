@@ -1,0 +1,18 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    E setFoo() {
+        return this;
+    }
+
+    E setBar() {
+        return this;
+    }
+
+    void foo() {
+        setFoo($0).setBar();
+    }
+}
+//= expected
+setFoo()

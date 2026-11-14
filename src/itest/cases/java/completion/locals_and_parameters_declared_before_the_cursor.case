@@ -1,0 +1,23 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run(int totalCount) {
+        int totalBefore = totalCount + 1;
+        if (totalBefore > 0) {
+            int totalInner = 2;
+            totalBefore = totalInner;
+        }
+        int result = tot$0;
+        int totalAfter = result;
+        return totalAfter;
+    }
+
+    int other() {
+        int totalOther = 1;
+        return totalOther;
+    }
+}
+//= expected
+totalBefore
+totalCount

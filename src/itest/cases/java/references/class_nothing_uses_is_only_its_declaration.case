@@ -1,0 +1,18 @@
+//- /com/demo/User.java
+package com.demo;
+
+class Us$0er {
+}
+//- /com/demo/admin/User.java
+package com.demo.admin;
+
+public class User {
+}
+//- /com/demo/admin/Main.java
+package com.demo.admin;
+
+class Main {
+    User user = new User();
+}
+//= expected
+/com/demo/User.java:3:7  class User {

@@ -1,0 +1,25 @@
+//- /com/demo/Printer.java
+package com.demo;
+
+class Printer {
+    void print(int number) {
+    }
+
+    void pri$0nt(String text) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Printer printer) {
+        printer.print(1);
+        printer.print("one");
+        printer.print(2);
+        printer.print("two");
+    }
+}
+//= expected
+/com/demo/Main.java:6:17  printer.print("one");
+/com/demo/Main.java:8:17  printer.print("two");
+/com/demo/Printer.java:7:10  void print(String text) {

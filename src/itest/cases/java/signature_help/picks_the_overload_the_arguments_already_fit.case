@@ -1,0 +1,19 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    void bar() {
+        foo("a"$0,"b");
+    }
+
+    void foo(String s) {
+    }
+
+    void foo(String s, String b) {
+    }
+
+    void foo() {
+    }
+}
+//= expected
+foo([String s], String b)

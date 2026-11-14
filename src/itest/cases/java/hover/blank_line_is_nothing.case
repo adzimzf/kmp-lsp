@@ -1,0 +1,7 @@
+//- /com/demo/Foo.java
+package com.demo;
+$0
+class Foo {
+}
+//= expected
+(nothing)

@@ -1,0 +1,24 @@
+//- /com/demo/Unit.java
+package com.demo;
+
+enum Unit {
+    METRE,
+    FOOT
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double scale(Unit unit) {
+        switch (unit) {
+            case METRE:
+                return 1.0;
+            case FO$0OT:
+                return 0.3048;
+            default:
+                return 0.0;
+        }
+    }
+}
+//= expected
+/com/demo/Unit.java:5:5  FOOT

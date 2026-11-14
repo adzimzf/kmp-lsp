@@ -1,0 +1,23 @@
+//- /com/demo/R.java
+package com.demo;
+
+record R(int value) {
+    R {
+        if (value$0 < 0) {
+            value = 0;
+        }
+    }
+}
+//- /com/demo/User.java
+package com.demo;
+
+class User {
+    int get(R r) {
+        return r.value();
+    }
+}
+//= expected
+/com/demo/R.java:3:14  record R(int value) {
+/com/demo/R.java:5:13  if (value < 0) {
+/com/demo/R.java:6:13  value = 0;
+/com/demo/User.java:5:18  return r.value();

@@ -1,0 +1,10 @@
+//- /com/demo/Foo.java
+package com.demo;
+
+class Foo {
+    static int main(String[] args) {
+        return ar$0gs.length;
+    }
+}
+//= expected
+String[] args - com.demo.Foo.main(String[])

@@ -1,0 +1,13 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double radius;
+
+    double area() {
+        int radius = 1;
+        return 3.14 * this.rad$0ius * radius;
+    }
+}
+//= expected
+double radius

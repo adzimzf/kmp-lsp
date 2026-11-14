@@ -1,0 +1,9 @@
+//- /com/demo/A.java
+package com.demo;
+
+import java.ne$0t.URI;
+
+class A {
+}
+//= expected
+(nothing)

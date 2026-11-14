@@ -206,8 +206,15 @@ class Main { void run(Greeter greeter) { greeter.gr$0eet(); } }
 - Answers are rendered as positions, source lines and names, not JSON, so an
   expectation reads as the facts a reviewer would check by eye
   (`request.rs` says what is left out).
-- Requests that search files on disk (cross-file references, implementations,
-  rename) have no cases: the in-memory server has no files to search.
+- The Java cases derived from jdtls's own handler tests are indexed in
+  `src/itest/cases/java/README.md`, case by case with the jdtls test each
+  follows. Their expectations are jdtls's answers, written without looking
+  at what kmp-lsp answers: a case that fails is a difference from jdtls, to
+  fix in the server and not in the case.
+- Cross-file references, implementations and rename have cases too
+  (`java/references`, `java/implementation`, `java/rename`). The in-memory
+  server has no files on disk to search: what it knows is the files a case
+  opens.
 
 Use it to aim at one rule with a ten-line program; use `itest.sh` to catch
 what breaks on real code.

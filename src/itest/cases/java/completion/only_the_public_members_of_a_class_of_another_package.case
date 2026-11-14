@@ -1,0 +1,32 @@
+//- /com/demo/shapes/Shape.java
+package com.demo.shapes;
+
+public class Shape {
+    public String name() {
+        return "shape";
+    }
+
+    protected String kind() {
+        return "kind";
+    }
+
+    String secret() {
+        return "secret";
+    }
+
+    private String hidden() {
+        return "hidden";
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+import com.demo.shapes.Shape;
+
+class Main {
+    String run(Shape shape) {
+        return shape.$0
+    }
+}
+//= expected
+name

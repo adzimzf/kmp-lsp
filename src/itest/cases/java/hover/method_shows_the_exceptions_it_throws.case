@@ -1,0 +1,18 @@
+//- /com/demo/Failure.java
+package com.demo;
+
+class Failure extends Exception {
+}
+//- /com/demo/Store.java
+package com.demo;
+
+class Store {
+    void save(String name) throws Failure {
+    }
+
+    void run() throws Failure {
+        sa$0ve("first");
+    }
+}
+//= expected
+void save(String name) throws Failure

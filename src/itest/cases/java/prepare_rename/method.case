@@ -1,0 +1,14 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    int bar() {
+        return 1;
+    }
+
+    int foo() {
+        return this.bar$0();
+    }
+}
+//= expected
+/com/demo/E.java:9:21  return this.bar();

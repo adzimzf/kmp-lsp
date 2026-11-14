@@ -1,0 +1,19 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+class Shape {
+    String describe() {
+        return "shape";
+    }
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square extends Shape {
+    @Override
+    String describe() {
+        return super.desc$0
+    }
+}
+//= expected
+describe

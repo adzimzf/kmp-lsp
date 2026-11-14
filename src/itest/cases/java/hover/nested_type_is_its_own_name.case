@@ -1,0 +1,15 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    interface Inner {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Outer.In$0ner inner;
+}
+//= expected
+Inner

@@ -1,0 +1,32 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double ar$0ea() {
+        return 3.14;
+    }
+
+    double doubled() {
+        return area() * 2;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double measure(Circle circle, Plot plot) {
+        return plot.area() + circle.area();
+    }
+}
+//- /com/demo/Plot.java
+package com.demo;
+
+class Plot {
+    double area() {
+        return 4.0;
+    }
+}
+//= expected
+/com/demo/Circle.java:4:12  double area() {
+/com/demo/Circle.java:9:16  return area() * 2;
+/com/demo/Main.java:5:37  return plot.area() + circle.area();

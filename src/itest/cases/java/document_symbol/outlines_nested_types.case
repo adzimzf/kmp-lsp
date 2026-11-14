@@ -1,0 +1,40 @@
+//- /org/sample/Bar.java
+package org.sample;
+
+/**
+ * This is Bar
+ */
+public class Bar$0 {
+
+    public static void main(String[] args) {
+    }
+
+    @Deprecated
+    public static interface MyInterface {
+
+        void foo();
+    }
+
+    public static class MyClass {
+
+        void bar() {
+        }
+    }
+
+    public static final String EMPTY = "";
+
+    public enum Foo {
+        Bar, Zoo
+    }
+}
+//= expected
+class Bar
+method main
+interface MyInterface
+method foo
+class MyClass
+method bar
+constant EMPTY
+enum Foo
+enum-member Bar
+enum-member Zoo

@@ -1,0 +1,15 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void test() {
+        String message = get$0Message();
+    }
+
+    String getMessage() {
+        return "some message";
+    }
+}
+//= expected
+/com/demo/Main.java:5:26  String message = getMessage();
+/com/demo/Main.java:8:12  String getMessage() {

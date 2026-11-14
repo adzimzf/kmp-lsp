@@ -1,0 +1,14 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    double radius;
+
+    class Inner {
+        double twice() {
+            return rad$0
+        }
+    }
+}
+//= expected
+radius

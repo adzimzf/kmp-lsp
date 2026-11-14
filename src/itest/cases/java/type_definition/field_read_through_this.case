@@ -1,0 +1,20 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    private Circle circle;
+
+    Main() {
+        this.cir$0cle = new Circle();
+    }
+}
+//= expected
+/com/demo/Circle.java:3:7  class Circle {

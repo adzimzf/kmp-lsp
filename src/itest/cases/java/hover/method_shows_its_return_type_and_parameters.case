@@ -1,0 +1,13 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    int fo$0o(String s) {
+        return 0;
+    }
+
+    static void foo2(String s, String s2) {
+    }
+}
+//= expected
+int foo(String s)

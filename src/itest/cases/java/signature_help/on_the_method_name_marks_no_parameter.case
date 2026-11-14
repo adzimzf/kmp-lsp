@@ -1,0 +1,13 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    void foo(int a, String... args) {
+    }
+
+    void bar() {
+        fo$0o(1, "()");
+    }
+}
+//= expected
+foo(int a, String... args)

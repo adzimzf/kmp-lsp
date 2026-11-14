@@ -1,0 +1,21 @@
+//- /com/demo/Customer.java
+package com.demo;
+
+class Customer {
+}
+//- /com/demo/Order.java
+package com.demo;
+
+class Order {
+    Customer customer;
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Object run(Order order) {
+        return order.cust$0omer;
+    }
+}
+//= expected
+/com/demo/Customer.java:3:7  class Customer {

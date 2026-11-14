@@ -1,0 +1,21 @@
+//- /com/demo/Unit.java
+package com.demo;
+
+enum Unit {
+    METRE,
+    MILE,
+    FOOT
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double scale(Unit unit) {
+        switch (unit) {
+            case ME$0
+        }
+        return 0.0;
+    }
+}
+//= expected
+METRE

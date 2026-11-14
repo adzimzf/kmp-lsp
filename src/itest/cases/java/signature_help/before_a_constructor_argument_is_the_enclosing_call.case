@@ -1,0 +1,18 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+}
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    void foo(Circle a) {
+    }
+
+    void bar() {
+        foo($0new Circle());
+    }
+}
+//= expected
+foo([Circle a])

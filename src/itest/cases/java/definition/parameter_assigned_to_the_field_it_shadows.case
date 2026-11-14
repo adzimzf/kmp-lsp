@@ -1,0 +1,12 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double radius;
+
+    Circle(double radius) {
+        this.radius = rad$0ius;
+    }
+}
+//= expected
+/com/demo/Circle.java:6:19  Circle(double radius) {

@@ -1,0 +1,19 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box$0<T> {
+    T content;
+
+    Box(T content) {
+        this.content = content;
+    }
+
+    <U> Box<U> with(U other) {
+        return new Box<U>(other);
+    }
+}
+//= expected
+class Box
+field content
+constructor Box
+method with

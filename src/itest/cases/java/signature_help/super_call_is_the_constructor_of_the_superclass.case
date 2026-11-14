@@ -1,0 +1,15 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E extends F {
+    E() {
+        super(1, $02);
+    }
+}
+
+class F {
+    F(int a, int b) {
+    }
+}
+//= expected
+F(int a, [int b])

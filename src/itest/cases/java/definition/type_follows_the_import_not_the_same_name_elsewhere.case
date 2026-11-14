@@ -1,0 +1,20 @@
+//- /com/demo/shapes/Circle.java
+package com.demo.shapes;
+
+public class Circle {
+}
+//- /com/demo/drawing/Circle.java
+package com.demo.drawing;
+
+public class Circle {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+import com.demo.shapes.Circle;
+
+class Main {
+    Cir$0cle circle;
+}
+//= expected
+/com/demo/shapes/Circle.java:3:14  public class Circle {

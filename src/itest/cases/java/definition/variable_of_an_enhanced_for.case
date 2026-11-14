@@ -1,0 +1,14 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int sum(int[] numbers) {
+        int total = 0;
+        for (int number : numbers) {
+            total += num$0ber;
+        }
+        return total;
+    }
+}
+//= expected
+/com/demo/Main.java:6:18  for (int number : numbers) {

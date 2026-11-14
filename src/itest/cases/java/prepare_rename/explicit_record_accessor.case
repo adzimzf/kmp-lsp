@@ -1,0 +1,10 @@
+//- /com/demo/R.java
+package com.demo;
+
+record R(int value) {
+    public int value$0() {
+        return value;
+    }
+}
+//= expected
+/com/demo/R.java:4:16  public int value() {

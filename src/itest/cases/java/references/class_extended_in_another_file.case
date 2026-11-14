@@ -1,0 +1,18 @@
+//- /com/demo/Foo2.java
+package com.demo;
+
+class Fo$0o2 {
+}
+//- /com/demo/Foo3.java
+package com.demo;
+
+class Foo3 extends Foo2 {
+}
+//- /com/demo/Foo4.java
+package com.demo;
+
+class Foo4 {
+}
+//= expected
+/com/demo/Foo2.java:3:7  class Foo2 {
+/com/demo/Foo3.java:3:20  class Foo3 extends Foo2 {

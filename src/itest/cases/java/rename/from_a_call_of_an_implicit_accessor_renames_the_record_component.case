@@ -1,0 +1,16 @@
+//- /com/demo/R.java
+package com.demo;
+
+record R(int value) {
+}
+//- /com/demo/User.java
+package com.demo;
+
+class User {
+    int get(R r) {
+        return r.value$0();
+    }
+}
+//= expected
+/com/demo/R.java:3:14  record R(int value) {
+/com/demo/User.java:5:18  return r.value();

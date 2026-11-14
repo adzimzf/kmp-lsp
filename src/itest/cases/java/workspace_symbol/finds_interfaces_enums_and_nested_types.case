@@ -1,0 +1,23 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Shape {
+    enum ShapeKind {
+        ROUND,
+        SQUARE
+    }
+
+    class ShapeBuilder {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Shape$0 shape;
+    String shapeName;
+}
+//= expected
+Shape  /com/demo/Shape.java:3
+ShapeBuilder  /com/demo/Shape.java:9
+ShapeKind  /com/demo/Shape.java:4

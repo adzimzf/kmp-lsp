@@ -1,0 +1,11 @@
+//- /com/demo/value.java
+package com.demo;
+
+record value(int value) {
+    value$0() {
+        this(0);
+    }
+}
+//= expected
+/com/demo/value.java:3:8  record value(int value) {
+/com/demo/value.java:4:5  value() {

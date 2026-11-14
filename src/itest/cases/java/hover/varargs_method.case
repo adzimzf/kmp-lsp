@@ -1,0 +1,13 @@
+//- /com/demo/Journal.java
+package com.demo;
+
+class Journal {
+    void write(String... parts) {
+    }
+
+    void run() {
+        wri$0te("first", "second");
+    }
+}
+//= expected
+void write(String... parts)

@@ -1,0 +1,22 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    int foo(String s) {
+        return 0;
+    }
+
+    int foo(int s) {
+        return 0;
+    }
+
+    int foo(int s, String t) {
+        return 0;
+    }
+
+    int bar(String s) {
+        return this.foo(2, $0);
+    }
+}
+//= expected
+foo(int s, [String t])

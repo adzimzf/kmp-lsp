@@ -1,0 +1,25 @@
+//- /com/demo/B.java
+package com.demo;
+
+class B extends A {
+    public void foo$0() {
+    }
+}
+
+abstract class A {
+    public abstract void foo();
+}
+
+class C extends A implements D {
+    public void foo() {
+    }
+}
+
+interface D {
+    void foo();
+}
+//= expected
+/com/demo/B.java:4:17  public void foo() {
+/com/demo/B.java:9:26  public abstract void foo();
+/com/demo/B.java:13:17  public void foo() {
+/com/demo/B.java:18:10  void foo();

@@ -1,0 +1,45 @@
+//- /org/sample/NestedSwitchFoldingRange.java
+package org.sample;
+
+public class NestedSwitchFoldingRange$0 {
+    
+	void testNoException()
+	{
+		if (true)
+		{
+		}
+	}
+
+    void foo(){
+
+        int x = 1;
+        int y = 2;
+
+        switch(x) {
+            case 1:
+            {
+                switch(y) {
+                    case 1:
+                        System.out.println(y);
+                    case 2:
+                        System.out.println(x);
+                }
+            }
+            case 2:
+            {
+                System.out.println(x);
+            }
+        }
+    }
+}
+//= expected
+3..33
+5..10
+8..9
+12..32
+17..31
+18..26
+20..25
+21..22
+23..24
+27..30

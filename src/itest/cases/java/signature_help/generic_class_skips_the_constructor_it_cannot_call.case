@@ -1,0 +1,21 @@
+//- /com/demo/V.java
+package com.demo;
+
+class V<T> {
+    /** hi */
+    V() {
+    }
+
+    private V(String a) {
+    }
+}
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    void foo() {
+        new V<String>($0);
+    }
+}
+//= expected
+V()

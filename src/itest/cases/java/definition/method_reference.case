@@ -1,0 +1,28 @@
+//- /com/demo/Measure.java
+package com.demo;
+
+interface Measure {
+    double of(Circle circle);
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+
+    double perimeter() {
+        return 6.28;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Measure measure() {
+        return Circle::ar$0ea;
+    }
+}
+//= expected
+/com/demo/Circle.java:4:12  double area() {

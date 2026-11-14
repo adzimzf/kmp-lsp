@@ -1,0 +1,12 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+    T content;
+
+    T$0 get() {
+        return content;
+    }
+}
+//= expected
+/com/demo/Box.java:3:11  class Box<T> {
