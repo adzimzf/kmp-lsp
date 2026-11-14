@@ -1,0 +1,15 @@
+//- /com/demo/Unit.java
+package com.demo;
+
+enum Unit {
+    METRE,
+    FOOT
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    private Unit unit = Unit.MET$0RE;
+}
+//= expected
+METRE

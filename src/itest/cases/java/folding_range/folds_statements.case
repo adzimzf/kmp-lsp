@@ -1,0 +1,74 @@
+//- /org/sample/StatementFoldingRange.java
+package org.sample;
+
+/**
+ * Statement
+ */
+public class StatementFoldingRange$0 {
+
+    void foo() {
+
+        int j = 3;
+        switch (j) {
+        case 1:
+            try {
+                
+            } catch (Exception e) {
+                //TODO: handle exception
+            }
+            break;
+
+        case 2:
+            break;
+        default:
+            break;
+        }
+
+        boolean cond = true;
+        if (cond) {
+
+        } else if (!cond) {
+
+        } else {
+
+        }
+
+        int i = 2;
+
+        switch (i) {
+        case 1:
+
+            break;
+
+        case 2:
+            try {
+                
+            } catch (Exception e) {
+                //TODO: handle exception
+            }
+            break;
+        default:
+            break;
+
+        }
+    }
+}
+//= expected
+3..5
+6..54
+8..53
+11..24
+12..19
+13..14
+15..17
+20..21
+22..23
+27..28
+29..30
+31..33
+37..52
+38..41
+42..48
+43..44
+45..47
+49..51

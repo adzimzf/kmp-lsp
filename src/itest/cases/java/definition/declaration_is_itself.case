@@ -1,0 +1,10 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double ar$0ea() {
+        return 3.14;
+    }
+}
+//= expected
+/com/demo/Circle.java:4:12  double area() {

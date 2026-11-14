@@ -1,0 +1,19 @@
+//- /org/sample/UnmatchFoldingRange.java
+package org.sample;
+
+public class UnmatchFoldingRange$0 {
+    void foo() {
+        if (true) 
+            if  {
+             System.out.println("True");
+        }
+
+        while ()
+        }
+        
+    }
+}
+//= expected
+3..13
+4..11
+6..8

@@ -1,0 +1,75 @@
+//- /org/sample/AbstractFoo.java
+package org.sample;
+
+public abstract class AbstractFoo {
+
+    abstract void someMethod();
+}
+//- /org/sample/Foo.java
+package org.sample;
+
+public class Foo {
+
+    public void someMethod() {
+    }
+}
+//- /org/sample/Foo2.java
+package org.sample;
+
+public class Foo2 implements IFoo {
+
+    public void someMethod() {
+    }
+}
+//- /org/sample/Foo3.java
+package org.sample;
+
+public class Foo3 extends Foo2 {
+}
+//- /org/sample/Foo4.java
+package org.sample;
+
+public class Foo4 {
+
+    public static <T extends Number> T get() {
+        return null;
+    }
+}
+//- /org/sample/FooChild.java
+package org.sample;
+
+public class FooChild extends Foo {
+
+    public void someMethod() {
+        super.someMethod();
+    }
+}
+//- /org/sample/FooService.java
+package org.sample;
+
+public class FooService {
+    private IFoo foo;
+
+    void bar() {
+        foo.someMethod();
+    }
+
+    void bar1() {
+        Foo newFoo = new Fo$0o();
+        newFoo.someMethod();
+    }
+
+    void bar2(AbstractFoo newFoo) {
+        newFoo.someMethod();
+    }
+}
+//- /org/sample/IFoo.java
+package org.sample;
+
+public interface IFoo {
+
+    void someMethod();
+}
+//= expected
+/org/sample/Foo.java:3:14  public class Foo {
+/org/sample/FooChild.java:3:14  public class FooChild extends Foo {

@@ -1,0 +1,13 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    void bar() {
+        F f = new F($0);
+    }
+}
+
+class F {
+}
+//= expected
+F()

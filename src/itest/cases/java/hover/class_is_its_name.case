@@ -1,0 +1,10 @@
+//- /com/demo/Foo.java
+package com.demo;
+
+/**
+ * This is foo
+ */
+class Fo$0o {
+}
+//= expected
+Foo

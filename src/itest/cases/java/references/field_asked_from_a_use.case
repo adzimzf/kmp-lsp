@@ -1,0 +1,23 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double radius;
+
+    double area() {
+        return 3.14 * radius * rad$0ius;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run(Circle circle) {
+        return circle.radius;
+    }
+}
+//= expected
+/com/demo/Circle.java:4:12  double radius;
+/com/demo/Circle.java:7:23  return 3.14 * radius * radius;
+/com/demo/Circle.java:7:32  return 3.14 * radius * radius;
+/com/demo/Main.java:5:23  return circle.radius;

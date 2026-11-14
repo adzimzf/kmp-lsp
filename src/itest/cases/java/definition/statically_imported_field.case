@@ -1,0 +1,20 @@
+//- /com/demo/config/Config.java
+package com.demo.config;
+
+public class Config {
+    public static final int LIMIT = 10;
+}
+//- /com/demo/Main.java
+package com.demo;
+
+import static com.demo.config.Config.LIMIT;
+
+class Main {
+    static final int LOCAL_LIMIT = 5;
+
+    int limit() {
+        return LOCAL_LIMIT + LIM$0IT;
+    }
+}
+//= expected
+/com/demo/config/Config.java:4:29  public static final int LIMIT = 10;

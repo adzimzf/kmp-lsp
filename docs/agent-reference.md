@@ -211,7 +211,7 @@ Use `assert_labels_exact` when the full result set is known.
 
 **Completion tests** — new tests should use the `CompletionTester` builder, which automatically runs each scenario with `snippets=true` and `snippets=false`.
 
-**Whole-server cases** — `src/itest` asks a running server over LSP: sources in a string with a `$0` cursor, the answer as an `expect!` snapshot (`cargo test itest`). One rule per case, and every type a case uses is declared in it. See `bench/compare/README.md`.
+**Whole-server cases** — `src/itest` asks a running server over LSP: sources in a string with a `$0` cursor, the answer as an `expect!` snapshot (`cargo test itest`). One rule per case, and every type a case uses is declared in it. See `bench/compare/README.md`. The Java cases derived from jdtls's handler tests are indexed in `src/itest/cases/java/README.md`; their answers are jdtls's, so a failing one is fixed in the server, not in the case.
 
 **Regression tests** — name functions `regression_<issue_number>_<description>` and add a `// See: https://github.com/Hessesian/kmp-lsp/issues/N` comment.
 

@@ -1,0 +1,24 @@
+//- /org/sample/Foo.java
+package org.sample;
+
+public enum Foo$0 {
+    FOO1(1),
+    FOO2(2);
+
+    private final int value;
+
+    Foo(int value) {
+        this.value = value;
+    }
+
+    public int getValue() {
+        return value;
+    }
+}
+//= expected
+enum Foo
+enum-member FOO1
+enum-member FOO2
+field value
+constructor Foo
+method getValue

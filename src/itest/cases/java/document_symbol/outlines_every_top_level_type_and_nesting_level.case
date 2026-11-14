@@ -1,0 +1,27 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer$0 {
+    int depth;
+
+    class Middle {
+        class Inner {
+            int depth() {
+                return depth;
+            }
+        }
+    }
+}
+
+class Sibling {
+    Sibling() {
+    }
+}
+//= expected
+class Outer
+field depth
+class Middle
+class Inner
+method depth
+class Sibling
+constructor Sibling

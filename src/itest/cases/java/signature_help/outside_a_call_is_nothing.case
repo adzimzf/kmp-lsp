@@ -1,0 +1,12 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    int bar(String s) {
+        if ($0) {
+        }
+        return 0;
+    }
+}
+//= expected
+(nothing)

@@ -1,0 +1,24 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Measure.java
+package com.demo;
+
+interface Measure {
+    double of(Circle circle);
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Measure measure() {
+        return circle -> cir$0cle.area();
+    }
+}
+//= expected
+/com/demo/Circle.java:3:7  class Circle {

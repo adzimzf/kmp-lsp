@@ -1,0 +1,13 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    E(String s) {
+        this.unique($0
+    }
+
+    void unique(double d) {
+    }
+}
+//= expected
+unique([double d])

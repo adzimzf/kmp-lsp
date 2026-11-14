@@ -1,0 +1,13 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int total;
+
+    int sum(int first, int second) {
+        int total = first + second;
+        return this.to$0tal + total;
+    }
+}
+//= expected
+/com/demo/Main.java:4:9  int total;

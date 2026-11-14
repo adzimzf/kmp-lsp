@@ -1,0 +1,23 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+}
+//- /com/demo/Shelf.java
+package com.demo;
+
+class Shelf<K, V> {
+    V put(K key, V value) {
+        return value;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Shelf<String, Circle> shelf) {
+        shelf.put("key", $0new Circle());
+    }
+}
+//= expected
+put(String key, [Circle value])

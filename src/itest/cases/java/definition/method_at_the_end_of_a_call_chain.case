@@ -1,0 +1,30 @@
+//- /com/demo/Builder.java
+package com.demo;
+
+class Builder {
+    Builder name(String name) {
+        return this;
+    }
+
+    Product build() {
+        return new Product();
+    }
+}
+//- /com/demo/Product.java
+package com.demo;
+
+class Product {
+    Product build() {
+        return this;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Product run() {
+        return new Builder().name("first").name("second").bu$0ild();
+    }
+}
+//= expected
+/com/demo/Builder.java:8:13  Product build() {

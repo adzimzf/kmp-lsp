@@ -1,0 +1,14 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run() {
+        try {
+            return "done";
+        } catch (RuntimeException failure) {
+            return fail$0ure.toString();
+        }
+    }
+}
+//= expected
+/com/demo/Main.java:7:35  } catch (RuntimeException failure) {

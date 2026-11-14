@@ -1,0 +1,23 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+class Shape {
+    String label() {
+        return "shape";
+    }
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square extends Shape {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run(Square square) {
+        return square.lab$0el();
+    }
+}
+//= expected
+String label()

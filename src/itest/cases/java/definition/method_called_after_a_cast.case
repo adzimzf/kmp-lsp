@@ -1,0 +1,26 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square {
+    double area() {
+        return 4.0;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run(Object shape) {
+        return ((Circle) shape).ar$0ea();
+    }
+}
+//= expected
+/com/demo/Circle.java:4:12  double area() {

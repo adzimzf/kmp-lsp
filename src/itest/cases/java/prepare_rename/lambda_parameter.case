@@ -1,0 +1,14 @@
+//- /com/demo/Transform.java
+package com.demo;
+
+interface Transform {
+    String apply(int number);
+}
+//- /com/demo/Test.java
+package com.demo;
+
+class Test {
+    Transform f = i$0 -> "" + i;
+}
+//= expected
+/com/demo/Test.java:4:19  Transform f = i -> "" + i;

@@ -1,0 +1,13 @@
+//- /com/demo/Marker.java
+package com.demo;
+
+@interface Marker {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+@Mar$0ker
+class Main {
+}
+//= expected
+/com/demo/Marker.java:3:12  @interface Marker {

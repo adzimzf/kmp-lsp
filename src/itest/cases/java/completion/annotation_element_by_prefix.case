@@ -1,0 +1,16 @@
+//- /com/demo/Config.java
+package com.demo;
+
+@interface Config {
+    String name();
+
+    int size() default 1;
+}
+//- /com/demo/Main.java
+package com.demo;
+
+@Config(na$0)
+class Main {
+}
+//= expected
+name

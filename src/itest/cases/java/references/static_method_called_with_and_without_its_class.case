@@ -1,0 +1,25 @@
+//- /com/demo/Maths.java
+package com.demo;
+
+class Maths {
+    static int tw$0ice(int value) {
+        return value * 2;
+    }
+
+    static int fourTimes(int value) {
+        return twice(twice(value));
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run() {
+        return Maths.twice(1);
+    }
+}
+//= expected
+/com/demo/Main.java:5:22  return Maths.twice(1);
+/com/demo/Maths.java:4:16  static int twice(int value) {
+/com/demo/Maths.java:9:16  return twice(twice(value));
+/com/demo/Maths.java:9:22  return twice(twice(value));

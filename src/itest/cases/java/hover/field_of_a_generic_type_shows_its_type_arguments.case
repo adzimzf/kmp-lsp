@@ -1,0 +1,17 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Box<String> names;
+
+    Object run() {
+        return na$0mes;
+    }
+}
+//= expected
+Box<String> names

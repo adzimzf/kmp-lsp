@@ -1,0 +1,8 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Bo$0x<T> {
+    T content;
+}
+//= expected
+Box<T>

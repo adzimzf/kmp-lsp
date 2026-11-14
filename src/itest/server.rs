@@ -39,6 +39,15 @@ impl Drop for Host {
     }
 }
 
+/// What a case makes of a request the server answers with an error.
+#[derive(Clone, Copy)]
+pub(super) enum OnError {
+    /// The request is one the server must answer: the case fails.
+    Panic,
+    /// The error is the server's way of answering "nothing here".
+    AnswerNothing,
+}
+
 /// An initialized server with every file of a fixture open.
 pub(super) struct Session {
     writer: Writer,
@@ -89,11 +98,14 @@ impl Session {
         &mut self,
         method: &str,
         params: Value,
+        on_error: OnError,
         settled: impl Fn(&Value) -> bool,
     ) -> Value {
         let deadline = Instant::now() + PATIENCE;
         loop {
-            let result = self.request(method, params.clone(), deadline).await;
+            let result = self
+                .request(method, params.clone(), on_error, deadline)
+                .await;
             if settled(&result) || Instant::now() >= deadline {
                 return result;
             }
@@ -120,7 +132,13 @@ impl Session {
         }
     }
 
-    async fn request(&mut self, method: &str, params: Value, deadline: Instant) -> Value {
+    async fn request(
+        &mut self,
+        method: &str,
+        params: Value,
+        on_error: OnError,
+        deadline: Instant,
+    ) -> Value {
         self.next_id += 1;
         let id = self.next_id;
         self.send(json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}))
@@ -134,7 +152,10 @@ impl Session {
                 self.answer_server(&message).await;
             } else if message["id"] == json!(id) {
                 if let Some(error) = message.get("error") {
-                    panic!("{method} failed: {error}");
+                    match on_error {
+                        OnError::Panic => panic!("{method} failed: {error}"),
+                        OnError::AnswerNothing => return Value::Null,
+                    }
                 }
                 return message.get("result").cloned().unwrap_or(Value::Null);
             }
@@ -200,7 +221,8 @@ impl Session {
                 "workspace": {"workspaceEdit": {"documentChanges": true}},
             },
         });
-        self.request("initialize", params, deadline).await;
+        self.request("initialize", params, OnError::Panic, deadline)
+            .await;
         self.notify("initialized", json!({})).await;
     }
 

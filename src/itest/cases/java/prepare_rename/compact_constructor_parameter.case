@@ -1,0 +1,12 @@
+//- /com/demo/R.java
+package com.demo;
+
+record R(int value) {
+    R {
+        if (value$0 < 0) {
+            value = 0;
+        }
+    }
+}
+//= expected
+/com/demo/R.java:5:13  if (value < 0) {

@@ -1,0 +1,11 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int sum(int first, int second) {
+        int total = first + second;
+        return to$0tal;
+    }
+}
+//= expected
+int total - com.demo.Main.sum(int, int)

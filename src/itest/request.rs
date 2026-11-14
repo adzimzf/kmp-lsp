@@ -9,7 +9,7 @@
 use serde_json::{json, Value};
 
 use super::fixture::Fixture;
-use super::server::Session;
+use super::server::{OnError, Session};
 
 /// What an answer with nothing in it is rendered as.
 pub(super) const NOTHING: &str = "(nothing)";
@@ -18,12 +18,16 @@ pub(super) const NOTHING: &str = "(nothing)";
 pub(super) enum Kind {
     Definition,
     TypeDefinition,
+    Implementation,
     References,
     DocumentHighlight,
     Completion,
     Hover,
     SignatureHelp,
     PrepareRename,
+    /// The new name is `renamed`, or `Renamed` where the old one starts
+    /// with a capital.
+    Rename,
     DocumentSymbol,
     FoldingRange,
     /// The query is the identifier under the cursor.
@@ -35,12 +39,14 @@ impl Kind {
         match self {
             Self::Definition => "textDocument/definition",
             Self::TypeDefinition => "textDocument/typeDefinition",
+            Self::Implementation => "textDocument/implementation",
             Self::References => "textDocument/references",
             Self::DocumentHighlight => "textDocument/documentHighlight",
             Self::Completion => "textDocument/completion",
             Self::Hover => "textDocument/hover",
             Self::SignatureHelp => "textDocument/signatureHelp",
             Self::PrepareRename => "textDocument/prepareRename",
+            Self::Rename => "textDocument/rename",
             Self::DocumentSymbol => "textDocument/documentSymbol",
             Self::FoldingRange => "textDocument/foldingRange",
             Self::WorkspaceSymbol => "workspace/symbol",
@@ -59,7 +65,21 @@ impl Kind {
                 "position": position,
                 "context": {"includeDeclaration": true},
             }),
+            Self::Rename => json!({
+                "textDocument": document,
+                "position": position,
+                "newName": new_name(&fixture.word_at_cursor()),
+            }),
             _ => json!({"textDocument": document, "position": position}),
+        }
+    }
+
+    /// A server says "this cannot be renamed" with an error as often as
+    /// with `null`; for the two rename requests both read as nothing.
+    fn on_error(self) -> OnError {
+        match self {
+            Self::PrepareRename | Self::Rename => OnError::AnswerNothing,
+            _ => OnError::Panic,
         }
     }
 
@@ -78,19 +98,24 @@ impl Kind {
             Settles::Immediately => true,
             Settles::WhenAnswered => has_content(answer),
         };
-        let answer = session.request_until(self.method(), params, settled).await;
+        let answer = session
+            .request_until(self.method(), params, self.on_error(), settled)
+            .await;
         let view = View {
             session,
             fixture,
             expected,
         };
         let mut lines = match self {
-            Self::Definition | Self::TypeDefinition | Self::References => view.locations(&answer),
+            Self::Definition | Self::TypeDefinition | Self::Implementation | Self::References => {
+                view.locations(&answer)
+            }
             Self::DocumentHighlight => view.ranges(&fixture.cursor.path, &answer),
             Self::Completion => view.completion_names(&answer),
             Self::Hover => hover_signature(&answer, &fixture.word_at_cursor()),
             Self::SignatureHelp => signature(&answer),
             Self::PrepareRename => view.rename_target(&answer),
+            Self::Rename => view.edited_places(&answer),
             Self::DocumentSymbol => document_symbols(&answer),
             Self::FoldingRange => folded_lines(&answer),
             Self::WorkspaceSymbol => view.workspace_types(&answer),
@@ -109,6 +134,17 @@ impl Kind {
 pub(super) enum Settles {
     Immediately,
     WhenAnswered,
+}
+
+/// `Renamed` for `Circle`, `renamed` for `area`: a rename keeps the case
+/// convention of what it renames.
+fn new_name(old_name: &str) -> &'static str {
+    let is_type_name = old_name.chars().next().is_some_and(char::is_uppercase);
+    if is_type_name {
+        "Renamed"
+    } else {
+        "renamed"
+    }
 }
 
 /// `null`, `[]` and an empty completion list are what a server says while
@@ -224,6 +260,31 @@ impl View<'_> {
         vec![self.show(&place)]
     }
 
+    /// Where each text edit of a rename starts, as [`Self::locations`] shows
+    /// a place: the line is the one before the rename. Files the rename
+    /// would move are not shown.
+    fn edited_places(&self, answer: &Value) -> Vec<String> {
+        let mut places = Vec::new();
+        if let Some(changes) = answer["changes"].as_object() {
+            for (uri, edits) in changes {
+                places.extend(self.edit_places(uri, edits));
+            }
+        }
+        for change in as_list(&answer["documentChanges"]) {
+            if let Some(uri) = change["textDocument"]["uri"].as_str() {
+                places.extend(self.edit_places(uri, &change["edits"]));
+            }
+        }
+        self.in_source_order(places)
+    }
+
+    fn edit_places(&self, uri: &str, edits: &Value) -> Vec<Place> {
+        as_list(edits)
+            .into_iter()
+            .filter_map(|edit| Some(Place::new(self.session.display(uri), edit.get("range")?)))
+            .collect()
+    }
+
     /// `name  /path:line` of the types found in the fixture's files, sorted.
     /// Whether fields and methods are searchable too differs by server.
     fn workspace_types(&self, answer: &Value) -> Vec<String> {
@@ -282,6 +343,8 @@ fn identifier_prefix(label: &str) -> &str {
 
 /// The first line of code a hover shows, with `name` unqualified: one
 /// server writes `void print(String)`, another `void Printer.print(String)`.
+/// A constructor is named after its class — `Printer.Printer(String)` — and
+/// is shown as `Printer(String)`.
 fn hover_signature(answer: &Value, name: &str) -> Vec<String> {
     let text = as_list(&answer["contents"])
         .into_iter()
@@ -299,9 +362,13 @@ fn hover_signature(answer: &Value, name: &str) -> Vec<String> {
 
 /// `line` without the dotted qualifier in front of its first `name`.
 fn unqualified(line: &str, name: &str) -> String {
-    let Some(at) = line.find(name) else {
+    let Some(mut at) = line.find(name) else {
         return line.to_owned();
     };
+    let constructor_of_name = format!("{name}.{name}");
+    if !name.is_empty() && line[at..].starts_with(&constructor_of_name) {
+        at += name.len() + 1;
+    }
     let qualifier_start = line[..at]
         .rfind(|character: char| !character.is_alphanumeric() && !matches!(character, '_' | '.'))
         .map_or(0, |separator| separator + 1);

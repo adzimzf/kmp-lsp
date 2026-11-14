@@ -1,0 +1,16 @@
+//- /com/demo/A.java
+package com.demo;
+
+class A {
+    void bar() {
+    }
+}
+
+class B extends A {
+    void bar() {
+        super$0.bar();
+    }
+}
+//= expected
+/com/demo/A.java:3:7  class A {
+/com/demo/A.java:8:17  class B extends A {

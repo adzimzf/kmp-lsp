@@ -1,0 +1,17 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    boolean bar() {
+        foo("",$0)
+        return true;
+    }
+
+    void foo(String s) {
+    }
+
+    void foo(String s, boolean bar) {
+    }
+}
+//= expected
+foo(String s, [boolean bar])

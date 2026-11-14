@@ -1,0 +1,15 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    /** This is a method */
+    int foo(String s) {
+        return 0;
+    }
+
+    int bar(String s) {
+        return this.foo($0);
+    }
+}
+//= expected
+foo([String s])

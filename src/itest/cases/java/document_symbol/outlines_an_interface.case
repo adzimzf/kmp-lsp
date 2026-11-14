@@ -1,0 +1,19 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Shape$0 {
+    double area();
+
+    default String describe() {
+        return "shape of " + area();
+    }
+
+    static Shape empty() {
+        return null;
+    }
+}
+//= expected
+interface Shape
+method area
+method describe
+method empty

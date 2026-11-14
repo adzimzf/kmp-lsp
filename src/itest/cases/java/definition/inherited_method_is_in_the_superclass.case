@@ -1,0 +1,26 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+class Shape {
+    String name() {
+        return "shape";
+    }
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square extends Shape {
+    double area() {
+        return 4.0;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run(Square square) {
+        return square.na$0me();
+    }
+}
+//= expected
+/com/demo/Shape.java:4:12  String name() {

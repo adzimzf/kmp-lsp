@@ -1,0 +1,33 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    String foo(String a) {
+        return null;
+    }
+
+    F get() {
+        return null;
+    }
+
+    void bar() {
+        F f = get();
+        if (f instanceof G) {
+            ((G) f).foo($0);
+        }
+    }
+}
+
+class F {
+    String foo() {
+        return null;
+    }
+}
+
+class G extends F {
+    String foo() {
+        return null;
+    }
+}
+//= expected
+foo()

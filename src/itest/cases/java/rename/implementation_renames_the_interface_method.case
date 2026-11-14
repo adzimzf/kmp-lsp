@@ -1,0 +1,17 @@
+//- /com/demo/A.java
+package com.demo;
+
+interface A {
+    void foo();
+}
+//- /com/demo/B.java
+package com.demo;
+
+class B implements A {
+    @Override
+    public void foo$0() {
+    }
+}
+//= expected
+/com/demo/A.java:4:10  void foo();
+/com/demo/B.java:5:17  public void foo() {

@@ -1,0 +1,20 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    Circle() {
+    }
+
+    Circle(double radius) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Circle unit() {
+        return new Cir$0cle(1.0);
+    }
+}
+//= expected
+/com/demo/Circle.java:7:5  Circle(double radius) {

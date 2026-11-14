@@ -1,0 +1,32 @@
+//- /com/demo/Section.java
+package com.demo;
+
+interface Section {
+    String title();
+
+    String heading();
+}
+//- /com/demo/Report.java
+package com.demo;
+
+class Report {
+    String title() {
+        return "report";
+    }
+
+    Section first() {
+        return new Section() {
+            @Override
+            public String title() {
+                return "first";
+            }
+
+            @Override
+            public String heading() {
+                return ti$0tle();
+            }
+        };
+    }
+}
+//= expected
+/com/demo/Report.java:11:27  public String title() {

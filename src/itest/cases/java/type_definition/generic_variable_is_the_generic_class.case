@@ -1,0 +1,21 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+    T content;
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Object run(Box<Circle> box) {
+        return bo$0x.content;
+    }
+}
+//= expected
+/com/demo/Box.java:3:7  class Box<T> {

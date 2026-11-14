@@ -1,0 +1,17 @@
+//- /com/demo/Unit.java
+package com.demo;
+
+enum Unit {
+    METRE,
+    FOOT
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Unit unit() {
+        return Unit.MET$0RE;
+    }
+}
+//= expected
+/com/demo/Unit.java:4:5  METRE,

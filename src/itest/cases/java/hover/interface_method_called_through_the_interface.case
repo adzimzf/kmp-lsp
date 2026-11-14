@@ -1,0 +1,16 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Shape {
+    double area();
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run(Shape shape) {
+        return shape.ar$0ea();
+    }
+}
+//= expected
+double area()

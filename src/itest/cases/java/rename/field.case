@@ -1,0 +1,13 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    private int myValue = 2;
+
+    void bar() {
+        myValue$0 = 3;
+    }
+}
+//= expected
+/com/demo/E.java:4:17  private int myValue = 2;
+/com/demo/E.java:7:9  myValue = 3;

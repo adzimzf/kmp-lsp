@@ -1,0 +1,26 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+
+    double doubled() {
+        return ar$0ea() + this.area();
+    }
+
+    double other(Plot plot) {
+        return plot.area();
+    }
+}
+
+class Plot {
+    double area() {
+        return 4.0;
+    }
+}
+//= expected
+/com/demo/Circle.java:4:12  double area() {
+/com/demo/Circle.java:9:16  return area() + this.area();
+/com/demo/Circle.java:9:30  return area() + this.area();

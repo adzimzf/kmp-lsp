@@ -1,0 +1,13 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    void show(String text, int copies) {
+    }
+
+    void bar() {
+        show(",$0", 1);
+    }
+}
+//= expected
+show([String text], int copies)

@@ -1,0 +1,12 @@
+//- /com/demo/B.java
+package com.demo;
+
+class B<T> {
+    private T t;
+
+    <U$0 extends Number> U inspect(U u) {
+        return u;
+    }
+}
+//= expected
+/com/demo/B.java:6:6  <U extends Number> U inspect(U u) {

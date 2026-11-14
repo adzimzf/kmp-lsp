@@ -1,0 +1,21 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run(Object shape) {
+        if (shape instanceof Circle circle) {
+            return cir$0cle.area();
+        }
+        return 0.0;
+    }
+}
+//= expected
+/com/demo/Main.java:5:37  if (shape instanceof Circle circle) {

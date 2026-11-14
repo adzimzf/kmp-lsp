@@ -1,0 +1,17 @@
+//- /com/demo/Test.java
+package com.demo;
+
+record Test(int val$0ue) {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run() {
+        Test instance = new Test(2);
+        return instance.value();
+    }
+}
+//= expected
+/com/demo/Main.java:6:25  return instance.value();
+/com/demo/Test.java:3:17  record Test(int value) {

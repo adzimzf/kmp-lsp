@@ -1,0 +1,27 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+class Shape {
+    double area() {
+        return 0.0;
+    }
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square extends Shape {
+    @Override
+    double area() {
+        return 4.0;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run(Square square) {
+        return square.ar$0ea();
+    }
+}
+//= expected
+/com/demo/Square.java:5:12  double area() {

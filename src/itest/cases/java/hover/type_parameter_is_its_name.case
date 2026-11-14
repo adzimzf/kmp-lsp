@@ -1,0 +1,14 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E<T> {
+    T$0 foo(T s) {
+        return s;
+    }
+
+    <U> U bar(U s) {
+        return s;
+    }
+}
+//= expected
+T

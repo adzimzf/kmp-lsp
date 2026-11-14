@@ -1,0 +1,15 @@
+//- /com/demo/Point.java
+package com.demo;
+
+record Point(int x, int y) {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run(Point point) {
+        return point.y() + point.x$0();
+    }
+}
+//= expected
+/com/demo/Point.java:3:18  record Point(int x, int y) {

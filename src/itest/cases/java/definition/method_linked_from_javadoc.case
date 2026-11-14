@@ -1,0 +1,17 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+
+    /**
+     * Twice {@link #ar$0ea()}.
+     */
+    double doubled() {
+        return area() * 2;
+    }
+}
+//= expected
+/com/demo/Circle.java:4:12  double area() {

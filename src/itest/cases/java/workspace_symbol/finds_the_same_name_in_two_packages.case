@@ -1,0 +1,18 @@
+//- /org/sample/IFoo.java
+package org.sample;
+
+public interface IFoo {
+}
+//- /org/other/IFoo.java
+package org.other;
+
+public interface IFoo {
+}
+//- /org/sample/Foo.java
+package org.sample;
+
+public class Foo implements IFoo$0 {
+}
+//= expected
+IFoo  /org/other/IFoo.java:3
+IFoo  /org/sample/IFoo.java:3

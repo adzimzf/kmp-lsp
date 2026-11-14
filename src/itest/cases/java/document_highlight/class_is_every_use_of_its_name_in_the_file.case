@@ -1,0 +1,15 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    static Circle unit;
+
+    Circle copy(Cir$0cle other) {
+        return other;
+    }
+}
+//= expected
+/com/demo/Circle.java:3:7  class Circle {
+/com/demo/Circle.java:4:12  static Circle unit;
+/com/demo/Circle.java:6:5  Circle copy(Circle other) {
+/com/demo/Circle.java:6:17  Circle copy(Circle other) {

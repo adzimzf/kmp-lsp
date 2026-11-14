@@ -1,0 +1,16 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    /**
+     * @param i int
+     */
+    int foo(int i$0) {
+        E e = new E();
+        return e.foo(i);
+    }
+}
+//= expected
+/com/demo/E.java:5:15  * @param i int
+/com/demo/E.java:7:17  int foo(int i) {
+/com/demo/E.java:9:22  return e.foo(i);

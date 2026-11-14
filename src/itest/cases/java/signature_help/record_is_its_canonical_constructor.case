@@ -1,0 +1,15 @@
+//- /com/demo/Edge.java
+package com.demo;
+
+record Edge(int fromNodeId, int toNodeId, double length) {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Edge edge() {
+        return new Edge(1, $02, 3.0);
+    }
+}
+//= expected
+Edge(int fromNodeId, [int toNodeId], double length)

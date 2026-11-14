@@ -1,0 +1,36 @@
+//- /com/demo/Counter.java
+package com.demo;
+
+class Counter {
+    int to$0tal;
+
+    void add(int amount) {
+        total = total + amount;
+    }
+
+    void reset() {
+        this.total = 0;
+    }
+
+    int local() {
+        int total = 1;
+        return total;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int total;
+
+    int run(Counter counter) {
+        counter.add(total);
+        return counter.total;
+    }
+}
+//= expected
+/com/demo/Counter.java:4:9  int total;
+/com/demo/Counter.java:7:9  total = total + amount;
+/com/demo/Counter.java:7:17  total = total + amount;
+/com/demo/Counter.java:11:14  this.total = 0;
+/com/demo/Main.java:8:24  return counter.total;

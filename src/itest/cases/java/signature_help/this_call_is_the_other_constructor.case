@@ -1,0 +1,13 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    E(int a) {
+        this($01, 1);
+    }
+
+    E(int a, int b) {
+    }
+}
+//= expected
+E([int a], int b)

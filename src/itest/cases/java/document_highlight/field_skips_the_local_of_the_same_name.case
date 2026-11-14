@@ -1,0 +1,55 @@
+//- /com/demo/Highlight.java
+package com.demo;
+
+class Highlight implements Greeter {
+    private String te$0xt = "string";
+
+    public String greet(int times) throws Failure {
+        if (times < 0) {
+            throw new Failure();
+        }
+        text = "bar";
+        if (times == 0) {
+            throw new RuntimeException();
+        }
+        loop: while (times > 0) {
+            for (;;) {
+                if (text.isEmpty()) {
+                    break loop;
+                }
+                continue;
+            }
+        }
+        text = text + times;
+        return text + "foo";
+    }
+
+    public int size() {
+        String text = "bar";
+        return text.length();
+    }
+
+    @Override
+    public void hello() {
+    }
+
+    @Override
+    public void bye() {
+    }
+}
+
+class Failure extends Exception {
+}
+
+interface Greeter {
+    void hello();
+
+    void bye();
+}
+//= expected
+/com/demo/Highlight.java:4:20  private String text = "string";
+/com/demo/Highlight.java:10:9  text = "bar";
+/com/demo/Highlight.java:16:21  if (text.isEmpty()) {
+/com/demo/Highlight.java:22:9  text = text + times;
+/com/demo/Highlight.java:22:16  text = text + times;
+/com/demo/Highlight.java:23:16  return text + "foo";

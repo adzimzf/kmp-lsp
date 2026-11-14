@@ -1,0 +1,13 @@
+//- /com/demo/Config.java
+package com.demo;
+
+class Config {
+    static final int LIMIT = 10;
+    static int count = 10;
+
+    int limit() {
+        return count + LIM$0IT;
+    }
+}
+//= expected
+int LIMIT = 10

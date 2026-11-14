@@ -1,0 +1,23 @@
+//- /com/demo/Customer.java
+package com.demo;
+
+class Customer {
+    String name;
+}
+//- /com/demo/Order.java
+package com.demo;
+
+class Order {
+    String name;
+    Customer customer;
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run(Order order) {
+        return order.cust$0omer.name;
+    }
+}
+//= expected
+/com/demo/Order.java:5:14  Customer customer;

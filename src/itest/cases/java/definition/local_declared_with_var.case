@@ -1,0 +1,19 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run() {
+        var circle = new Circle();
+        return circle.ar$0ea();
+    }
+}
+//= expected
+/com/demo/Circle.java:4:12  double area() {

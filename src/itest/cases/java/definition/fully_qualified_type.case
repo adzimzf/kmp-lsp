@@ -1,0 +1,18 @@
+//- /com/demo/shapes/Circle.java
+package com.demo.shapes;
+
+public class Circle {
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    com.demo.shapes.Cir$0cle circle;
+}
+//= expected
+/com/demo/shapes/Circle.java:3:14  public class Circle {

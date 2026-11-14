@@ -1,0 +1,36 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+    T content;
+
+    T get() {
+        return content;
+    }
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+    double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square {
+    double area() {
+        return 4.0;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run(Box<Circle> circles, Box<Square> squares) {
+        return squares.get().area() + circles.get().ar$0ea();
+    }
+}
+//= expected
+/com/demo/Circle.java:4:12  double area() {

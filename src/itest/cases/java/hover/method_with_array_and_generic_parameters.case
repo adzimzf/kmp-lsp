@@ -1,0 +1,19 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int[] pick(Box<String> names, int[] indexes) {
+        return indexes;
+    }
+
+    int[] run(Box<String> names) {
+        return pi$0ck(names, new int[0]);
+    }
+}
+//= expected
+int[] pick(Box<String> names, int[] indexes)

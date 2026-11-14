@@ -1,0 +1,13 @@
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    void foo(int[] a, char[] b) {
+    }
+
+    void bar() {
+        foo(new int[]{1, $02, 3}, new char[]{'a', 'b', 'c'});
+    }
+}
+//= expected
+foo([int[] a], char[] b)

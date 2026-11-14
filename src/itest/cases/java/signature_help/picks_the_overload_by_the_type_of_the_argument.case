@@ -1,0 +1,25 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+}
+//- /com/demo/E.java
+package com.demo;
+
+class E {
+    void show(int number) {
+    }
+
+    void show(String text) {
+    }
+
+    void show(Object value) {
+    }
+
+    void bar() {
+        Circle circle = new Circle();
+        show(circle$0);
+    }
+}
+//= expected
+show([Object value])

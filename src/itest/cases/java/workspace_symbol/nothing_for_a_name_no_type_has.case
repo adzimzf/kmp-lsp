@@ -1,0 +1,33 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle {
+}
+//- /com/demo/CircleTest.java
+package com.demo;
+
+class CircleTest {
+}
+//- /com/demo/CircleTools.java
+package com.demo;
+
+class CircleTools {
+}
+//- /com/demo/SemiCircleTest.java
+package com.demo;
+
+class SemiCircleTest {
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    // Abracadabra$0
+}
+//= expected
+(nothing)
