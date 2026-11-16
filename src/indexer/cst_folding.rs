@@ -64,7 +64,7 @@ pub(crate) fn cst_folding_ranges(indexer: &Indexer, uri: &Url) -> Option<Vec<Fol
     let root = doc.tree.root_node();
     let mut ranges = Vec::new();
 
-    collect_folds(root, &mut ranges);
+    collect_folds(root, &doc.bytes, &mut ranges);
 
     if ranges.is_empty() {
         None
@@ -84,11 +84,49 @@ fn region(start: usize, end: usize) -> FoldingRange {
     }
 }
 
-fn collect_folds(node: tree_sitter::Node, out: &mut Vec<FoldingRange>) {
-    collect_folds_at(node, out, 0);
+/// Which grammar a tree is in: Java folds the way jdtls does, which differs
+/// from Kotlin in where a block's fold ends and how comments fold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Syntax {
+    Java,
+    Kotlin,
 }
 
-fn collect_folds_at(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, depth: usize) {
+impl Syntax {
+    /// Java's tree-sitter root is a `program`; Kotlin's a `source_file`.
+    fn of(root: tree_sitter::Node) -> Self {
+        if root.kind() == "program" {
+            Self::Java
+        } else {
+            Self::Kotlin
+        }
+    }
+}
+
+/// What a fold walk keeps fixed: the source text and its grammar.
+#[derive(Clone, Copy)]
+struct Source<'a> {
+    bytes: &'a [u8],
+    syntax: Syntax,
+}
+
+fn collect_folds(node: tree_sitter::Node, bytes: &[u8], out: &mut Vec<FoldingRange>) {
+    let source = Source {
+        bytes,
+        syntax: Syntax::of(node),
+    };
+    if source.syntax == Syntax::Java {
+        collect_region_comment_folds(node, bytes, out);
+    }
+    collect_folds_at(node, out, 0, source);
+}
+
+fn collect_folds_at(
+    node: tree_sitter::Node,
+    out: &mut Vec<FoldingRange>,
+    depth: usize,
+    source: Source<'_>,
+) {
     // See `crate::util::MAX_CST_DESCENT_DEPTH`: bail rather than overflow the
     // stack on a pathologically deep tree (huge chained expression, or
     // ERROR-recovery on a huge malformed file).
@@ -106,22 +144,38 @@ fn collect_folds_at(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, depth:
         ) {
             let start = name.start_position().row.min(body.start_position().row);
             let end = body.end_position().row;
-            if end > start + 1 {
+            if end > start {
                 out.push(region(start, end));
             }
             for child in node.children(&mut node.walk()) {
                 if child.id() == body.id() {
                     // The body's own fold is the declaration's: fold what is inside it.
-                    collect_children_folds(body, out, depth + 1);
+                    collect_children_folds(body, out, depth + 1, source);
                 } else {
-                    collect_folds_at(child, out, depth + 1);
+                    collect_folds_at(child, out, depth + 1, source);
                 }
             }
             return;
         }
     }
 
-    if REGION_KINDS.contains(&kind) {
+    if source.syntax == Syntax::Java && kind == "static_initializer" {
+        // jdtls folds a static initializer from `static` to its `}`, even
+        // when it is all on one line.
+        let start = node.start_position().row;
+        let end = node.end_position().row;
+        out.push(region(start, end));
+        if let Some(body) = node.named_child(0) {
+            collect_children_folds(body, out, depth + 1, source);
+        }
+        return;
+    }
+
+    if source.syntax == Syntax::Java && REGION_KINDS.contains(&kind) {
+        if let Some(end) = java_region_end(node) {
+            out.push(region(node.start_position().row, end));
+        }
+    } else if REGION_KINDS.contains(&kind) {
         let start = node.start_position();
         let end = node.end_position();
         // A `{ … }` block keeps its closing line in view, so it needs a line
@@ -168,12 +222,131 @@ fn collect_folds_at(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, depth:
         }
     }
 
-    collect_children_folds(node, out, depth);
+    collect_children_folds(node, out, depth, source);
+}
+
+/// The last line of a Java region's fold, as jdtls has it, or `None` when
+/// it does not fold:
+/// - a `case` group runs to the line before the next label (or the
+///   switch's `}`), blank lines included;
+/// - a `{ … }` block runs to its `}`, or to the line before when the `}`
+///   is followed by more of the statement (`} else {`, `} catch (..) {`);
+/// - a block that is all a `case` group holds folds with the group.
+fn java_region_end(node: tree_sitter::Node) -> Option<usize> {
+    let start = node.start_position().row;
+    if node.kind() == "switch_block_statement_group" {
+        let next = node.next_sibling()?;
+        let end = next.start_position().row.checked_sub(1)?;
+        return (end > start).then_some(end);
+    }
+    let in_a_case_group = node
+        .parent()
+        .is_some_and(|parent| parent.kind() == "switch_block_statement_group");
+    if node.kind() == "block" && in_a_case_group {
+        return None;
+    }
+    let close = node.end_position().row;
+    let continued_on_the_closing_line = node
+        .next_sibling()
+        .is_some_and(|next| next.start_position().row == close && next.kind() != ";");
+    let end = if continued_on_the_closing_line {
+        close.checked_sub(1)?
+    } else {
+        close
+    };
+    (end > start).then_some(end)
+}
+
+/// Region-marker comment pairs (`// region` … `// endregion`,
+/// `// #region` … `// #endregion`, `// <editor-fold>` … `// </editor-fold>`)
+/// anywhere in a Java tree, each folded from its start marker to its end.
+fn collect_region_comment_folds(
+    root: tree_sitter::Node,
+    bytes: &[u8],
+    out: &mut Vec<FoldingRange>,
+) {
+    let mut open: Vec<usize> = Vec::new();
+    let mut cursor = root.walk();
+    let mut stack = vec![root];
+    let mut comments = Vec::new();
+    while let Some(node) = stack.pop() {
+        if node.kind() == KIND_LINE_COMMENT {
+            comments.push(node);
+            continue;
+        }
+        for child in node.children(&mut cursor) {
+            stack.push(child);
+        }
+    }
+    comments.sort_by_key(|comment| comment.start_byte());
+    for comment in comments {
+        let row = comment.start_position().row;
+        match RegionMarker::of(comment, bytes) {
+            Some(RegionMarker::Start) => open.push(row),
+            Some(RegionMarker::End) => {
+                if let Some(start) = open.pop() {
+                    if row > start {
+                        out.push(region(start, row));
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+}
+
+/// A line comment that opens or closes a folding region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RegionMarker {
+    Start,
+    End,
+}
+
+impl RegionMarker {
+    fn of(comment: tree_sitter::Node, bytes: &[u8]) -> Option<Self> {
+        let text = comment.utf8_text(bytes).ok()?;
+        let text = text.trim_start_matches('/').trim();
+        let starts = ["region", "#region", "<editor-fold"];
+        let ends = ["endregion", "#endregion", "</editor-fold"];
+        let is_word_end = |rest: &str| {
+            rest.is_empty() || rest.starts_with(char::is_whitespace) || rest.starts_with('>')
+        };
+        let marked = |markers: &[&str]| {
+            markers
+                .iter()
+                .any(|marker| text.strip_prefix(marker).is_some_and(is_word_end))
+        };
+        if marked(&ends) {
+            Some(Self::End)
+        } else if marked(&starts) {
+            Some(Self::Start)
+        } else {
+            None
+        }
+    }
+}
+
+/// Whether a Java line comment can start a run of comments that folds: one
+/// on a line of its own (not trailing code) and not a region marker.
+/// Anything that is not a line comment can't.
+fn starts_a_java_comment_run(node: tree_sitter::Node, bytes: &[u8]) -> bool {
+    if node.kind() != KIND_LINE_COMMENT {
+        return true;
+    }
+    let trails_code = node
+        .prev_sibling()
+        .is_some_and(|previous| previous.end_position().row == node.start_position().row);
+    !trails_code && RegionMarker::of(node, bytes).is_none()
 }
 
 /// Folds within `node`'s children: runs of line comments and of imports fold
 /// as one; every other child is walked.
-fn collect_children_folds(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, depth: usize) {
+fn collect_children_folds(
+    node: tree_sitter::Node,
+    out: &mut Vec<FoldingRange>,
+    depth: usize,
+    source: Source<'_>,
+) {
     let mut walker = node.walk();
     let children: Vec<_> = node.children(&mut walker).collect();
     let mut i = 0;
@@ -197,12 +370,21 @@ fn collect_children_folds(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, 
                 });
             }
             i = j;
+        } else if source.syntax == Syntax::Java && !starts_a_java_comment_run(child, source.bytes) {
+            i += 1;
         } else if child.kind() == KIND_LINE_COMMENT {
             let run_start = child.start_position().row;
             let mut run_end = run_start;
             let mut j = i + 1;
             while j < children.len() && children[j].kind() == KIND_LINE_COMMENT {
-                run_end = children[j].start_position().row;
+                let next_row = children[j].start_position().row;
+                let continues_the_run = source.syntax == Syntax::Kotlin
+                    || (next_row == run_end + 1
+                        && RegionMarker::of(children[j], source.bytes).is_none());
+                if !continues_the_run {
+                    break;
+                }
+                run_end = next_row;
                 j += 1;
             }
             if run_end > run_start {
@@ -217,7 +399,7 @@ fn collect_children_folds(node: tree_sitter::Node, out: &mut Vec<FoldingRange>, 
             }
             i = j;
         } else {
-            collect_folds_at(child, out, depth + 1);
+            collect_folds_at(child, out, depth + 1, source);
             i += 1;
         }
     }
@@ -255,7 +437,7 @@ mod depth_guard_tests {
                     .unwrap();
                 let tree = parser.parse(&src, None).unwrap();
                 let mut out = Vec::new();
-                super::collect_folds(tree.root_node(), &mut out);
+                super::collect_folds(tree.root_node(), src.as_bytes(), &mut out);
                 out.len()
             })
             .unwrap();
@@ -276,7 +458,7 @@ mod java_tests {
             .unwrap();
         let tree = parser.parse(source, None).unwrap();
         let mut out = Vec::new();
-        super::collect_folds(tree.root_node(), &mut out);
+        super::collect_folds(tree.root_node(), source.as_bytes(), &mut out);
         let mut starts: Vec<(usize, usize)> = out
             .iter()
             .map(|range| (range.start_line as usize, range.end_line as usize))
