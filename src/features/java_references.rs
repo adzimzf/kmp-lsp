@@ -223,25 +223,38 @@ pub(crate) async fn java_document_highlights(
     if !is_java_file(uri) || index.is_library_uri(uri) {
         return None;
     }
+    if let Some(marked) = crate::indexer::java_marked_occurrences(index, uri, position) {
+        return Some(as_highlights(marked, None));
+    }
+    if let Some(local) = crate::indexer::java_local_declaration_at(index, uri, position) {
+        let found = local_references(index, &local, true);
+        return Some(as_highlights(found, Some(&local)));
+    }
     let target = JavaTarget::at(index, uri, position).await?;
     let lines = index.lines_for(uri)?;
     let occurrences = word_occurrences(uri, &lines, &target.symbol.name);
     let declared_here = target.location.uri == *uri;
     // A highlight marks what binds to this very method, as jdtls does.
     let found = resolved_occurrences(index, &target, occurrences, declared_here, true).await;
-    Some(
-        found
-            .into_iter()
-            .map(|location| DocumentHighlight {
-                kind: Some(if location == target.location {
-                    DocumentHighlightKind::WRITE
-                } else {
-                    DocumentHighlightKind::READ
-                }),
-                range: location.range,
-            })
-            .collect(),
-    )
+    Some(as_highlights(found, Some(&target.location)))
+}
+
+/// `locations` as highlights, the one at `declaration` (when given) a write.
+fn as_highlights(
+    locations: Vec<Location>,
+    declaration: Option<&Location>,
+) -> Vec<DocumentHighlight> {
+    locations
+        .into_iter()
+        .map(|location| DocumentHighlight {
+            kind: Some(if Some(&location) == declaration {
+                DocumentHighlightKind::WRITE
+            } else {
+                DocumentHighlightKind::READ
+            }),
+            range: location.range,
+        })
+        .collect()
 }
 
 /// What renaming a Java declaration has to change.

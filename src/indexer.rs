@@ -65,6 +65,7 @@ pub(crate) use self::infer::{
         java_local_at, literal_argument_calls, parameter_for_argument, DeclaredParameter,
         LiteralArgumentCall,
     },
+    java_marks::java_marked_occurrences,
     lambda::{lambda_type_nth_input, lambda_type_receiver, RECEIVER_THIS_FNS, SCOPE_FUNCTIONS},
     occurrences::{classify_occurrences, ClassifiedOccurrence, OccurrenceDetail, OccurrenceScope},
     sig::{
