@@ -53,6 +53,10 @@ impl Backend {
                     response,
                 )
             };
+            let place = crate::indexer::java_completion_place_at(indexer.as_ref(), &uri, position);
+            if place == crate::indexer::JavaCompletionPlace::Text {
+                return None;
+            }
             if let Some(items) = crate::features::java_completion::java_case_label_completions(
                 indexer.as_ref(),
                 &uri,
@@ -83,12 +87,13 @@ impl Backend {
             if let Some(items) = java_members {
                 return crate::features::completion::completion_list(items, false, still_indexing);
             }
-            typed_matches(crate::features::completion::compute_completions(
+            let general = typed_matches(crate::features::completion::compute_completions(
                 &uri,
                 position,
                 snippets,
                 indexer.as_ref(),
-            ))
+            ));
+            crate::features::java_completion::retain_member_starts(place, general)
         })
         .await
         .unwrap_or(None))

@@ -2769,3 +2769,69 @@ pub(crate) fn parameter_for_argument(
 #[cfg(test)]
 #[path = "java_cst_tests.rs"]
 mod tests;
+
+/// Where a completion is asked in a Java file, as far as what may be
+/// offered there goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JavaCompletionPlace {
+    /// Code: names of every kind may be typed.
+    Code,
+    /// A comment, a string, a text block or a character literal: nothing is
+    /// code there, so nothing is offered (as jdtls does).
+    Text,
+    /// The first word of a member of a class body (`p|` before a field or a
+    /// method is declared): a modifier, a type or a keyword starts a member,
+    /// a method or a field of the class does not.
+    MemberStart,
+}
+
+/// Where the cursor at `byte` of `doc` completes.
+pub(crate) fn java_completion_place(doc: &LiveDoc, byte: usize) -> JavaCompletionPlace {
+    let root = doc.tree.root_node();
+    let before = byte.saturating_sub(1);
+    let Some(token) = root.descendant_for_byte_range(before, before) else {
+        return JavaCompletionPlace::Code;
+    };
+    let in_text = std::iter::successors(Some(token), |node| node.parent())
+        .any(|node| is_text_around(node, byte));
+    if in_text {
+        return JavaCompletionPlace::Text;
+    }
+    if starts_a_member(token) {
+        return JavaCompletionPlace::MemberStart;
+    }
+    JavaCompletionPlace::Code
+}
+
+/// Whether `node` is a comment or a literal that `byte` lies inside of: a
+/// line comment runs to the end of its line, a block comment and a literal
+/// end before their closing token.
+fn is_text_around(node: Node<'_>, byte: usize) -> bool {
+    let after_its_start = node.start_byte() < byte;
+    match node.kind() {
+        "line_comment" => after_its_start && byte <= node.end_byte(),
+        "block_comment" | STRING_LITERAL | "character_literal" => {
+            after_its_start && byte < node.end_byte()
+        }
+        _ => false,
+    }
+}
+
+/// Whether the name `token` is all a class body's member has so far: the
+/// parser keeps it in an error node of its own, right in the class body.
+fn starts_a_member(token: Node<'_>) -> bool {
+    if !matches!(token.kind(), IDENTIFIER | TYPE_IDENTIFIER) {
+        return false;
+    }
+    let Some(member) = token.parent().filter(|parent| parent.is_error()) else {
+        return false;
+    };
+    let alone = member.child_count() == 1;
+    let in_a_class_body = member.parent().is_some_and(|body| {
+        matches!(
+            body.kind(),
+            "class_body" | "interface_body" | "enum_body_declarations"
+        )
+    });
+    alone && in_a_class_body
+}

@@ -770,3 +770,38 @@ fn unclosed_method_does_not_leak_a_sibling_methods_locals() {
     assert!(names.contains(&"count".to_owned()), "{names:?}");
     assert!(!names.contains(&"finished".to_owned()), "{names:?}");
 }
+
+/// Where the completion at `|` in `source` is asked (the marker is removed).
+fn completion_place(source: &str) -> JavaCompletionPlace {
+    let byte = source.find('|').unwrap();
+    let doc = java_doc(&source.replacen('|', "", 1));
+    java_completion_place(&doc, byte)
+}
+
+#[test]
+fn completion_in_a_line_comment_is_text() {
+    let source = "class Main {\n  void run() {\n    // dog.ba|\n  }\n}\n";
+    assert_eq!(completion_place(source), JavaCompletionPlace::Text);
+}
+
+#[test]
+fn completion_in_a_string_is_text_but_after_it_is_code() {
+    let inside = "class Main {\n  void run() {\n    String a = \"circle.pa|\";\n  }\n}\n";
+    assert_eq!(completion_place(inside), JavaCompletionPlace::Text);
+    let after = "class Main {\n  void run() {\n    String a = \"x\".tr|\n  }\n}\n";
+    assert_eq!(completion_place(after), JavaCompletionPlace::Code);
+}
+
+#[test]
+fn completion_after_a_block_comment_is_code() {
+    let source = "class Main {\n  void run(int a) {\n    int b = /* x */a|;\n  }\n}\n";
+    assert_eq!(completion_place(source), JavaCompletionPlace::Code);
+}
+
+#[test]
+fn first_word_of_a_member_is_a_member_start_but_a_statement_is_code() {
+    let member = "class Main {\n  void run() {}\n  p|\n}\n";
+    assert_eq!(completion_place(member), JavaCompletionPlace::MemberStart);
+    let statement = "class Main {\n  void run(int part) {\n    p|\n  }\n}\n";
+    assert_eq!(completion_place(statement), JavaCompletionPlace::Code);
+}

@@ -991,6 +991,34 @@ pub(crate) fn is_java_created_type_at(indexer: &Indexer, uri: &Url, position: Po
         .is_some()
 }
 
+/// Where a completion at `position` of a Java file is asked (see
+/// [`super::java_cst::java_completion_place`]); `Code` outside Java.
+pub(crate) fn java_completion_place_at(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> super::java_cst::JavaCompletionPlace {
+    let code = super::java_cst::JavaCompletionPlace::Code;
+    if !super::java_cst::is_java_file(uri) {
+        return code;
+    }
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return code;
+    };
+    let Ok(source) = std::str::from_utf8(&doc.bytes) else {
+        return code;
+    };
+    let line_start: usize = source
+        .split_inclusive('\n')
+        .take(position.line as usize)
+        .map(str::len)
+        .sum();
+    let line = source[line_start..].lines().next().unwrap_or_default();
+    let column = crate::indexer::live_tree::utf16_col_to_byte(line, position.character as usize)
+        .min(line.len());
+    super::java_cst::java_completion_place(&doc, line_start + column)
+}
+
 /// The hover line of the Java local or parameter declared at `declaration`
 /// (see [`super::java_cst::java_local_hover_line`]).
 pub(crate) fn java_local_hover_line(indexer: &Indexer, declaration: &Location) -> Option<String> {
