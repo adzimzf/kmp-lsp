@@ -441,6 +441,36 @@ impl Indexer {
         found
     }
 
+    /// The declarations the method `symbol` (declared at `location`)
+    /// overrides directly: in each of its class's nearest supertypes that
+    /// declares it — `A.foo` and `D.foo` for `C.foo` of `class C extends A
+    /// implements D`. [`Self::overridden_method_declarations`] climbs one
+    /// chain of these instead.
+    pub(crate) fn directly_overridden_method_declarations(
+        &self,
+        symbol: &SymbolEntry,
+        location: &Location,
+    ) -> Vec<Location> {
+        let Some(container) = symbol.container.as_deref() else {
+            return Vec::new();
+        };
+        let arity = symbol.param_counts.1;
+        crate::resolver::walk_hierarchy_breadth_first(
+            self,
+            container,
+            location.uri.as_str(),
+            crate::types::CallerContext::default(),
+            12,
+            crate::resolver::MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
+            |indexer, super_name, super_uri, _| {
+                indexer
+                    .member_declaration(super_uri, super_name, &symbol.name, arity)
+                    .into_iter()
+                    .collect()
+            },
+        )
+    }
+
     /// The declarations overriding the method `name` taking `arity`
     /// parameters that `type_name` declares: those in its subtypes, at any
     /// depth, anonymous classes included. Stops after `limit` are found.

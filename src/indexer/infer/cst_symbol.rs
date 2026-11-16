@@ -886,6 +886,30 @@ pub(crate) fn java_type_parameter_definition(
     node_to_location(uri, declared, text)
 }
 
+/// The record component the Java name under `position` is (see
+/// [`super::java_records::RecordComponent::at`]): every name in its record
+/// that is it, the header's first. `None` when the name is no component.
+pub(crate) fn java_record_component_occurrences(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Vec<Location>> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let node = super::cst_lambda::cursor_node_at(&doc, position.into())?;
+    let component = super::java_records::RecordComponent::at(node, &doc.bytes)?;
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    Some(
+        component
+            .occurrences(&doc.bytes)
+            .into_iter()
+            .filter_map(|occurrence| node_to_location(uri, occurrence, text))
+            .collect(),
+    )
+}
+
 /// The names the Java type parameter under `position` (declared or used)
 /// binds, its declaration first; `None` when the cursor is on none.
 pub(crate) fn java_type_parameter_occurrences(

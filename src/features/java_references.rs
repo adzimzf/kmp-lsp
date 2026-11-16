@@ -291,6 +291,9 @@ pub(crate) async fn java_rename(
     if let Some(uses) = crate::indexer::java_type_parameter_occurrences(index, uri, position) {
         return Some(JavaRename::Names(uses));
     }
+    if let Some(component) = record_component_names(index, uri, position).await {
+        return Some(JavaRename::Names(component));
+    }
     if let Some(local) = crate::indexer::java_local_declaration_at(index, uri, position) {
         let mut names = local_references(index, &local, true);
         // A parameter's `@param` tag names it too.
@@ -346,6 +349,103 @@ pub(crate) async fn java_rename(
     Some(JavaRename::Names(locations))
 }
 
+/// Every name a rename of the record component at (or used at) `position`
+/// changes: the names in its record that are it, and the calls of its
+/// accessor elsewhere. `None` when the name is no record component.
+async fn record_component_names(
+    index: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Vec<Location>> {
+    let in_record = match crate::indexer::java_record_component_occurrences(index, uri, position) {
+        Some(in_record) => in_record,
+        None => {
+            // `r.value()` outside the record names it through its accessor.
+            let context = CursorContext::build(index, uri, position)?;
+            let declared =
+                crate::features::definition::find_definition(&context, index, uri, position)
+                    .await
+                    .map(definition_locations)?
+                    .into_iter()
+                    .next()?;
+            crate::indexer::java_record_component_occurrences(
+                index,
+                &declared.uri,
+                declared.range.start,
+            )?
+        }
+    };
+    let declaration = in_record.first()?.clone();
+    let name = index
+        .lines_for(&declaration.uri)?
+        .get(declaration.range.start.line as usize)?
+        .chars()
+        .skip(declaration.range.start.character as usize)
+        .take((declaration.range.end.character - declaration.range.start.character) as usize)
+        .collect::<String>();
+    let mut names = in_record.clone();
+    for call in accessor_calls_elsewhere(index, &declaration, &name, &in_record).await {
+        if !names.contains(&call) {
+            names.push(call);
+        }
+    }
+    Some(names)
+}
+
+/// The occurrences of `name` outside `declaration`'s file that
+/// go-to-definition takes to one of `in_record` (the component or its
+/// accessor): `r.value()` calls.
+async fn accessor_calls_elsewhere(
+    index: &Indexer,
+    declaration: &Location,
+    name: &str,
+    in_record: &[Location],
+) -> Vec<Location> {
+    let file_path = declaration.uri.to_file_path().ok();
+    let (workspace_root, source_roots, _) = index.rg_scope_for_path(file_path.as_deref());
+    let searched = name.to_owned();
+    let on_disk = match workspace_root {
+        Some(workspace_root) => tokio::task::spawn_blocking(move || {
+            crate::rg::rg_word_occurrences(&searched, &workspace_root, &source_roots)
+        })
+        .await
+        .unwrap_or_default(),
+        None => Vec::new(),
+    };
+    let mut calls = Vec::new();
+    for (rg_location, line) in with_open_documents(index, name, on_disk) {
+        if rg_location.uri == declaration.uri {
+            continue;
+        }
+        let Some(occurrence) = Occurrence::new(rg_location, &line, name) else {
+            continue;
+        };
+        let start = occurrence.location.range.start;
+        let Some(context) = CursorContext::build(index, &occurrence.location.uri, start) else {
+            continue;
+        };
+        let resolves_to_it = crate::features::definition::find_definition(
+            &context,
+            index,
+            &occurrence.location.uri,
+            start,
+        )
+        .await
+        .map(definition_locations)
+        .unwrap_or_default()
+        .iter()
+        .any(|declared| {
+            in_record
+                .iter()
+                .any(|named| named.range.start == declared.range.start && named.uri == declared.uri)
+        });
+        if resolves_to_it {
+            calls.push(occurrence.location);
+        }
+    }
+    calls
+}
+
 /// Where a rename at `position` renames from: the class for a
 /// constructor's name or `super` (the superclass); `position` itself for
 /// anything else.
@@ -385,6 +485,42 @@ async fn renamed_declaration_site(
     })
 }
 
+/// `family` grown until every method it overrides, and every method
+/// overriding one of them, is in it: `C.foo` overriding both `A.foo` (in the
+/// family) and `D.foo` ties `D.foo` in too, as one rename has to change all
+/// of them for `C` to compile.
+fn close_override_family(index: &Indexer, target: &JavaTarget, family: &mut Vec<Location>) {
+    let name = &target.symbol.name;
+    let mut pending = family.clone();
+    pending.push(target.location.clone());
+    while let Some(member) = pending.pop() {
+        if family.len() > MAX_RENAMED_OVERRIDE_FAMILY {
+            return;
+        }
+        let Some(symbol) = index.symbol_declared_at(name, &member) else {
+            continue;
+        };
+        let member_location = Location::new(member.uri.clone(), symbol.selection_range);
+        let mut related = index.overridden_method_declarations(&symbol, &member_location);
+        related.extend(index.directly_overridden_method_declarations(&symbol, &member_location));
+        if let Some(container) = symbol.container.as_deref() {
+            related.extend(index.overriding_method_declarations(
+                container,
+                name,
+                symbol.param_counts.1,
+                MAX_RENAMED_OVERRIDE_FAMILY + 1,
+            ));
+        }
+        for declaration in related {
+            let is_new = declaration != target.location && !family.contains(&declaration);
+            if is_new {
+                family.push(declaration.clone());
+                pending.push(declaration);
+            }
+        }
+    }
+}
+
 /// The other members of the method `target`'s override family: the
 /// workspace methods it overrides, and every method overriding the topmost
 /// of them. Why not, when renaming them all is not possible.
@@ -422,6 +558,7 @@ fn override_family(index: &Indexer, target: &JavaTarget) -> Result<Vec<Location>
             }
         }
     }
+    close_override_family(index, target, &mut family);
     if family.len() + 1 > MAX_RENAMED_OVERRIDE_FAMILY {
         return Err("too many methods override it to rename them all");
     }
