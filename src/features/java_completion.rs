@@ -19,8 +19,8 @@
 use std::collections::{HashSet, VecDeque};
 
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, CompletionTextEdit, Position, Range, SymbolKind, TextEdit,
-    TypeHierarchyItem, Url,
+    CompletionItem, CompletionItemKind, CompletionResponse, CompletionTextEdit, Position, Range,
+    SymbolKind, TextEdit, TypeHierarchyItem, Url,
 };
 use tree_sitter::Node;
 
@@ -139,6 +139,58 @@ pub(crate) fn java_member_completions(
     }
     items.sort_by(|a, b| a.sort_text.cmp(&b.sort_text));
     Some(items)
+}
+
+/// `response` without the items the identifier typed before `position`
+/// doesn't start (as a prefix, ignoring case, or by camel-case parts), as
+/// jdtls only offers those: `tal` is `tally`, not `total`. Nothing is
+/// dropped when no identifier is typed yet, or outside Java.
+pub(crate) fn retain_typed_matches(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+    response: Option<CompletionResponse>,
+) -> Option<CompletionResponse> {
+    if crate::Language::from_path(uri.path()) != crate::Language::Java {
+        return response;
+    }
+    let Some(typed) = typed_identifier(indexer, uri, position) else {
+        return response;
+    };
+    let admits = |item: &CompletionItem| {
+        let text = item.filter_text.as_deref().unwrap_or(&item.label);
+        // A qualified label (`com.demo`) completes its last segment.
+        let name_end = text
+            .find(|character: char| {
+                !(character.is_alphanumeric() || matches!(character, '_' | '$' | '.'))
+            })
+            .unwrap_or(text.len());
+        let name = text[..name_end].rsplit('.').next().unwrap_or_default();
+        typed.admits(name)
+    };
+    let kept = match response? {
+        CompletionResponse::Array(mut items) => {
+            items.retain(admits);
+            CompletionResponse::Array(items)
+        }
+        CompletionResponse::List(mut list) => {
+            list.items.retain(admits);
+            CompletionResponse::List(list)
+        }
+    };
+    let is_empty = match &kept {
+        CompletionResponse::Array(items) => items.is_empty(),
+        CompletionResponse::List(list) => list.items.is_empty(),
+    };
+    (!is_empty).then_some(kept)
+}
+
+/// The identifier typed right before `position`; `None` when there is none.
+fn typed_identifier(indexer: &Indexer, uri: &Url, position: Position) -> Option<TypedPrefix> {
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = byte_of(&doc.bytes, position)?;
+    let typed = TypedPrefix::before(&doc.bytes[..cursor]);
+    (!typed.0.is_empty()).then_some(typed)
 }
 
 /// Completions where Java names a package or a type by its qualified name:

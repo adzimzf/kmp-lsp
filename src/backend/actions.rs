@@ -41,21 +41,37 @@ impl Backend {
             // An empty member list is not an answer — the receiver resolved to
             // a type whose members this pass couldn't read, and the general
             // pipeline (its own Java dot path included) still can.
-            let java_members = crate::features::java_completion::java_case_label_completions(
+            let still_indexing =
+                crate::features::traits::CompletionIndex::is_indexing_in_progress(indexer.as_ref());
+            // Member and qualified-name completions match what is typed
+            // themselves; the others are cut down to it here.
+            let typed_matches = |response| {
+                crate::features::java_completion::retain_typed_matches(
+                    indexer.as_ref(),
+                    &uri,
+                    position,
+                    response,
+                )
+            };
+            if let Some(items) = crate::features::java_completion::java_case_label_completions(
                 indexer.as_ref(),
                 &uri,
                 position,
                 snippets,
+            ) {
+                return typed_matches(crate::features::completion::completion_list(
+                    items,
+                    false,
+                    still_indexing,
+                ));
+            }
+            let java_members = crate::features::java_completion::java_member_completions(
+                indexer.as_ref(),
+                &uri,
+                position,
+                snippets,
+                expected_arguments,
             )
-            .or_else(|| {
-                crate::features::java_completion::java_member_completions(
-                    indexer.as_ref(),
-                    &uri,
-                    position,
-                    snippets,
-                    expected_arguments,
-                )
-            })
             .filter(|items| !items.is_empty())
             .or_else(|| {
                 crate::features::java_completion::java_qualified_name_completions(
@@ -65,20 +81,14 @@ impl Backend {
                 )
             });
             if let Some(items) = java_members {
-                return crate::features::completion::completion_list(
-                    items,
-                    false,
-                    crate::features::traits::CompletionIndex::is_indexing_in_progress(
-                        indexer.as_ref(),
-                    ),
-                );
+                return crate::features::completion::completion_list(items, false, still_indexing);
             }
-            crate::features::completion::compute_completions(
+            typed_matches(crate::features::completion::compute_completions(
                 &uri,
                 position,
                 snippets,
                 indexer.as_ref(),
-            )
+            ))
         })
         .await
         .unwrap_or(None))
