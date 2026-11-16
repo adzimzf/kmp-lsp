@@ -130,6 +130,13 @@ fn symbols_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Vec<Location>
     find_symbol_in_package(indexer, name, pkg).map_or(vec![], |l| vec![l])
 }
 
+/// The declaration of the type whose fully-qualified name is
+/// `qualified_name` (`com.demo.shapes.Circle`), when it is indexed.
+pub(crate) fn find_qualified_type(indexer: &Indexer, qualified_name: &str) -> Option<Location> {
+    let symbol_location = *indexer.qualified.get(qualified_name)?;
+    indexer.file_table.location(symbol_location)
+}
+
 /// Scan all indexed files in `pkg` for the first symbol named `name`.
 pub(crate) fn find_symbol_in_package(indexer: &Indexer, name: &str, pkg: &str) -> Option<Location> {
     let peer_ids: Vec<crate::types::FileId> = indexer

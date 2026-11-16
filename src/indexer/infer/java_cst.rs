@@ -521,6 +521,71 @@ fn java_package_name(node: Node<'_>, bytes: &[u8]) -> Option<String> {
     compact(name, bytes)
 }
 
+/// Where a Java `break` or `continue` goes.
+pub(crate) enum JumpTarget<'tree> {
+    /// `break outer;`: the label of the statement it leaves.
+    Label(Node<'tree>),
+    /// A bare `break`/`continue`: the loop (or, for `break`, the switch)
+    /// around it.
+    Statement(Node<'tree>),
+}
+
+impl<'tree> JumpTarget<'tree> {
+    /// The statement left or continued, its label included.
+    pub(crate) fn statement(&self) -> Option<Node<'tree>> {
+        match self {
+            Self::Label(label) => label.parent(),
+            Self::Statement(statement) => Some(*statement),
+        }
+    }
+}
+
+/// The [`JumpTarget`] of the `break`/`continue` whose keyword or label is
+/// `node`, or `None` when `node` is neither.
+pub(crate) fn jump_target<'tree>(node: Node<'tree>, bytes: &[u8]) -> Option<JumpTarget<'tree>> {
+    let statement = node
+        .parent()
+        .filter(|parent| matches!(parent.kind(), "break_statement" | "continue_statement"))?;
+    let is_break = statement.kind() == "break_statement";
+    let label = statement
+        .named_children(&mut statement.walk())
+        .find(|child| child.kind() == IDENTIFIER);
+    let stops_the_search = |kind: &str| {
+        matches!(
+            kind,
+            METHOD_DECLARATION | CONSTRUCTOR_DECLARATION | LAMBDA_EXPRESSION
+        ) || is_class_like_body(kind)
+    };
+    let mut ancestor = statement.parent();
+    while let Some(current) = ancestor {
+        if stops_the_search(current.kind()) {
+            return None;
+        }
+        match &label {
+            Some(label) if current.kind() == "labeled_statement" => {
+                let declared = current.named_child(0)?;
+                let label_text = label.utf8_text(bytes).ok()?;
+                if declared.utf8_text(bytes).ok() == Some(label_text) {
+                    return Some(JumpTarget::Label(declared));
+                }
+            }
+            Some(_) => {}
+            None => {
+                let is_loop = matches!(
+                    current.kind(),
+                    "for_statement" | ENHANCED_FOR | "while_statement" | "do_statement"
+                );
+                let is_switch = matches!(current.kind(), "switch_expression" | "switch_statement");
+                if is_loop || (is_break && is_switch) {
+                    return Some(JumpTarget::Statement(current));
+                }
+            }
+        }
+        ancestor = current.parent();
+    }
+    None
+}
+
 // ─── local bindings ──────────────────────────────────────────────────────────
 
 /// Which declaration binds a Java name at a use site.
@@ -897,8 +962,82 @@ fn local_in_scope<'tree>(
             declared_parameter(scope.child_by_field_name("parameters")?, name, bytes)
         }
         LAMBDA_EXPRESSION => lambda_parameter(scope, name, bytes),
+        // A pattern variable (`shape instanceof Circle circle`) is in scope
+        // where its test is known to have passed: the `if`'s condition and
+        // its then-branch, a `while`'s body, the right of `&&`, and the
+        // true branch of `?:`.
+        "if_statement" => {
+            let in_else = scope
+                .child_by_field_name("alternative")
+                .is_some_and(|alternative| alternative.id() == inner.id());
+            if in_else {
+                return None;
+            }
+            pattern_binding(scope.child_by_field_name("condition")?, name, bytes)
+        }
+        "while_statement" => {
+            let in_body = scope
+                .child_by_field_name("body")
+                .is_some_and(|body| body.id() == inner.id());
+            if !in_body {
+                return None;
+            }
+            pattern_binding(scope.child_by_field_name("condition")?, name, bytes)
+        }
+        "binary_expression" => {
+            let is_and = scope
+                .child_by_field_name("operator")
+                .is_some_and(|operator| operator.kind() == "&&");
+            let in_right = scope
+                .child_by_field_name("right")
+                .is_some_and(|right| right.id() == inner.id());
+            if !(is_and && in_right) {
+                return None;
+            }
+            pattern_binding(scope.child_by_field_name("left")?, name, bytes)
+        }
+        "ternary_expression" => {
+            let in_consequence = scope
+                .child_by_field_name("consequence")
+                .is_some_and(|consequence| consequence.id() == inner.id());
+            if !in_consequence {
+                return None;
+            }
+            pattern_binding(scope.child_by_field_name("condition")?, name, bytes)
+        }
         _ => None,
     }
+}
+
+/// The pattern variable called `name` that an `instanceof` test in
+/// `condition` declares (`Circle circle` of `shape instanceof Circle
+/// circle`), not looking into lambdas or classes declared there.
+fn pattern_binding<'tree>(
+    condition: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<JavaLocal<'tree>> {
+    let mut pending = vec![condition];
+    while let Some(node) = pending.pop() {
+        if node.kind() == "instanceof_expression" {
+            let declared = node
+                .child_by_field_name("name")
+                .filter(|declared| declared.utf8_text(bytes).ok() == Some(name));
+            if let Some(declared) = declared {
+                let binding = node
+                    .child_by_field_name("right")
+                    .and_then(|type_node| type_node.utf8_text_owned(bytes))
+                    .map_or(JavaLocalBinding::Untyped, JavaLocalBinding::Typed);
+                return Some(JavaLocal::new(declared, binding));
+            }
+        }
+        if matches!(node.kind(), LAMBDA_EXPRESSION | "class_body") {
+            continue;
+        }
+        let mut cursor = node.walk();
+        pending.extend(node.named_children(&mut cursor));
+    }
+    None
 }
 
 /// The nearest local `name` declared in `block` before the use site at

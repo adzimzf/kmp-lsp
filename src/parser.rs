@@ -2859,15 +2859,22 @@ impl crate::types::FileData {
         }
     }
 
+    /// `import a.b.C;` imports `a.b.C`; `import a.b.*;` every type of the
+    /// package `a.b` (a star import). A static import's `.*` imports members,
+    /// not a package's types, so it is kept as the class it names.
     fn push_java_import(&mut self, node: &Node, bytes: &[u8]) {
-        let mut cur = node.walk();
-        for child in node.children(&mut cur) {
-            if matches!(child.kind(), KIND_SCOPED_IDENT | KIND_IDENTIFIER) {
-                if let Ok(txt) = child.utf8_text(bytes) {
-                    push_import(self, txt.to_owned(), None, false);
-                }
-                return;
-            }
+        let children: Vec<Node> = node.children(&mut node.walk()).collect();
+        let is_static = children.iter().any(|child| child.kind() == "static");
+        let imports_a_package =
+            !is_static && children.iter().any(|child| child.kind() == "asterisk");
+        let Some(path) = children
+            .iter()
+            .find(|child| matches!(child.kind(), KIND_SCOPED_IDENT | KIND_IDENTIFIER))
+        else {
+            return;
+        };
+        if let Ok(txt) = path.utf8_text(bytes) {
+            push_import(self, txt.to_owned(), None, imports_a_package);
         }
     }
 }

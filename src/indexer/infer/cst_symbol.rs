@@ -886,6 +886,28 @@ pub(crate) fn java_type_parameter_definition(
     node_to_location(uri, declared, text)
 }
 
+/// Where the Java `break`/`continue` under `position` goes: the label it
+/// names, or the keyword of the loop or switch it leaves (as jdtls answers
+/// go-to-definition on it). `None` when the cursor isn't on one.
+pub(crate) fn java_jump_target(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Location> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let node = super::cst_lambda::cursor_node_at(&doc, position.into())?;
+    let target = super::java_cst::jump_target(node, &doc.bytes)?;
+    let target_node = match target {
+        super::java_cst::JumpTarget::Label(label) => label,
+        super::java_cst::JumpTarget::Statement(statement) => statement.child(0)?,
+    };
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    node_to_location(uri, target_node, text)
+}
+
 /// Whether the cursor is on the type a Java `new` creates (`Circle` of
 /// `new Circle(2.0)`).
 pub(crate) fn is_java_created_type_at(indexer: &Indexer, uri: &Url, position: Position) -> bool {
