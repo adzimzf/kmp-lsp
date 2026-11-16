@@ -288,8 +288,19 @@ pub(crate) async fn java_rename(
     if !is_java_file(uri) || index.is_library_uri(uri) {
         return None;
     }
+    if let Some(uses) = crate::indexer::java_type_parameter_occurrences(index, uri, position) {
+        return Some(JavaRename::Names(uses));
+    }
+    if let Some(local) = crate::indexer::java_local_declaration_at(index, uri, position) {
+        let mut names = local_references(index, &local, true);
+        // A parameter's `@param` tag names it too.
+        names.extend(crate::indexer::java_javadoc_parameter_tag(index, &local));
+        return Some(JavaRename::Names(names));
+    }
+    // A constructor is renamed with its class, `super` with the superclass.
+    let (uri, position) = renamed_declaration_site(index, uri, position).await;
+    let (uri, position) = (&uri, position);
     let target = JavaTarget::at(index, uri, position).await?;
-    // A constructor is renamed with its class.
     if target.kind == TargetKind::Constructor {
         return None;
     }
@@ -333,6 +344,45 @@ pub(crate) async fn java_rename(
         }
     }
     Some(JavaRename::Names(locations))
+}
+
+/// Where a rename at `position` renames from: the class for a
+/// constructor's name or `super` (the superclass); `position` itself for
+/// anything else.
+async fn renamed_declaration_site(
+    index: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> (Url, Position) {
+    let unchanged = (uri.clone(), position);
+    let Some(context) = CursorContext::build(index, uri, position) else {
+        return unchanged;
+    };
+    if context.word == "super" && context.qualifier.is_none() {
+        let superclass =
+            crate::features::definition::find_definition(&context, index, uri, position)
+                .await
+                .map(definition_locations)
+                .and_then(|locations| locations.into_iter().next());
+        return superclass.map_or(unchanged, |location| (location.uri, location.range.start));
+    }
+    let Some(target) = JavaTarget::at(index, uri, position).await else {
+        return unchanged;
+    };
+    if target.kind != TargetKind::Constructor {
+        return unchanged;
+    }
+    let class = index
+        .file_symbols(&target.location.uri)
+        .into_iter()
+        .find(|symbol| {
+            is_type_kind(symbol.kind)
+                && symbol.name == target.symbol.name
+                && range_contains(symbol.range, target.symbol.selection_range.start)
+        });
+    class.map_or(unchanged, |class| {
+        (target.location.uri.clone(), class.selection_range.start)
+    })
 }
 
 /// The other members of the method `target`'s override family: the

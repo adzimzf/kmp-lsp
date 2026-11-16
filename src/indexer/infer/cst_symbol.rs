@@ -886,6 +886,51 @@ pub(crate) fn java_type_parameter_definition(
     node_to_location(uri, declared, text)
 }
 
+/// The names the Java type parameter under `position` (declared or used)
+/// binds, its declaration first; `None` when the cursor is on none.
+pub(crate) fn java_type_parameter_occurrences(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Vec<Location>> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let name_node = super::cst_lambda::cursor_node_at(&doc, position.into())?;
+    let declared = super::java_cst::type_parameter_declaration(name_node, &doc.bytes)?;
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    Some(
+        super::java_cst::type_parameter_uses(declared, &doc.bytes)
+            .into_iter()
+            .filter_map(|node| node_to_location(uri, node, text))
+            .collect(),
+    )
+}
+
+/// The name in the `@param` tag documenting the Java parameter declared at
+/// `declaration`, when its method's doc comment has one.
+pub(crate) fn java_javadoc_parameter_tag(
+    indexer: &Indexer,
+    declaration: &Location,
+) -> Option<Location> {
+    let doc = indexer.live_doc_or_parse(&declaration.uri)?;
+    let name_node = super::cst_lambda::cursor_node_at(&doc, declaration.range.start.into())?;
+    let (_, tag_byte) = super::java_cst::javadoc_parameter_tag(name_node, &doc.bytes)?;
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    let line = text[..tag_byte].matches('\n').count();
+    let line_start = text[..tag_byte].rfind('\n').map_or(0, |at| at + 1);
+    let start = crate::features::text_utils::utf16_column(&text[line_start..tag_byte]);
+    let length = declaration.range.end.character - declaration.range.start.character;
+    Some(Location::new(
+        declaration.uri.clone(),
+        tower_lsp::lsp_types::Range::new(
+            Position::new(line as u32, start),
+            Position::new(line as u32, start + length),
+        ),
+    ))
+}
+
 /// Where the Java `break`/`continue` under `position` goes: the label it
 /// names, or the keyword of the loop or switch it leaves (as jdtls answers
 /// go-to-definition on it). `None` when the cursor isn't on one.

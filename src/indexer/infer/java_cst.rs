@@ -576,6 +576,73 @@ pub(crate) fn jump_target<'tree>(node: Node<'tree>, bytes: &[u8]) -> Option<Jump
     None
 }
 
+/// Every name in `declaration_name`'s scope that the type parameter it
+/// declares binds — its own name first; a same-named type parameter of a
+/// nested method or class shadows it.
+pub(crate) fn type_parameter_uses<'tree>(
+    declaration_name: Node<'tree>,
+    bytes: &[u8],
+) -> Vec<Node<'tree>> {
+    let Some(scope) = declaration_name
+        .parent()
+        .and_then(|parameter| parameter.parent())
+        .and_then(|parameters| parameters.parent())
+    else {
+        return Vec::new();
+    };
+    let Ok(name) = declaration_name.utf8_text(bytes) else {
+        return Vec::new();
+    };
+    let mut uses = Vec::new();
+    let mut pending = vec![scope];
+    while let Some(node) = pending.pop() {
+        let binds_here = node.kind() == TYPE_IDENTIFIER
+            && node.utf8_text(bytes).ok() == Some(name)
+            && type_parameter_declaration(node, bytes)
+                .or_else(|| (node.id() == declaration_name.id()).then_some(node))
+                .is_some_and(|declared| declared.id() == declaration_name.id());
+        if binds_here {
+            uses.push(node);
+        }
+        let mut cursor = node.walk();
+        pending.extend(node.named_children(&mut cursor));
+    }
+    uses.sort_by_key(|node| node.start_byte());
+    uses
+}
+
+/// The `name` of a `@param name` tag in the doc comment of the method or
+/// constructor that declares the parameter `parameter_name`.
+pub(crate) fn javadoc_parameter_tag<'tree>(
+    parameter_name: Node<'tree>,
+    bytes: &[u8],
+) -> Option<(Node<'tree>, usize)> {
+    let parameter = parameter_name.parent()?;
+    if !matches!(parameter.kind(), FORMAL_PARAMETER | SPREAD_PARAMETER) {
+        return None;
+    }
+    let method = parameter.parent()?.parent()?;
+    if !matches!(method.kind(), METHOD_DECLARATION | CONSTRUCTOR_DECLARATION) {
+        return None;
+    }
+    let comment = method.prev_named_sibling().filter(|comment| {
+        comment.kind() == "block_comment"
+            && comment
+                .utf8_text(bytes)
+                .is_ok_and(|text| text.starts_with("/**"))
+    })?;
+    let name = parameter_name.utf8_text(bytes).ok()?;
+    let text = comment.utf8_text(bytes).ok()?;
+    let tag = format!("@param {name}");
+    let at = text.match_indices(&tag).find_map(|(at, _)| {
+        let after = text[at + tag.len()..].chars().next();
+        let ends_the_word =
+            after.is_none_or(|character| !character.is_alphanumeric() && character != '_');
+        ends_the_word.then_some(at + "@param ".len())
+    })?;
+    Some((comment, comment.start_byte() + at))
+}
+
 // ─── local bindings ──────────────────────────────────────────────────────────
 
 /// Which declaration binds a Java name at a use site.
