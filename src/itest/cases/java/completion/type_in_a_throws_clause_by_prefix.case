@@ -1,0 +1,14 @@
+//- /com/demo/WalkFailure.java
+package com.demo;
+
+public class WalkFailure extends Exception {
+}
+//- /com/demo/Dog.java
+package com.demo;
+
+public class Dog {
+    public void walk() throws Walk$0 {
+    }
+}
+//= expected
+WalkFailure

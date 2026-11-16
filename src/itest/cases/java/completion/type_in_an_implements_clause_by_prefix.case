@@ -1,0 +1,13 @@
+//- /com/demo/Barker.java
+package com.demo;
+
+public interface Barker {
+    void bark();
+}
+//- /com/demo/Dog.java
+package com.demo;
+
+public class Dog implements Bar$0 {
+}
+//= expected
+Barker

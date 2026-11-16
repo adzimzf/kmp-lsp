@@ -1,0 +1,17 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+import java.io.IOException;
+class Ma$0in {
+  synchronized void run() throws IOException, InterruptedException {
+    int count = 0;
+    do {
+      count++;
+    } while (count < 3);
+    synchronized (this) {
+      wait(1);
+    }
+    throw new IOException("stop");
+  }
+}
+//= expected
+(nothing)

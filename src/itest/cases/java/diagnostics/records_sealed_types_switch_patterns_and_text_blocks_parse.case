@@ -1,0 +1,29 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+record Point(int x, int y) {}
+
+sealed interface Shape permits Circle {}
+
+record Circle(double radius) implements Shape {}
+
+class Ma$0in {
+  String describe(Shape shape) {
+    return switch (shape) {
+      case Circle circle -> "circle";
+    };
+  }
+
+  String text() {
+    return """
+        hello
+        """;
+  }
+
+  void run() {
+    var points = new java.util.ArrayList<Point>();
+    points.forEach(point -> System.out.println(point.x()));
+  }
+}
+//= expected
+(nothing)

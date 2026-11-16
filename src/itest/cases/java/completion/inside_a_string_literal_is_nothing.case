@@ -1,0 +1,18 @@
+//- /com/demo/Circle.java
+package com.demo;
+
+public class Circle {
+    public static String parse(String html, String parser) {
+        return "";
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void run(Circle circle) {
+        String note = "circle.pa$0";
+    }
+}
+//= expected
+(nothing)

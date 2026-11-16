@@ -89,6 +89,7 @@ suites! {
         document_symbol => DocumentSymbol,
         folding_range => FoldingRange,
         workspace_symbol => WorkspaceSymbol,
+        diagnostics => Diagnostics,
     }
     kotlin {
         definition => Definition,

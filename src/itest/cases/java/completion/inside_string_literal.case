@@ -1,0 +1,14 @@
+//- /com/demo/Circle.java
+package com.demo.Circle;
+
+public class Circle {
+    public static String parse(String html, String parser) {
+        return "";
+    }
+    p$0
+}
+
+//= expected
+private
+protected
+public

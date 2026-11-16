@@ -1,0 +1,17 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+record Ma$0in(int width, int height) {
+  static final Main UNIT = new Main(1, 1);
+
+  Main {
+    if (width < 0 || height < 0) {
+      throw new IllegalArgumentException("negative");
+    }
+  }
+
+  int area() {
+    return width * height;
+  }
+}
+//= expected
+(nothing)

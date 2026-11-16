@@ -1,0 +1,20 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  int sum(int... numbers) {
+    int total = 0;
+    for (int number : numbers) {
+      total += number;
+    }
+    return total;
+  }
+
+  void run() {
+    int[][] grid = {{1, 2}, {3, 4}};
+    Object boxed = grid;
+    int first = sum(((int[][]) boxed)[0]);
+    System.out.println(first);
+  }
+}
+//= expected
+(nothing)

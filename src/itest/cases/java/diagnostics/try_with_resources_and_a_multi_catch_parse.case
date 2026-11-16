@@ -1,0 +1,18 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+import java.io.IOException;
+import java.io.InputStream;
+class Ma$0in {
+  void read(InputStream first, InputStream second) {
+    try (InputStream one = first; InputStream two = second) {
+      one.read();
+      two.read();
+    } catch (IOException | RuntimeException failure) {
+      failure.printStackTrace();
+    } finally {
+      System.out.println("done");
+    }
+  }
+}
+//= expected
+(nothing)

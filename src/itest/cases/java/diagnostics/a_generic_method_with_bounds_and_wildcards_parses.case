@@ -1,0 +1,16 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+import java.util.List;
+class Ma$0in {
+  <T extends Comparable<? super T>> T largest(List<? extends T> items) {
+    T best = items.get(0);
+    for (T item : items) {
+      if (item.compareTo(best) > 0) {
+        best = item;
+      }
+    }
+    return best;
+  }
+}
+//= expected
+(nothing)

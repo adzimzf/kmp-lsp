@@ -1,0 +1,32 @@
+//- /com/demo/Reader.java
+package com.demo;
+
+public class Reader implements AutoCloseable {
+    public String read() {
+        return "";
+    }
+
+    @Override
+    public void close() {
+    }
+}
+//- /com/demo/Writer.java
+package com.demo;
+
+public class Writer {
+    public void write(String text) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void run() {
+        try (Reader reader = new Reader()) {
+            reader.re$0
+        } catch (Exception failure) {
+        }
+    }
+}
+//= expected
+read

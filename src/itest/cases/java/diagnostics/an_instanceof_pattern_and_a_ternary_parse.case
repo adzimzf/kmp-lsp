@@ -1,0 +1,12 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  String describe(Object value) {
+    if (value instanceof String text && !text.isEmpty()) {
+      return text;
+    }
+    return value == null ? "none" : value.toString();
+  }
+}
+//= expected
+(nothing)

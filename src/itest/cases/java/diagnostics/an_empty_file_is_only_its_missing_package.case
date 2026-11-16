@@ -1,0 +1,4 @@
+//- /src/main/java/com/demo/Main.java
+$0
+//= expected
+/src/main/java/com/demo/Main.java:1:1  Missing package declaration (`com.demo`)

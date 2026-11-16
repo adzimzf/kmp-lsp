@@ -1,0 +1,12 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  int café = 1;
+  String naïve = "ok";
+
+  int read() {
+    return café;
+  }
+}
+//= expected
+(nothing)

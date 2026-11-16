@@ -1,0 +1,7 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  String broken() { return "unterminated; }
+}
+//= expected
+/src/main/java/com/demo/Main.java:2:1  unexpected `class Main {`

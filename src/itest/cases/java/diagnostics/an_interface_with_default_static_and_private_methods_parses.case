@@ -1,0 +1,19 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+interface Ma$0in {
+  int size();
+
+  default boolean isEmpty() {
+    return check(size());
+  }
+
+  static Main empty() {
+    return () -> 0;
+  }
+
+  private static boolean check(int size) {
+    return size == 0;
+  }
+}
+//= expected
+(nothing)

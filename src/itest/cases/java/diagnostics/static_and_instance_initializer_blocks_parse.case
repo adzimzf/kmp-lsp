@@ -1,0 +1,16 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  static final int LIMIT;
+  int count;
+
+  static {
+    LIMIT = 10;
+  }
+
+  {
+    count = 1;
+  }
+}
+//= expected
+(nothing)

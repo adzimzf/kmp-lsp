@@ -1,0 +1,9 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void first() { int x = 1 }
+  void second() { int y = 2 }
+}
+//= expected
+/src/main/java/com/demo/Main.java:3:27  missing `;`
+/src/main/java/com/demo/Main.java:4:28  missing `;`
