@@ -25,6 +25,13 @@ pub(crate) fn format_symbol_hover(info: &ResolvedSymbol, uri_path: &str) -> Stri
     let lang = lang_str(uri_path);
     let sig = info.signature.as_str();
 
+    let java_line;
+    let sig = if lang == "java" && !sig.is_empty() {
+        java_line = java_declaration_line(sig, info.kind);
+        java_line.as_str()
+    } else {
+        sig
+    };
     let code_block = if sig.is_empty() {
         // Signature unavailable — fall back to keyword + known symbol name.
         format!(
@@ -91,5 +98,209 @@ pub(crate) fn format_contextual_hover(
     match type_detail {
         Some(td) if !td.is_empty() => format!("{sig_block}\n\n---\n\n{td}"),
         _ => sig_block,
+    }
+}
+
+/// Java modifiers jdtls leaves out of a hover's declaration line.
+const JAVA_MODIFIERS: &[&str] = &[
+    "public",
+    "protected",
+    "private",
+    "static",
+    "final",
+    "abstract",
+    "default",
+    "synchronized",
+    "native",
+    "transient",
+    "volatile",
+    "strictfp",
+    "sealed",
+    "non-sealed",
+];
+
+/// Keywords that open a Java type declaration.
+const JAVA_TYPE_KEYWORDS: &[&str] = &["class", "interface", "enum", "record", "@interface"];
+
+/// A Java declaration's source text as jdtls writes it in a hover: no
+/// annotations, modifiers, body or trailing `;`/`,`; a type as its name and
+/// type parameters (`Box<T>`, not `class Box<T> extends …`); an enum
+/// constant as its name; a field's initializer only for a constant
+/// (`final`), whose value it is.
+pub(crate) fn java_declaration_line(
+    signature: &str,
+    kind: tower_lsp::lsp_types::SymbolKind,
+) -> String {
+    let collapsed = signature.split_whitespace().collect::<Vec<_>>().join(" ");
+    let without_body = match collapsed.find('{') {
+        Some(brace) => collapsed[..brace].to_owned(),
+        None => collapsed,
+    };
+    let trimmed = without_body
+        .trim_end_matches(|character: char| {
+            matches!(character, ';' | ',') || character.is_whitespace()
+        })
+        .to_owned();
+    let (is_final, rest) = without_java_modifiers(&trimmed);
+    if kind == tower_lsp::lsp_types::SymbolKind::ENUM_MEMBER {
+        return identifier_at_start(rest).to_owned();
+    }
+    let type_keyword = JAVA_TYPE_KEYWORDS.iter().find(|keyword| {
+        rest.strip_prefix(**keyword)
+            .is_some_and(|after| after.starts_with(' '))
+    });
+    if let Some(keyword) = type_keyword {
+        let after_keyword = rest[keyword.len()..].trim_start();
+        return type_name_with_parameters(after_keyword).to_owned();
+    }
+    let is_field = matches!(
+        kind,
+        tower_lsp::lsp_types::SymbolKind::FIELD
+            | tower_lsp::lsp_types::SymbolKind::CONSTANT
+            | tower_lsp::lsp_types::SymbolKind::PROPERTY
+            | tower_lsp::lsp_types::SymbolKind::VARIABLE
+    );
+    if is_field && !is_final {
+        if let Some(equals) = rest.find(" =") {
+            return rest[..equals].to_owned();
+        }
+    }
+    rest.to_owned()
+}
+
+/// `line` without its leading annotations and modifiers, and whether one of
+/// them was `final`.
+fn without_java_modifiers(line: &str) -> (bool, &str) {
+    let mut rest = line.trim_start();
+    let mut is_final = false;
+    loop {
+        if let Some(annotation) = rest.strip_prefix('@') {
+            if annotation.starts_with("interface ") {
+                return (is_final, rest);
+            }
+            let name_end = annotation
+                .find(|character: char| {
+                    !(character.is_alphanumeric() || matches!(character, '_' | '.'))
+                })
+                .unwrap_or(annotation.len());
+            let mut after = &annotation[name_end..];
+            if after.starts_with('(') {
+                after = after.get(balanced_end(after, '(', ')')..).unwrap_or("");
+            }
+            rest = after.trim_start();
+            continue;
+        }
+        let word = rest.split(' ').next().unwrap_or("");
+        if JAVA_MODIFIERS.contains(&word) && rest.len() > word.len() {
+            is_final |= word == "final";
+            rest = rest[word.len()..].trim_start();
+            continue;
+        }
+        return (is_final, rest);
+    }
+}
+
+/// The byte just past the bracket closing the one `text` starts with.
+fn balanced_end(text: &str, open: char, close: char) -> usize {
+    let mut depth = 0usize;
+    for (index, character) in text.char_indices() {
+        if character == open {
+            depth += 1;
+        } else if character == close {
+            depth = depth.saturating_sub(1);
+            if depth == 0 {
+                return index + character.len_utf8();
+            }
+        }
+    }
+    text.len()
+}
+
+fn identifier_at_start(text: &str) -> &str {
+    let end = text
+        .find(|character: char| !(character.is_alphanumeric() || matches!(character, '_' | '$')))
+        .unwrap_or(text.len());
+    &text[..end]
+}
+
+/// `Box<T>` of `Box<T> extends Base<T>`.
+fn type_name_with_parameters(text: &str) -> &str {
+    let name = identifier_at_start(text);
+    let after = &text[name.len()..];
+    if after.starts_with('<') {
+        return &text[..name.len() + balanced_end(after, '<', '>')];
+    }
+    name
+}
+
+#[cfg(test)]
+mod java_declaration_line_tests {
+    use super::java_declaration_line;
+    use tower_lsp::lsp_types::SymbolKind;
+
+    #[test]
+    fn a_type_is_its_name_and_type_parameters() {
+        assert_eq!(
+            java_declaration_line(
+                "public class Box<T extends A<B>> extends C {",
+                SymbolKind::CLASS
+            ),
+            "Box<T extends A<B>>"
+        );
+        assert_eq!(
+            java_declaration_line("interface Inner", SymbolKind::INTERFACE),
+            "Inner"
+        );
+        assert_eq!(
+            java_declaration_line("@Deprecated record R(int value) {", SymbolKind::STRUCT),
+            "R"
+        );
+    }
+
+    #[test]
+    fn a_member_loses_its_modifiers_and_semicolon() {
+        assert_eq!(
+            java_declaration_line("static void foo2(String s, String s2)", SymbolKind::METHOD),
+            "void foo2(String s, String s2)"
+        );
+        assert_eq!(
+            java_declaration_line("double area();", SymbolKind::METHOD),
+            "double area()"
+        );
+        assert_eq!(
+            java_declaration_line("@Override public String label() {", SymbolKind::METHOD),
+            "String label()"
+        );
+        assert_eq!(
+            java_declaration_line("private double radius = 1.0;", SymbolKind::FIELD),
+            "double radius"
+        );
+    }
+
+    #[test]
+    fn a_constant_keeps_its_value() {
+        assert_eq!(
+            java_declaration_line("static final int LIMIT = 10;", SymbolKind::CONSTANT),
+            "int LIMIT = 10"
+        );
+        assert_eq!(
+            java_declaration_line(
+                "public static final String NAME = \"demo\";",
+                SymbolKind::FIELD
+            ),
+            "String NAME = \"demo\""
+        );
+    }
+
+    #[test]
+    fn an_enum_constant_is_its_name() {
+        assert_eq!(
+            java_declaration_line("METRE,", SymbolKind::ENUM_MEMBER),
+            "METRE"
+        );
+        assert_eq!(
+            java_declaration_line("FOOT(0.3048),", SymbolKind::ENUM_MEMBER),
+            "FOOT"
+        );
     }
 }

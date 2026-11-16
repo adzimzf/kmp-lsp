@@ -29,6 +29,9 @@ pub(crate) fn compute_hover<W: WorkspaceRead>(
     uri: &Url,
     position: Position,
 ) -> Option<Hover> {
+    if let Some(hover) = java_local_hover(workspace, uri, position) {
+        return Some(hover);
+    }
     if let Some(hover) = java_resolved_hover(workspace, uri, position) {
         return Some(hover);
     }
@@ -42,6 +45,19 @@ pub(crate) fn compute_hover<W: WorkspaceRead>(
         return Some(hover);
     }
     regular_symbol_hover(workspace, ctx, uri, position).or_else(|| jar_loading_hint(workspace))
+}
+
+/// Hover for a Java local or parameter, as jdtls shows one: its type and
+/// name, and the method it belongs to.
+fn java_local_hover<W: WorkspaceRead>(
+    workspace: &W,
+    uri: &Url,
+    position: Position,
+) -> Option<Hover> {
+    let indexer = workspace.as_indexer()?;
+    let declaration = crate::indexer::java_local_definition(indexer, uri, position)?;
+    let line = crate::indexer::java_local_hover_line(indexer, &declaration)?;
+    Some(make_markdown_hover(format!("```java\n{line}\n```")))
 }
 
 /// Hover for a Java identifier the CST resolves on its own — a member of a
@@ -59,10 +75,16 @@ fn java_resolved_hover<W: WorkspaceRead>(
         return None;
     }
     let symbol = crate::indexer::classify_cursor(indexer, uri, position)?;
-    let crate::indexer::NavigationSource::CstResolved(definitions) =
-        crate::indexer::resolve_identity(&symbol, indexer, uri)
-    else {
-        return None;
+    // A by-name answer is trusted for the type after `new`: overload
+    // narrowing below turns it into the constructor the arguments call.
+    let definitions = match crate::indexer::resolve_identity(&symbol, indexer, uri) {
+        crate::indexer::NavigationSource::CstResolved(definitions) => definitions,
+        crate::indexer::NavigationSource::NameScan(definitions)
+            if crate::indexer::is_java_created_type_at(indexer, uri, position) =>
+        {
+            definitions
+        }
+        crate::indexer::NavigationSource::NameScan(_) => return None,
     };
     let locations = crate::indexer::narrow_java_overloads(indexer, uri, position, definitions.0);
     let location = pick_unambiguous_location(call_shape_ctx(workspace, uri, position), locations)?;
@@ -449,7 +471,7 @@ pub(crate) async fn java_type_parameter_hover(
         })
         .and_then(|owner| owner.child_by_field_name("name"))
         .and_then(|name| name.utf8_text(&doc.bytes).ok());
-    let mut markdown = format!("```java\n<{text}>\n```");
+    let mut markdown = format!("```java\n{text}\n```");
     if let Some(owner) = owner {
         markdown.push_str(&format!("\n\n*type parameter of `{owner}`*"));
     }

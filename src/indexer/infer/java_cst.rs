@@ -426,6 +426,101 @@ pub(crate) fn enclosing_java_class_names(node: Node<'_>, bytes: &[u8]) -> Vec<St
     names
 }
 
+/// A Java local or parameter as jdtls shows it in a hover: its written
+/// type and name, then the method it belongs to with that method's
+/// parameter types — `int total - com.demo.Main.sum(int, int)`. `None` when
+/// `name_node` isn't one whose type is written (`var`, a lambda's inferred
+/// parameter).
+pub(crate) fn java_local_hover_line(name_node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let type_text = local_written_type(name_node, bytes)?;
+    let name = name_node.utf8_text(bytes).ok()?;
+    let declaration = format!("{type_text} {name}");
+    let Some(method) = std::iter::successors(name_node.parent(), |node| node.parent())
+        .find(|node| matches!(node.kind(), METHOD_DECLARATION | CONSTRUCTOR_DECLARATION))
+    else {
+        return Some(declaration);
+    };
+    let method_name = method.child_by_field_name("name")?.utf8_text(bytes).ok()?;
+    let parameter_types: Vec<String> = method
+        .child_by_field_name("parameters")
+        .map(|parameters| {
+            parameters
+                .named_children(&mut parameters.walk())
+                .filter_map(|parameter| parameter_type_text(parameter, bytes))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut owner: Vec<String> = enclosing_java_class_names(method, bytes);
+    owner.reverse();
+    if let Some(package) = java_package_name(name_node, bytes) {
+        owner.insert(0, package);
+    }
+    owner.push(method_name.to_owned());
+    Some(format!(
+        "{declaration} - {}({})",
+        owner.join("."),
+        parameter_types.join(", ")
+    ))
+}
+
+/// The written type of the local or parameter whose name is `name_node`.
+fn local_written_type(name_node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let parent = name_node.parent()?;
+    let type_text = match parent.kind() {
+        FORMAL_PARAMETER | CATCH_FORMAL_PARAMETER | ENHANCED_FOR | RESOURCE => {
+            parameter_type_text(parent, bytes)?
+        }
+        VARIABLE_DECLARATOR => {
+            let declaration = parent.parent()?;
+            match declaration.kind() {
+                SPREAD_PARAMETER => parameter_type_text(declaration, bytes)?,
+                LOCAL_VARIABLE_DECLARATION => {
+                    compact(declaration.child_by_field_name("type")?, bytes)?
+                }
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+    (type_text != "var").then_some(type_text)
+}
+
+/// The type a parameter is declared with, as source text with its spacing
+/// normalized; a varargs parameter's ends in `...`.
+fn parameter_type_text(parameter: Node<'_>, bytes: &[u8]) -> Option<String> {
+    if let Some(type_node) = parameter.child_by_field_name("type") {
+        return compact(type_node, bytes);
+    }
+    let type_node = parameter
+        .named_children(&mut parameter.walk())
+        .find(|child| !matches!(child.kind(), "modifiers" | VARIABLE_DECLARATOR | IDENTIFIER))?;
+    let type_text = compact(type_node, bytes)?;
+    if parameter.kind() == SPREAD_PARAMETER {
+        return Some(format!("{type_text}..."));
+    }
+    Some(type_text)
+}
+
+fn compact(node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let text = node.utf8_text(bytes).ok()?;
+    Some(text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+/// The package the file containing `node` declares.
+fn java_package_name(node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let mut root = node;
+    while let Some(parent) = root.parent() {
+        root = parent;
+    }
+    let declaration = root
+        .named_children(&mut root.walk())
+        .find(|child| child.kind() == "package_declaration")?;
+    let name = declaration
+        .named_children(&mut declaration.walk())
+        .find(|child| matches!(child.kind(), "scoped_identifier" | IDENTIFIER))?;
+    compact(name, bytes)
+}
+
 // ─── local bindings ──────────────────────────────────────────────────────────
 
 /// Which declaration binds a Java name at a use site.

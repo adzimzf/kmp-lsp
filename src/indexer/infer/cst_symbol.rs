@@ -886,6 +886,28 @@ pub(crate) fn java_type_parameter_definition(
     node_to_location(uri, declared, text)
 }
 
+/// Whether the cursor is on the type a Java `new` creates (`Circle` of
+/// `new Circle(2.0)`).
+pub(crate) fn is_java_created_type_at(indexer: &Indexer, uri: &Url, position: Position) -> bool {
+    if !super::java_cst::is_java_file(uri) {
+        return false;
+    }
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return false;
+    };
+    super::cst_lambda::cursor_node_at(&doc, position.into())
+        .and_then(super::java_cst::object_creation_of_type_name)
+        .is_some()
+}
+
+/// The hover line of the Java local or parameter declared at `declaration`
+/// (see [`super::java_cst::java_local_hover_line`]).
+pub(crate) fn java_local_hover_line(indexer: &Indexer, declaration: &Location) -> Option<String> {
+    let doc = indexer.live_doc_or_parse(&declaration.uri)?;
+    let name_node = super::cst_lambda::cursor_node_at(&doc, declaration.range.start.into())?;
+    super::java_cst::java_local_hover_line(name_node, &doc.bytes)
+}
+
 /// What kind of name the identifier under a position in a Java file is,
 /// for the requests that treat them differently (rename refuses some).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
