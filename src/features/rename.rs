@@ -17,7 +17,8 @@ use crate::features::java_references::JavaRename;
 use crate::features::references::verified_references_for;
 use crate::features::text_utils::is_keyword_for_file;
 use crate::indexer::{
-    classify_cursor, local_scope_occurrences, resolve_identity, Indexer, NavigationSource,
+    classify_cursor, local_scope_occurrences, resolve_identity, Indexer, JavaNameSite,
+    NavigationSource,
 };
 
 pub(crate) async fn prepare_rename_impl(
@@ -33,11 +34,47 @@ pub(crate) async fn prepare_rename_impl(
     if is_keyword_for_file(&word, uri.path()) {
         return Ok(None);
     }
+    if !java_name_is_renamable(indexer, uri, range.start).await {
+        return Ok(None);
+    }
 
     Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
         range,
         placeholder: word,
     }))
+}
+
+/// Whether a Java name may be renamed, as jdtls has it: not a package or
+/// import name, and not a type declared outside the workspace (`Exception`
+/// of the JDK). Every other name, and a name in another language, may.
+async fn java_name_is_renamable(indexer: &Indexer, uri: &Url, position: Position) -> bool {
+    match crate::indexer::java_name_site(indexer, uri, position) {
+        Some(JavaNameSite::PackageOrImport) => false,
+        Some(JavaNameSite::TypeReference) => declared_in_workspace(indexer, uri, position).await,
+        Some(JavaNameSite::Other) | None => true,
+    }
+}
+
+/// Whether go-to-definition from `position` finds a declaration in a
+/// workspace source file.
+async fn declared_in_workspace(indexer: &Indexer, uri: &Url, position: Position) -> bool {
+    let Some(context) = crate::backend::cursor::CursorContext::build(indexer, uri, position) else {
+        return false;
+    };
+    let declarations =
+        crate::features::definition::find_definition(&context, indexer, uri, position).await;
+    let locations = match declarations {
+        Some(GotoDefinitionResponse::Scalar(location)) => vec![location],
+        Some(GotoDefinitionResponse::Array(locations)) => locations,
+        Some(GotoDefinitionResponse::Link(links)) => links
+            .into_iter()
+            .map(|link| Location::new(link.target_uri, link.target_selection_range))
+            .collect(),
+        None => Vec::new(),
+    };
+    locations
+        .iter()
+        .any(|location| location.uri.scheme() == "file" && !indexer.is_library_uri(&location.uri))
 }
 
 fn workspace_edit_from_locations(locations: &[Location], new_name: &str) -> WorkspaceEdit {

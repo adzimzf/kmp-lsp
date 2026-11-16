@@ -151,20 +151,25 @@ struct WorkspaceSymbolQuery {
     raw: String,
     qualifier: Option<String>,
     name: String,
+    /// The name as typed, before lowercasing: its capitals mark camel-case
+    /// parts.
+    typed_name: String,
 }
 
 impl WorkspaceSymbolQuery {
     fn new(query: String) -> Self {
         let raw = query.to_lowercase();
-        if let Some(dot) = raw.rfind('.') {
+        if let Some(dot) = query.rfind('.') {
             return Self {
                 qualifier: Some(raw[..dot].to_owned()),
                 name: raw[dot + 1..].to_owned(),
+                typed_name: query[dot + 1..].to_owned(),
                 raw,
             };
         }
         Self {
             name: raw.clone(),
+            typed_name: query,
             raw,
             qualifier: None,
         }
@@ -176,16 +181,83 @@ impl WorkspaceSymbolQuery {
         }
         // `self.name` and `self.raw` are pre-lowercased; use allocation-free helpers.
         use crate::features::text_utils::contains_ignore_ascii_case;
+        let name_matches = name_matches(&self.typed_name, &symbol.name);
         if let Some(qualifier) = self.qualifier.as_deref() {
-            return contains_ignore_ascii_case(&symbol.name, &self.name)
-                && contains_ignore_ascii_case(&symbol.detail, qualifier);
+            return name_matches && contains_ignore_ascii_case(&symbol.detail, qualifier);
         }
-        contains_ignore_ascii_case(&symbol.name, &self.raw)
+        name_matches
     }
 
     fn allows_rg_fallback(&self) -> bool {
         !self.raw.is_empty() && self.qualifier.is_none()
     }
+}
+
+/// Whether `name` is one a workspace-symbol `query` asks for, as jdtls
+/// matches them: a query in lower case is a prefix of the name, ignoring
+/// case (`circle` finds `CircleTest`, not `SemiCircleTest`); a query with
+/// capitals is also read as camel-case parts, each the start of one of the
+/// name's parts in a row (`CT` finds `CircleTest`). The parts start at the
+/// name's first one, or at any of its parts when the query's first part is
+/// more than an initial (`CirTe` finds `SemiCircleTest`; `CT` does not). A single part is
+/// only ever a prefix.
+fn name_matches(query: &str, name: &str) -> bool {
+    let is_prefix = name
+        .get(..query.len())
+        .is_some_and(|start| start.eq_ignore_ascii_case(query));
+    if is_prefix {
+        return true;
+    }
+    let has_capital = query
+        .chars()
+        .any(|character| character.is_ascii_uppercase());
+    let query_parts = camel_case_parts(query);
+    if !has_capital || query_parts.len() < 2 {
+        return false;
+    }
+    let name_parts = camel_case_parts(name);
+    let first_part_is_an_initial = query_parts.first().is_some_and(|part| part.len() == 1);
+    let last_start = if first_part_is_an_initial {
+        0
+    } else {
+        name_parts.len().saturating_sub(1)
+    };
+    (0..=last_start).any(|start| parts_match_from(&query_parts, &name_parts, start))
+}
+
+/// Whether each of `query_parts` starts the name part at the same distance
+/// from `start`.
+fn parts_match_from(query_parts: &[String], name_parts: &[String], start: usize) -> bool {
+    let Some(name_parts) = name_parts.get(start..) else {
+        return false;
+    };
+    if query_parts.len() > name_parts.len() {
+        return false;
+    }
+    query_parts
+        .iter()
+        .zip(name_parts)
+        .all(|(query_part, name_part)| name_part.starts_with(query_part.as_str()))
+}
+
+/// `SemiCircleTest` as `Semi`, `Circle`, `Test`: a part starts at each
+/// capital, digit run or `_`-separated word.
+fn camel_case_parts(name: &str) -> Vec<String> {
+    let mut parts: Vec<String> = Vec::new();
+    for character in name.chars() {
+        if character == '_' {
+            parts.push(String::new());
+            continue;
+        }
+        let starts_part = character.is_ascii_uppercase() || parts.is_empty();
+        if starts_part {
+            parts.push(character.to_string());
+        } else if let Some(last) = parts.last_mut() {
+            last.push(character);
+        }
+    }
+    parts.retain(|part| !part.is_empty());
+    parts
 }
 
 // ─── LSP conversion helpers ──────────────────────────────────────────────────

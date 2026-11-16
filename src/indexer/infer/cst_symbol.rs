@@ -886,6 +886,51 @@ pub(crate) fn java_type_parameter_definition(
     node_to_location(uri, declared, text)
 }
 
+/// What kind of name the identifier under a position in a Java file is,
+/// for the requests that treat them differently (rename refuses some).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JavaNameSite {
+    /// A part of a `package` or `import` declaration's name.
+    PackageOrImport,
+    /// A type written where it is used: `Exception` of `extends Exception`,
+    /// or a segment of `java.lang.Exception`.
+    TypeReference,
+    /// Anything else: a declaration's own name, a member, a local.
+    Other,
+}
+
+/// The [`JavaNameSite`] of the identifier under `position`, or `None` when
+/// the file isn't Java or no name is there.
+pub(crate) fn java_name_site(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<JavaNameSite> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let name_node = super::cst_lambda::cursor_node_at(&doc, cursor)?;
+    let mut ancestor = Some(name_node);
+    while let Some(node) = ancestor {
+        if matches!(node.kind(), "package_declaration" | "import_declaration") {
+            return Some(JavaNameSite::PackageOrImport);
+        }
+        ancestor = node.parent();
+    }
+    let declares_a_type_parameter = name_node
+        .parent()
+        .is_some_and(|parent| parent.kind() == "type_parameter");
+    if name_node.kind() == "type_identifier" && !declares_a_type_parameter {
+        return Some(JavaNameSite::TypeReference);
+    }
+    Some(JavaNameSite::Other)
+}
+
 /// The declaration of the Java local variable or parameter that the
 /// identifier under `position` reads, or `None` when it reads a member (or
 /// isn't Java). Scoped like javac: a field of the same name is shadowed.
