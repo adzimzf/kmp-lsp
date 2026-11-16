@@ -1,0 +1,14 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  long hex = 0xCAFE_BABEL;
+  int binary = 0b1010_1010;
+  int octal = 0777;
+  double scientific = 1.5e-3;
+  float single = 2.5f;
+  char tab = '\t';
+  char quote = '\'';
+  String escaped = "a \"quoted\" \\ backslash";
+}
+//= expected
+(nothing)

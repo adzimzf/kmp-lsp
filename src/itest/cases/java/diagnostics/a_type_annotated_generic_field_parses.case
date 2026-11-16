@@ -1,0 +1,14 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+import java.util.Map;
+import java.util.List;
+class Ma$0in {
+  Map<String, List<Map<Integer, String>>> nested;
+
+  void run() {
+    List<? super Integer> sink = null;
+    System.out.println(sink);
+  }
+}
+//= expected
+(nothing)

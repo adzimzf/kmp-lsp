@@ -1,0 +1,40 @@
+//- /com/demo/Animal.java
+package com.demo;
+
+public class Animal {
+    public void breathe() {
+    }
+}
+//- /com/demo/Pet.java
+package com.demo;
+
+public class Pet extends Animal {
+    public void feed() {
+    }
+}
+//- /com/demo/Dog.java
+package com.demo;
+
+public class Dog extends Pet {
+    public void bark() {
+    }
+}
+//- /com/demo/Wolf.java
+package com.demo;
+
+public class Wolf {
+    public void breathe() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+public class Main {
+    void run(Dog dog) {
+        dog.$0
+    }
+}
+//= expected
+bark
+breathe
+feed

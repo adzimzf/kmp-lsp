@@ -1,0 +1,9 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+import java.util.List;
+
+class Ma$0in {
+  List<String> names;
+}
+//= expected
+(nothing)

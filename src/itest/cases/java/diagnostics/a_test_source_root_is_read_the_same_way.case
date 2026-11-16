@@ -1,0 +1,5 @@
+//- /src/test/java/com/demo/MainTest.java
+class MainT$0est {
+}
+//= expected
+/src/test/java/com/demo/MainTest.java:1:1  Missing package declaration (`com.demo`)

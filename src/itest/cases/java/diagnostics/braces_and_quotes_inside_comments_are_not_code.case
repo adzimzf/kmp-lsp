@@ -1,0 +1,12 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+/**
+ * A class with { an unbalanced brace and a " quote in its javadoc.
+ */
+class Ma$0in {
+  // another } here and a lone "
+  /* and a block comment with { " */
+  void run() {}
+}
+//= expected
+(nothing)

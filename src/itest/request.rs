@@ -32,6 +32,9 @@ pub(super) enum Kind {
     FoldingRange,
     /// The query is the identifier under the cursor.
     WorkspaceSymbol,
+    /// Every diagnostic of the cursor's file, pulled; the cursor itself is
+    /// not used.
+    Diagnostics,
 }
 
 impl Kind {
@@ -50,6 +53,7 @@ impl Kind {
             Self::DocumentSymbol => "textDocument/documentSymbol",
             Self::FoldingRange => "textDocument/foldingRange",
             Self::WorkspaceSymbol => "workspace/symbol",
+            Self::Diagnostics => "textDocument/diagnostic",
         }
     }
 
@@ -58,7 +62,9 @@ impl Kind {
         let document = json!({"uri": session.uri(&cursor.path)});
         let position = json!({"line": cursor.line, "character": cursor.character});
         match self {
-            Self::DocumentSymbol | Self::FoldingRange => json!({"textDocument": document}),
+            Self::DocumentSymbol | Self::FoldingRange | Self::Diagnostics => {
+                json!({"textDocument": document})
+            }
             Self::WorkspaceSymbol => json!({"query": fixture.word_at_cursor()}),
             Self::References => json!({
                 "textDocument": document,
@@ -119,6 +125,7 @@ impl Kind {
             Self::DocumentSymbol => document_symbols(&answer),
             Self::FoldingRange => folded_lines(&answer),
             Self::WorkspaceSymbol => view.workspace_types(&answer),
+            Self::Diagnostics => view.reported(&fixture.cursor.path, &answer),
         };
         if lines.is_empty() {
             lines.push(NOTHING.to_owned());
@@ -192,6 +199,34 @@ impl View<'_> {
             Some(Place::new(self.session.display(uri), range))
         });
         self.in_source_order(places.collect())
+    }
+
+    /// `/path:line:column  message` of each diagnostic of the file at
+    /// `path`, in source order. The severity is left out: which check is a
+    /// warning and which a hint differs by server, what it reports where
+    /// does not.
+    fn reported(&self, path: &str, answer: &Value) -> Vec<String> {
+        let items = answer.get("items").unwrap_or(answer);
+        let mut reported: Vec<(Place, String)> = as_list(items)
+            .into_iter()
+            .filter_map(|diagnostic| {
+                let place = Place::new(format!("/{path}"), diagnostic.get("range")?);
+                Some((place, diagnostic["message"].as_str()?.to_owned()))
+            })
+            .collect();
+        reported.sort();
+        reported.dedup();
+        reported
+            .iter()
+            .map(|(place, message)| {
+                format!(
+                    "{}:{}:{}  {message}",
+                    place.path,
+                    place.line + 1,
+                    place.column + 1
+                )
+            })
+            .collect()
     }
 
     /// The ranges of `answer`, all in the file at `path`.

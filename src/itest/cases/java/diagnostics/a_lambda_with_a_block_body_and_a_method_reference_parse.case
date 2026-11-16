@@ -1,0 +1,13 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+import java.util.List;
+class Ma$0in {
+  void run(List<String> names) {
+    names.forEach(name -> {
+      System.out.println(name);
+    });
+    names.stream().map(String::trim).forEach(System.out::println);
+  }
+}
+//= expected
+(nothing)

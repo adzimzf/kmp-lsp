@@ -1,0 +1,23 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+enum Ma$0in {
+  SMALL(1),
+  LARGE(2) {
+    @Override
+    int doubled() {
+      return size * 4;
+    }
+  };
+
+  final int size;
+
+  Main(int size) {
+    this.size = size;
+  }
+
+  int doubled() {
+    return size * 2;
+  }
+}
+//= expected
+(nothing)

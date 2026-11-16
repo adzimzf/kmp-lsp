@@ -1,0 +1,5 @@
+//- /src/main/java/com/demo/data/local/Store.java
+class Sto$0re {
+}
+//= expected
+/src/main/java/com/demo/data/local/Store.java:1:1  Missing package declaration (`com.demo.data.local`)

@@ -1,0 +1,20 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  static class Nested {
+    int value;
+  }
+
+  class Inner {
+    int value;
+  }
+
+  void run() {
+    class Local {
+      int value;
+    }
+    System.out.println(new Local().value);
+  }
+}
+//= expected
+(nothing)

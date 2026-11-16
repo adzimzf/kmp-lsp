@@ -1,0 +1,8 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run() {}
+}
+}
+//= expected
+/src/main/java/com/demo/Main.java:5:1  unexpected `}`

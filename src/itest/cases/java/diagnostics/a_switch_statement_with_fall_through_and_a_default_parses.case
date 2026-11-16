@@ -1,0 +1,18 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  int weigh(int day) {
+    int weight = 0;
+    switch (day) {
+      case 1:
+      case 2:
+        weight = 1;
+        break;
+      default:
+        weight = 2;
+    }
+    return weight;
+  }
+}
+//= expected
+(nothing)

@@ -1,0 +1,19 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run(int[][] grid) {
+    outer:
+    for (int[] row : grid) {
+      for (int cell : row) {
+        if (cell < 0) {
+          continue outer;
+        }
+        if (cell == 0) {
+          break outer;
+        }
+      }
+    }
+  }
+}
+//= expected
+(nothing)

@@ -1,0 +1,11 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+import java.util.List;
+class Ma$0in {
+  @Override
+  public String toString() { return "Main"; }
+  @SafeVarargs
+  final <T> List<T> of(T... items) { return List.of(items); }
+}
+//= expected
+(nothing)

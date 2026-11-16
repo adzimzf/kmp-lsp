@@ -1,0 +1,12 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  Runnable later() {
+    return new Runnable() {
+      @Override
+      public void run() {}
+    };
+  }
+}
+//= expected
+(nothing)

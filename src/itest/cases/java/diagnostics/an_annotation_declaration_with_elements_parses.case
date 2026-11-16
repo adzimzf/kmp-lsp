@@ -1,0 +1,14 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+@Retention(RetentionPolicy.RUNTIME)
+@interface Ma$0in {
+  String name();
+
+  int order() default 0;
+
+  Class<?>[] types() default {};
+}
+//= expected
+(nothing)
