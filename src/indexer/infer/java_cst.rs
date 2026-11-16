@@ -2017,6 +2017,11 @@ pub(crate) fn lambda_target<'tree>(name_node: Node<'tree>) -> Option<LambdaTarge
     let target_type = match written_around.kind() {
         CAST_EXPRESSION => written_around.child_by_field_name("type")?,
         VARIABLE_DECLARATOR => written_around.parent()?.child_by_field_name("type")?,
+        // `return circle -> ..` targets the type the method returns.
+        "return_statement" => std::iter::successors(written_around.parent(), |node| node.parent())
+            .find(|node| matches!(node.kind(), METHOD_DECLARATION | LAMBDA_EXPRESSION))
+            .filter(|owner| owner.kind() == METHOD_DECLARATION)?
+            .child_by_field_name("type")?,
         _ => return None,
     };
     Some(LambdaTarget {
@@ -2148,6 +2153,18 @@ fn variable_declarator_type<'tree>(
             .named_child(0)
             .filter(|element| element.kind() != VARIABLE_DECLARATOR)
             .and_then(|element| type_name_node(element, bytes))
+            .map_or(JavaDeclaredType::Untyped, JavaDeclaredType::Written);
+    }
+    let is_var = declaration
+        .child_by_field_name("type")
+        .is_some_and(|type_node| type_node.utf8_text(bytes).ok() == Some(INFERRED_LOCAL_TYPE));
+    if is_var {
+        // `var circle = new Circle()` is a `Circle`.
+        return declarator
+            .child_by_field_name("value")
+            .filter(|value| value.kind() == OBJECT_CREATION)
+            .and_then(|creation| creation.child_by_field_name("type"))
+            .and_then(|created| type_name_node(created, bytes))
             .map_or(JavaDeclaredType::Untyped, JavaDeclaredType::Written);
     }
     written_type(declaration, bytes)
