@@ -1,0 +1,7 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+import java.util.List
+class Ma$0in {
+}
+//= expected
+/src/main/java/com/demo/Main.java:2:22  missing `;`

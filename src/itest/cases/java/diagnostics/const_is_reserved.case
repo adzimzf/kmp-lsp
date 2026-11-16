@@ -1,0 +1,9 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run(int x, int[] a) {
+    const int y = 1;
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:4:5  `const` is a reserved word

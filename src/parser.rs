@@ -225,32 +225,47 @@ pub(crate) fn parse_java(content: &str) -> FileData {
     })
 }
 
-/// A Java file's syntax errors, where javac would report them: an unclosed
-/// string at its quote (the file is parsed again with it closed, so the
-/// rest of the file is read as the code it is), and the error shapes
-/// `java_syntax::describe_error` knows at their javac place.
+/// A Java file's syntax errors, where javac would report them (see
+/// `java_syntax`): what javac's scanner rejects is reported and blanked out
+/// first, so the file is parsed again as the code the rest of it is.
 fn java_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
-    let errors = collect_syntax_errors(root, bytes, java_syntax::describe_error);
     let Ok(source) = std::str::from_utf8(bytes) else {
-        return errors;
+        return java_tree_errors(root, bytes);
     };
-    if errors.is_empty() {
-        return errors;
+    let scanned = java_syntax::Scanned::new(source);
+    if !scanned.is_repaired() {
+        return java_tree_errors(root, bytes);
     }
-    let repaired = java_syntax::Repaired::new(source);
-    if !repaired.has_unclosed_strings() {
-        return errors;
-    }
-    let Some(tree) = JAVA_PARSER.with(|parser| parser.borrow_mut().parse(&repaired.text, None))
+    let Some(tree) = JAVA_PARSER.with(|parser| parser.borrow_mut().parse(&scanned.text, None))
     else {
-        return errors;
+        return java_tree_errors(root, bytes);
     };
-    let repaired_errors = collect_syntax_errors(
-        tree.root_node(),
-        repaired.text.as_bytes(),
-        java_syntax::describe_error,
+    scanned.report(java_tree_errors(tree.root_node(), scanned.text.as_bytes()))
+}
+
+/// The errors of a Java tree: its error and missing nodes, and the
+/// declarations that parse but are not Java (each explains the errors
+/// inside it).
+fn java_tree_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
+    let declarations = java_syntax::declaration_errors(root, bytes);
+    let explained = |error: &SyntaxError| {
+        declarations.iter().any(|declaration| {
+            let start = error.range.start;
+            declaration.explains.start <= start && start <= declaration.explains.end
+        })
+    };
+    let mut errors: Vec<SyntaxError> =
+        collect_syntax_errors(root, bytes, java_syntax::describe_node)
+            .into_iter()
+            .filter(|error| !explained(error))
+            .collect();
+    errors.extend(
+        declarations
+            .into_iter()
+            .map(|declaration| declaration.error),
     );
-    repaired.report(repaired_errors)
+    errors.sort_by_key(|error| (error.range.start.line, error.range.start.character));
+    errors
 }
 
 pub(crate) fn parse_swift(content: &str) -> FileData {
@@ -1193,12 +1208,13 @@ fn extract_anonymous_companion_objects(root: Node, bytes: &[u8], data: &mut File
     }
 }
 
-/// `describe_error` words an ERROR node the language knows better than
-/// "unexpected `..`"; `None` leaves it to that generic description.
+/// `describe` words an ERROR or MISSING node the language knows better
+/// than "unexpected `..`" / "missing `..`"; `None` leaves it to that
+/// generic description.
 fn collect_syntax_errors(
     root: Node,
     bytes: &[u8],
-    describe_error: impl Fn(Node, &[u8]) -> Option<SyntaxError>,
+    describe: impl Fn(Node, &[u8]) -> Option<Vec<SyntaxError>>,
 ) -> Vec<SyntaxError> {
     if !root.has_error() {
         return Vec::new();
@@ -1213,6 +1229,18 @@ fn collect_syntax_errors(
             break;
         }
 
+        let described = (node.is_error() || node.is_missing())
+            .then(|| describe(node, bytes))
+            .flatten();
+        if let Some(described) = described {
+            for error in described {
+                let start = error.range.start;
+                if seen.insert((start.line, start.character)) {
+                    errors.push(error);
+                }
+            }
+            continue;
+        }
         if node.is_missing() {
             let range = ts_to_lsp(node.range());
             let key = (range.start.line, range.start.character);
@@ -1227,13 +1255,6 @@ fn collect_syntax_errors(
             // Skip lone `,` inside @file:[...] bracket syntax (grammar still doesn't
             // support comma-separated file annotations — see is_file_annotation_comma_error).
             if is_file_annotation_comma_error(&node, bytes) {
-                continue;
-            }
-            if let Some(described) = describe_error(node, bytes) {
-                let start = described.range.start;
-                if seen.insert((start.line, start.character)) {
-                    errors.push(described);
-                }
                 continue;
             }
             let range = ts_to_lsp(node.range());

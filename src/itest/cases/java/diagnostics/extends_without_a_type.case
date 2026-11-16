@@ -1,0 +1,6 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in extends {
+}
+//= expected
+/src/main/java/com/demo/Main.java:2:20  missing type

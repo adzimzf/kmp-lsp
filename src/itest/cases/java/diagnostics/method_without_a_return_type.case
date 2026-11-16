@@ -1,0 +1,8 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  run() {
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:3:3  missing return type

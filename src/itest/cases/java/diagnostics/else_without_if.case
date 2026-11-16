@@ -1,0 +1,10 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run(int x, int[] a) {
+    else {
+    }
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:4:5  `else` without `if`
