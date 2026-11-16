@@ -405,12 +405,12 @@ mod java {
             .await
             .expect("signature help");
         let labels: Vec<&str> = help.signatures.iter().map(|s| s.label.as_str()).collect();
-        assert_eq!(labels, ["add(E e)", "add(int index, E element)"]);
+        assert_eq!(labels, ["add(String e)", "add(int index, String element)"]);
         assert_eq!(help.active_signature, Some(0));
 
         let second_argument = Position::new(3, 16);
         let site = java_call_site(&idx, &uri, second_argument).expect("a call site");
-        assert_eq!(site.argument, 1);
+        assert_eq!(site.argument, Some(1));
         let help = java_signature_help(&idx, &uri, site)
             .await
             .expect("signature help");
@@ -418,12 +418,12 @@ mod java {
         assert_eq!(help.active_parameter, Some(1));
         let parameters = help.signatures[1].parameters.clone().unwrap();
         assert!(
-            matches!(&parameters[1].label, ParameterLabel::Simple(label) if label == "E element")
+            matches!(&parameters[1].label, ParameterLabel::Simple(label) if label == "String element")
         );
     }
 
-    /// Outside a call's parentheses there is no Java call site; inside a
-    /// nested call, the innermost call is the one helped.
+    /// On a call's method name the call is helped with no argument active;
+    /// inside a nested call, the innermost call is the one helped.
     #[test]
     fn the_call_site_is_the_innermost_call_around_the_cursor() {
         let idx = Indexer::new();
@@ -431,12 +431,13 @@ mod java {
         let uri = index(&idx, "Use.java", src);
         let line = src.lines().nth(1).unwrap();
         let column = |needle: &str| line.find(needle).unwrap() as u32;
-        assert!(java_call_site(&idx, &uri, Position::new(1, column("outer"))).is_none());
+        let on_the_name = java_call_site(&idx, &uri, Position::new(1, column("outer"))).unwrap();
+        assert_eq!(on_the_name.argument, None);
         let inner = java_call_site(&idx, &uri, Position::new(1, column("1)"))).unwrap();
         assert_eq!(inner.callee, Position::new(1, column("inner")));
         let outer = java_call_site(&idx, &uri, Position::new(1, column("2)"))).unwrap();
         assert_eq!(outer.callee, Position::new(1, column("outer")));
-        assert_eq!(outer.argument, 1);
+        assert_eq!(outer.argument, Some(1));
     }
 
     #[test]

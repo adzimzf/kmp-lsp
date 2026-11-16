@@ -530,16 +530,6 @@ pub(crate) enum JumpTarget<'tree> {
     Statement(Node<'tree>),
 }
 
-impl<'tree> JumpTarget<'tree> {
-    /// The statement left or continued, its label included.
-    pub(crate) fn statement(&self) -> Option<Node<'tree>> {
-        match self {
-            Self::Label(label) => label.parent(),
-            Self::Statement(statement) => Some(*statement),
-        }
-    }
-}
-
 /// The [`JumpTarget`] of the `break`/`continue` whose keyword or label is
 /// `node`, or `None` when `node` is neither.
 pub(crate) fn jump_target<'tree>(node: Node<'tree>, bytes: &[u8]) -> Option<JumpTarget<'tree>> {
