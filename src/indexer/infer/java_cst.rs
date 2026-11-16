@@ -1210,6 +1210,49 @@ pub(crate) fn java_expr_type(
     uri: &Url,
 ) -> Option<(String, Url)> {
     expr_type_at_depth(node, bytes, deps, uri, 0)
+        .map(|(type_text, type_uri)| (without_wildcard(&type_text), type_uri))
+}
+
+/// The type a wildcard type argument stands for where a value of it is
+/// used: `Dog` of `? extends Dog`; `Object` of `?` and `? super Dog`.
+fn without_wildcard(type_text: &str) -> String {
+    let trimmed = type_text.trim();
+    let Some(rest) = trimmed.strip_prefix('?') else {
+        return trimmed.to_owned();
+    };
+    match rest.trim_start().strip_prefix("extends") {
+        Some(bound) => bound.trim().to_owned(),
+        None => JAVA_OBJECT.to_owned(),
+    }
+}
+
+/// `type_text` with a type variable an enclosing class or method of `node`
+/// declares replaced by its bound (`Animal` for `T` of `<T extends
+/// Animal>`), or `Object` when unbounded: the members a value of it has.
+fn erased_type_variable(node: Node<'_>, type_text: String, bytes: &[u8]) -> String {
+    let is_simple_name = type_text
+        .chars()
+        .all(|character| character.is_alphanumeric() || character == '_');
+    if !is_simple_name {
+        return type_text;
+    }
+    let mut scope = node.parent();
+    while let Some(current) = scope {
+        let declares_type_parameters = is_class_like_declaration(current.kind())
+            || matches!(current.kind(), METHOD_DECLARATION | CONSTRUCTOR_DECLARATION);
+        if declares_type_parameters {
+            if let Some(declared) = declared_type_parameter(current, &type_text, bytes) {
+                let parameter = declared.parent();
+                let bound = parameter
+                    .and_then(|parameter| parameter.first_child_of_kind("type_bound"))
+                    .and_then(|bound| bound.named_child(0))
+                    .and_then(|bound| bound.utf8_text_owned(bytes));
+                return bound.unwrap_or_else(|| JAVA_OBJECT.to_owned());
+            }
+        }
+        scope = current.parent();
+    }
+    type_text
 }
 
 fn expr_type_at_depth(
@@ -1254,6 +1297,11 @@ fn expr_type_at_depth(
         PARENTHESIZED_EXPRESSION => {
             expr_type_at_depth(node.named_child(0)?, bytes, deps, uri, depth + 1)
         }
+        // `first ? left : right` is what its branches are.
+        "ternary_expression" => ["consequence", "alternative"].iter().find_map(|branch| {
+            let branch = node.child_by_field_name(branch)?;
+            expr_type_at_depth(branch, bytes, deps, uri, depth + 1)
+        }),
         METHOD_INVOCATION => method_invocation_type(node, bytes, deps, uri, depth),
         FIELD_ACCESS => {
             let receiver = node.child_by_field_name("object")?;
@@ -1262,14 +1310,56 @@ fn expr_type_at_depth(
             if field_node.kind() == THIS {
                 return here(receiver.utf8_text_owned(bytes)?);
             }
-            let field = field_node.utf8_text_owned(bytes)?;
-            let (receiver_type, receiver_uri) =
-                expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
-            let lookup_name = receiver_type.dotted_ident_prefix();
-            resolve_field_type_on(&lookup_name, &receiver_type, &field, deps, &receiver_uri)
+            member_access_type(node, receiver, field_node, bytes, deps, uri, depth)
+        }
+        // `Color.RED` or `com.demo.Units` before the line is finished: the
+        // parser reads a dotted name followed by nothing as a type.
+        SCOPED_TYPE_IDENTIFIER => {
+            let mut cursor = node.walk();
+            let segments: Vec<Node<'_>> = node.named_children(&mut cursor).collect();
+            let [receiver, field_node] = segments.as_slice() else {
+                return None;
+            };
+            member_access_type(node, *receiver, *field_node, bytes, deps, uri, depth)
         }
         _ => None,
     }
+}
+
+/// The type of `receiver.field` (`access`): the field's type on the
+/// receiver's, or — when the receiver has no type, as `com.demo` of
+/// `com.demo.Units` — the type the whole dotted name spells.
+fn member_access_type(
+    access: Node<'_>,
+    receiver: Node<'_>,
+    field_node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
+    let field = field_node.utf8_text_owned(bytes)?;
+    let Some((receiver_type, receiver_uri)) =
+        expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)
+    else {
+        let qualified = access.utf8_text_owned(bytes)?;
+        let names_a_type = field.starts_with_uppercase()
+            && is_dotted_name(&qualified)
+            && deps.names_type_in_scope(&qualified, uri);
+        return names_a_type.then(|| (qualified, uri.clone()));
+    };
+    let lookup_name = receiver_type.dotted_ident_prefix();
+    resolve_field_type_on(&lookup_name, &receiver_type, &field, deps, &receiver_uri)
+}
+
+/// Whether `text` is a dotted name and nothing else: `com.demo.Units`.
+fn is_dotted_name(text: &str) -> bool {
+    text.split('.').all(|segment| {
+        !segment.is_empty()
+            && segment
+                .chars()
+                .all(|character| character.is_alphanumeric() || matches!(character, '_' | '$'))
+    })
 }
 
 /// `ArrayList<>` → `ArrayList`: a diamond carries no type arguments.
@@ -1285,7 +1375,9 @@ fn identifier_type(
     depth: usize,
 ) -> Option<(String, Url)> {
     match java_local_binding_at(node, bytes) {
-        JavaLocalBinding::Typed(type_text) => Some((type_text, uri.clone())),
+        JavaLocalBinding::Typed(type_text) => {
+            Some((erased_type_variable(node, type_text, bytes), uri.clone()))
+        }
         JavaLocalBinding::Inferred(initializer) => {
             expr_type_at_depth(initializer, bytes, deps, uri, depth + 1)
         }
@@ -1388,10 +1480,81 @@ fn method_invocation_type(
             deps,
             &receiver_uri,
         ) {
-            return Some(found);
+            return Some(inferred_from_arguments(
+                node,
+                &lookup_name,
+                &method,
+                found,
+                bytes,
+                deps,
+                uri,
+                depth,
+            ));
         }
     }
-    resolve_method_return_type_on(&lookup_name, &receiver_type, &method, deps, &receiver_uri)
+    // A method's own type variable (`<T> T unwrap(T)`) is no type of the
+    // receiver's to substitute: read the declared return type as it is.
+    let found =
+        resolve_method_return_type_on(&lookup_name, &receiver_type, &method, deps, &receiver_uri)
+            .or_else(|| {
+            deps.find_method_return_type_with_origin_for_type(&lookup_name, &method, &receiver_uri)
+        })?;
+    Some(inferred_from_arguments(
+        node,
+        &lookup_name,
+        &method,
+        found,
+        bytes,
+        deps,
+        uri,
+        depth,
+    ))
+}
+
+/// A generic method's result where its return type is one of its own type
+/// variables: the type of the argument passed for a parameter of that type
+/// (`Dog` for `Boxes.unwrap(dog)` of `<T> T unwrap(T value)`). Any other
+/// result is `found` as it is.
+#[allow(clippy::too_many_arguments)]
+fn inferred_from_arguments(
+    invocation: Node<'_>,
+    class_name: &str,
+    method: &str,
+    found: (String, Url),
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> (String, Url) {
+    let (type_text, _) = &found;
+    let is_type_variable = type_text
+        .chars()
+        .all(|character| character.is_alphanumeric() || character == '_')
+        && !deps.has_type_definition(type_text);
+    if !is_type_variable {
+        return found;
+    }
+    let Some(params) =
+        deps.find_method_params_text(class_name, method, uri, java_call_shape(invocation))
+    else {
+        return found;
+    };
+    let Some(arguments) = invocation.child_by_field_name("arguments") else {
+        return found;
+    };
+    let mut cursor = arguments.walk();
+    let argument_nodes: Vec<Node<'_>> = arguments.named_children(&mut cursor).collect();
+    let parameter_index =
+        crate::indexer::split_params_at_depth_zero(params.trim_matches(|c| c == '(' || c == ')'))
+            .iter()
+            .position(|parameter| {
+                let words: Vec<&str> = parameter.split_whitespace().collect();
+                words.len() >= 2 && words[words.len() - 2] == type_text
+            });
+    parameter_index
+        .and_then(|index| argument_nodes.get(index))
+        .and_then(|argument| expr_type_at_depth(*argument, bytes, deps, uri, depth + 1))
+        .unwrap_or(found)
 }
 
 /// `foo()` with no receiver: a method of an enclosing class — declared in

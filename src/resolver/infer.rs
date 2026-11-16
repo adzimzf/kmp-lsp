@@ -1125,6 +1125,20 @@ fn find_field_type_in_class_impl(
             }
         }
     }
+    // An enum constant (`Color.RED`) is a value of its enum.
+    for location in &candidates {
+        let Some(file_data) = ensure_file_data(indexer, &location.uri) else {
+            continue;
+        };
+        let is_a_constant_of_it = file_data.symbols.iter().any(|symbol| {
+            symbol.name == field_name
+                && symbol.kind == SymbolKind::ENUM_MEMBER
+                && symbol.container.as_deref() == Some(class_base)
+        });
+        if is_a_constant_of_it {
+            return Some((class_name.to_owned(), location.uri.clone()));
+        }
+    }
     None
 }
 
