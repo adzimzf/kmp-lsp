@@ -618,10 +618,10 @@ pub(crate) fn index_library_sources(indexer: &Indexer) -> usize {
         .workspace_root
         .get()
         .and_then(|root| crate::dependency_sync::load_manifest(&root));
-    let mut jars = crate::indexer::jar::sources_jars_to_mount(
-        crate::indexer::jar::scan_gradle_sources_jars(None),
-        project.as_ref(),
-    );
+    let scanned = crate::indexer::jar::gradle_cache_jars(project.as_ref(), || {
+        crate::indexer::jar::scan_gradle_sources_jars(None)
+    });
+    let mut jars = crate::indexer::jar::sources_jars_to_mount(scanned, project.as_ref());
     if let Some(jdk) = crate::indexer::jdk_sources::jdk_sources_for(indexer) {
         jars.push(jdk.archive);
     }
@@ -690,8 +690,14 @@ fn index_compiled_jars_phase(
         std::time::Duration::from_millis(100),
     )?;
 
+    let workspace_root = indexer.workspace_root.get();
+    let project = workspace_root
+        .as_deref()
+        .and_then(crate::dependency_sync::load_manifest);
     let gradle_paths = if workspace_uses_gradle_cache {
-        crate::indexer::jar::scan_gradle_jars(None)
+        crate::indexer::jar::gradle_cache_jars(project.as_ref(), || {
+            crate::indexer::jar::scan_gradle_jars(None)
+        })
     } else {
         log::info!(
             "jar: no Kotlin/Java sources in the workspace — skipping the \
@@ -701,7 +707,7 @@ fn index_compiled_jars_phase(
     };
     let gradle_count = gradle_paths.len();
     let mut paths = project_compiled_jar_paths(
-        indexer.workspace_root.get(),
+        workspace_root,
         workspace_uses_gradle_cache,
         gradle_paths,
         init_jar_specs,
@@ -796,12 +802,15 @@ pub(crate) fn project_compiled_jar_paths(
     let Some(root) = workspace_root else {
         return paths;
     };
-    if workspace_uses_gradle_cache {
-        if let Some(manifest) = crate::dependency_sync::load_manifest(&root) {
-            for jar in manifest.jars() {
-                if !paths.contains(&jar) {
-                    paths.push(jar);
-                }
+    // NOT gated on `workspace_uses_gradle_cache`: these are the jars the
+    // project's own build tool resolved, and a Maven project's live in
+    // `~/.m2`, not the Gradle cache. Gating them on that verdict made a
+    // workspace whose index hadn't seen a JVM source yet lose its own
+    // dependencies, not just the shared cache's noise.
+    if let Some(manifest) = crate::dependency_sync::load_manifest(&root) {
+        for jar in manifest.jars() {
+            if !paths.contains(&jar) {
+                paths.push(jar);
             }
         }
     }

@@ -1162,6 +1162,83 @@ fn index_sources_jars_end_to_end_with_real_jar() {
     );
 }
 
+/// A manifest as a dependency sync writes one, for `build_tool` and one
+/// resolved jar that exists on disk.
+fn project_manifest(
+    build_tool: &str,
+    jar: &std::path::Path,
+) -> crate::dependency_sync::DependencyManifest {
+    crate::dependency_sync::DependencyManifest {
+        format: crate::dependency_sync::MANIFEST_FORMAT,
+        fingerprint: "f".to_owned(),
+        build_tool: build_tool.to_owned(),
+        dependencies: vec![crate::dependency_sync::ResolvedDependency {
+            coordinate: "com.acme:greeter:1.0.0".to_owned(),
+            jar: Some(jar.to_path_buf()),
+            sources: None,
+            decompiled: None,
+        }],
+        incomplete_sources: false,
+        saved_at: 0,
+    }
+}
+
+/// The regression this scoping exists for: `jsoup` is a Maven project whose
+/// 21 resolved dependencies contain no YAML parser, yet completing `Par`
+/// offered `org.yaml.snakeyaml.parser.Parser` and 85 other `Parser`s,
+/// because the shared Gradle cache's 643 jars — every artifact of every
+/// project ever built on the machine — were indexed alongside it.
+#[test]
+fn a_fully_resolved_maven_classpath_skips_the_shared_gradle_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let jar = dir.path().join("greeter-1.0.0.jar");
+    std::fs::write(&jar, b"jar").unwrap();
+    let manifest = project_manifest(crate::dependency_sync::BuildTool::MAVEN_NAME, &jar);
+
+    let mut scanned = false;
+    let jars = crate::indexer::jar::gradle_cache_jars(Some(&manifest), || {
+        scanned = true;
+        vec![std::path::PathBuf::from("/gradle/caches/snakeyaml-2.0.jar")]
+    });
+
+    assert!(jars.is_empty(), "the cache's jars must not be mounted");
+    assert!(
+        !scanned,
+        "the crawl itself must be skipped — walking ~760 jars to throw the \
+         result away is the startup cost this scoping removes"
+    );
+}
+
+#[test]
+fn a_gradle_project_still_gets_the_shared_cache() {
+    let dir = tempfile::tempdir().unwrap();
+    let jar = dir.path().join("greeter-1.0.0.jar");
+    std::fs::write(&jar, b"jar").unwrap();
+    let manifest = project_manifest(crate::dependency_sync::BuildTool::GRADLE_NAME, &jar);
+    let cached = std::path::PathBuf::from("/gradle/caches/buildSrc-plugin-1.0.jar");
+
+    let jars = crate::indexer::jar::gradle_cache_jars(Some(&manifest), || vec![cached.clone()]);
+
+    assert_eq!(
+        jars,
+        vec![cached],
+        "a Gradle manifest misses buildSrc/plugin classpaths, so dropping \
+         the cache crawl there would lose real libraries"
+    );
+}
+
+#[test]
+fn without_a_sync_the_shared_cache_is_the_only_classpath() {
+    let cached = std::path::PathBuf::from("/gradle/caches/greeter-1.0.0.jar");
+    let jars = crate::indexer::jar::gradle_cache_jars(None, || vec![cached.clone()]);
+    assert_eq!(
+        jars,
+        vec![cached],
+        "before the first sync (or for Bazel/plain-source projects) the cache \
+         is all we have"
+    );
+}
+
 // ============================================================================
 // Mocked-entry unit tests (fast — no I/O, no zip crate)
 // ============================================================================

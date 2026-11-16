@@ -32,7 +32,7 @@ use sha2::{Digest, Sha256};
 
 /// Bumped whenever the way dependencies are resolved changes, so manifests
 /// written by an older kmp-lsp are re-synced instead of trusted.
-const MANIFEST_FORMAT: u32 = 2;
+pub(crate) const MANIFEST_FORMAT: u32 = 2;
 
 /// A build-tool run that takes longer than this is killed; the sync counts
 /// as failed and is retried only after the build files change.
@@ -89,6 +89,9 @@ pub(crate) enum BuildTool {
 }
 
 impl BuildTool {
+    pub(crate) const GRADLE_NAME: &'static str = "gradle";
+    pub(crate) const MAVEN_NAME: &'static str = "maven";
+
     /// Detect from the files at `root`: Gradle settings/build scripts, else a
     /// `pom.xml`. `None` for anything else (Bazel, plain sources, …).
     pub(crate) fn detect(root: &Path) -> Option<Self> {
@@ -132,8 +135,8 @@ impl BuildTool {
 
     fn name(&self) -> &'static str {
         match self {
-            BuildTool::Gradle { .. } => "gradle",
-            BuildTool::Maven { .. } => "maven",
+            BuildTool::Gradle { .. } => Self::GRADLE_NAME,
+            BuildTool::Maven { .. } => Self::MAVEN_NAME,
         }
     }
 }
@@ -439,6 +442,22 @@ impl DependencyManifest {
                 Some((group, artifact, sources))
             })
             .collect()
+    }
+
+    /// Whether this manifest lists every library the project compiles
+    /// against, so the shared Gradle cache — which holds every artifact of
+    /// every project ever built on this machine — can only add same-named
+    /// decoys from unrelated builds.
+    ///
+    /// True for Maven: `dependency:list` reports each reactor module's
+    /// fully-resolved classpath, transitive dependencies included, and a
+    /// Maven project's artifacts live in `~/.m2` anyway. False for Gradle,
+    /// whose `buildSrc` and plugin classpaths resolve outside the init
+    /// script's per-project compile/runtime classpaths, and false when the
+    /// resolved jars are gone from disk — replacing the cache scan with an
+    /// empty list would index no libraries at all.
+    pub(crate) fn covers_whole_classpath(&self) -> bool {
+        self.build_tool == BuildTool::MAVEN_NAME && !self.jars().is_empty()
     }
 
     /// Sources jars that still exist on disk.

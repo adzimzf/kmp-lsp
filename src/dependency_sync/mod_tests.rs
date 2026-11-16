@@ -482,6 +482,56 @@ fn decompiled_files_are_packaged_as_a_sources_jar() {
     assert_eq!(names, vec!["com/acme/Greeter.java", "com/acme/Util.kt"]);
 }
 
+/// `covers_whole_classpath` decides whether the shared Gradle cache is
+/// crawled at all, so each arm it can take is pinned here.
+fn manifest_of(build_tool: &str, jar: Option<PathBuf>) -> DependencyManifest {
+    DependencyManifest {
+        format: MANIFEST_FORMAT,
+        fingerprint: "f".to_owned(),
+        build_tool: build_tool.to_owned(),
+        dependencies: vec![ResolvedDependency {
+            coordinate: "com.acme:greeter:1.0.0".to_owned(),
+            jar,
+            sources: None,
+            decompiled: None,
+        }],
+        incomplete_sources: false,
+        saved_at: 0,
+    }
+}
+
+#[test]
+fn a_maven_manifest_covers_the_whole_classpath() {
+    let dir = tempfile::tempdir().unwrap();
+    let jar = dir.path().join("greeter-1.0.0.jar");
+    std::fs::write(&jar, b"jar").unwrap();
+
+    assert!(
+        manifest_of(BuildTool::MAVEN_NAME, Some(jar.clone())).covers_whole_classpath(),
+        "`dependency:list` reports each module's fully-resolved classpath — \
+         the shared Gradle cache can only add decoys on top of it"
+    );
+    assert!(
+        !manifest_of(BuildTool::GRADLE_NAME, Some(jar)).covers_whole_classpath(),
+        "a Gradle manifest misses buildSrc/plugin classpaths, which the \
+         cache crawl covers"
+    );
+}
+
+#[test]
+fn a_manifest_whose_jars_are_gone_covers_nothing() {
+    let manifest = manifest_of(
+        BuildTool::MAVEN_NAME,
+        Some(PathBuf::from("/nonexistent/greeter-1.0.0.jar")),
+    );
+    assert!(
+        !manifest.covers_whole_classpath(),
+        "replacing the cache crawl with a list of deleted jars would index \
+         no libraries at all"
+    );
+    assert!(!manifest_of(BuildTool::MAVEN_NAME, None).covers_whole_classpath());
+}
+
 #[test]
 fn maven_reactor_retry_runs_the_compile_phase_without_compiling() {
     use maven::SiblingModules;
