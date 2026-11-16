@@ -110,13 +110,16 @@ async fn target_references(
 ) -> Option<Vec<Location>> {
     let file_path = uri.to_file_path().ok();
     let (workspace_root, source_roots, matcher) = index.rg_scope_for_path(file_path.as_deref());
-    let workspace_root = workspace_root?;
     let name = target.symbol.name.clone();
-    let occurrences = tokio::task::spawn_blocking(move || {
-        crate::rg::rg_word_occurrences(&name, &workspace_root, &source_roots)
-    })
-    .await
-    .ok()?;
+    let on_disk = match workspace_root {
+        Some(workspace_root) => tokio::task::spawn_blocking(move || {
+            crate::rg::rg_word_occurrences(&name, &workspace_root, &source_roots)
+        })
+        .await
+        .ok()?,
+        None => Vec::new(),
+    };
+    let occurrences = with_open_documents(index, &target.symbol.name, on_disk);
     let occurrences = match matcher.as_deref() {
         Some(matcher) => {
             let kept = matcher.filter_locs(
@@ -367,6 +370,34 @@ fn override_family(index: &Indexer, target: &JavaTarget) -> Result<Vec<Location>
 
 /// Whole-word occurrences of `name` in `lines`, as `rg` reports them: the
 /// location's column a byte offset, with the line's text.
+/// `on_disk` with every open document's occurrences of `name` read from its
+/// buffer instead: an open file's unsaved text is what the editor shows, and
+/// a file that only exists in the editor is never on disk at all.
+fn with_open_documents(
+    index: &Indexer,
+    name: &str,
+    on_disk: Vec<(Location, String)>,
+) -> Vec<(Location, String)> {
+    let mut open = Vec::new();
+    for entry in index.live_lines.iter() {
+        let Ok(uri) = Url::parse(entry.key()) else {
+            continue;
+        };
+        if index.is_library_uri(&uri) {
+            continue;
+        }
+        open.push((uri, entry.value().clone()));
+    }
+    let mut found: Vec<(Location, String)> = on_disk
+        .into_iter()
+        .filter(|(location, _)| !open.iter().any(|(uri, _)| *uri == location.uri))
+        .collect();
+    for (uri, lines) in &open {
+        found.extend(word_occurrences(uri, lines, name));
+    }
+    found
+}
+
 fn word_occurrences(uri: &Url, lines: &[String], name: &str) -> Vec<(Location, String)> {
     let is_word =
         |character: char| character.is_alphanumeric() || character == '_' || character == '$';

@@ -278,11 +278,50 @@ impl View<'_> {
         self.in_source_order(places)
     }
 
+    /// One place per identifier an edit renames. An edit may span several
+    /// names with the text between them kept (jdtls answers a Java rename
+    /// with one such edit per file), so the names it changes are found by
+    /// comparing the text it replaces with the text it writes.
     fn edit_places(&self, uri: &str, edits: &Value) -> Vec<Place> {
-        as_list(edits)
-            .into_iter()
-            .filter_map(|edit| Some(Place::new(self.session.display(uri), edit.get("range")?)))
-            .collect()
+        let path = self.session.display(uri);
+        let mut places = Vec::new();
+        for edit in as_list(edits) {
+            let Some(range) = edit.get("range") else {
+                continue;
+            };
+            let start = Place::new(path.clone(), range);
+            let end = Place::new(path.clone(), &json!({"start": range["end"]}));
+            let replaced = self.fixture_text(&path, &start, &end);
+            let written = edit["newText"].as_str().unwrap_or_default();
+            match replaced.and_then(|replaced| renamed_words(&start, &replaced, written)) {
+                Some(renamed) if !renamed.is_empty() => places.extend(renamed),
+                _ => places.push(start),
+            }
+        }
+        places
+    }
+
+    /// The fixture's text of `path` from `start` to `end`, lines joined by `\n`.
+    fn fixture_text(&self, path: &str, start: &Place, end: &Place) -> Option<String> {
+        let mut text = String::new();
+        for line_index in start.line..=end.line {
+            let line: Vec<char> = self.fixture.line(path, line_index)?.chars().collect();
+            let from = if line_index == start.line {
+                start.column
+            } else {
+                0
+            };
+            let to = if line_index == end.line {
+                end.column
+            } else {
+                line.len()
+            };
+            if line_index != start.line {
+                text.push('\n');
+            }
+            text.extend(line.get(from..to)?);
+        }
+        Some(text)
     }
 
     /// `name  /path:line` of the types found in the fixture's files, sorted.
@@ -322,6 +361,65 @@ impl Place {
             column: start["character"].as_u64().unwrap_or(0) as usize,
         }
     }
+}
+
+/// Where the identifiers that differ between `replaced` (the text an edit
+/// starting at `start` replaces) and `written` start. `None` when the two
+/// are not the same text with some identifiers swapped.
+fn renamed_words(start: &Place, replaced: &str, written: &str) -> Option<Vec<Place>> {
+    let replaced = words(replaced);
+    let written = words(written);
+    if replaced.len() != written.len() {
+        return None;
+    }
+    let mut places = Vec::new();
+    for ((token, line, column), (new_token, _, _)) in replaced.iter().zip(&written) {
+        if token == new_token {
+            continue;
+        }
+        let is_identifier = token.chars().all(is_word_character);
+        if !is_identifier {
+            return None;
+        }
+        let column = if *line == 0 {
+            start.column + column
+        } else {
+            *column
+        };
+        places.push(Place {
+            path: start.path.clone(),
+            line: start.line + line,
+            column,
+        });
+    }
+    Some(places)
+}
+
+fn is_word_character(character: char) -> bool {
+    character.is_alphanumeric() || character == '_' || character == '$'
+}
+
+/// `text` cut into runs of word characters and single other characters,
+/// each with the line and column (in characters) it starts at.
+fn words(text: &str) -> Vec<(String, usize, usize)> {
+    let mut tokens: Vec<(String, usize, usize)> = Vec::new();
+    let (mut line, mut column) = (0, 0);
+    let mut in_word = false;
+    for character in text.chars() {
+        let is_word = is_word_character(character);
+        match tokens.last_mut() {
+            Some((token, _, _)) if is_word && in_word => token.push(character),
+            _ => tokens.push((character.to_string(), line, column)),
+        }
+        in_word = is_word;
+        if character == '\n' {
+            line += 1;
+            column = 0;
+        } else {
+            column += 1;
+        }
+    }
+    tokens
 }
 
 /// `scaled` of `scaled(double, int) : Circle`.
