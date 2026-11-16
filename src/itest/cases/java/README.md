@@ -45,7 +45,9 @@ Notes on how an answer is written down:
   and number their checks differently. kmp-lsp reports a Java file's syntax
   errors and its missing `package` declaration, so a case either names those
   or expects `(nothing)`; a `(nothing)` case is the regression guard that a
-  shape the parser handles stays unflagged. The missing-package check reads
+  shape the parser handles stays unflagged. Where a case expects an error,
+  it is at the line and column javac reports it (the wording is kmp-lsp's);
+  every `(nothing)` case compiles with javac. The missing-package check reads
   the package out of the path, so those cases live under `/src/main/java/`.
 - **signature_help** cases that end in a syntax error do so on purpose, as
   the jdtls tests do: help is asked while a call is being typed.
@@ -353,7 +355,8 @@ jdtls: none — kmp-lsp's own checks (syntax errors, missing `package`).
 | `a_body_that_is_never_closed` | the unclosed brace of a method body |
 | `a_brace_with_nothing_left_to_close` | a `}` past the end of the class |
 | `a_call_whose_parenthesis_is_never_closed` | the `)` a call never gets |
-| `a_class_declared_without_a_body` | a class header with no `{}` after it |
+| `a_class_declared_without_a_body` | the `{` missing after the class header (javac: at the end of `Main`) |
+| `a_class_with_modifiers_declared_without_a_body` | the same, after `public final class Main` |
 | `a_deeply_nested_package_is_named_in_full` | `com.demo.data.local`, every segment of the path |
 | `a_directory_that_is_not_an_identifier_names_no_package` | nothing: `my-demo` is no package segment |
 | `a_field_without_its_semicolon` | the missing `;` of a field |
@@ -371,7 +374,8 @@ jdtls: none — kmp-lsp's own checks (syntax errors, missing `package`).
 | `a_package_declared_after_an_import_is_still_a_package` | nothing |
 | `a_record_with_a_compact_constructor_and_a_static_member_parses` | nothing |
 | `a_statement_without_its_semicolon` | the missing `;` |
-| `a_string_that_is_never_closed` | what the parser makes of the rest of the file |
+| `a_string_that_is_never_closed` | the unclosed string at its quote, then the class it leaves unclosed (as javac) |
+| `a_string_never_closed_inside_a_call` | the unclosed string only: the call it is in is its fault |
 | `a_switch_statement_with_fall_through_and_a_default_parses` | nothing |
 | `a_test_source_root_is_read_the_same_way` | the missing package of a `src/test/java` file |
 | `a_text_block_containing_quotes_and_braces_parses` | nothing: `"""` is not an unclosed string |
@@ -382,7 +386,8 @@ jdtls: none — kmp-lsp's own checks (syntax errors, missing `package`).
 | `an_arrow_switch_with_a_yielding_block_parses` | nothing: `yield` from a block arm |
 | `an_empty_file_is_only_its_missing_package` | the missing `package`, nothing else |
 | `an_enum_with_a_constructor_fields_and_a_constant_body_parses` | nothing: a constant with a body of its own |
-| `an_initializer_with_no_expression` | `int x = ;` |
+| `an_initializer_with_no_expression` | `int x = ;`: the expression missing at the `;` (as javac) |
+| `a_field_initializer_with_no_expression` | the same in a field |
 | `an_instanceof_pattern_and_a_ternary_parse` | nothing |
 | `an_interface_with_default_static_and_private_methods_parses` | nothing |
 | `annotated_members_parse` | nothing: `@Override`/`@SafeVarargs` are not errors |

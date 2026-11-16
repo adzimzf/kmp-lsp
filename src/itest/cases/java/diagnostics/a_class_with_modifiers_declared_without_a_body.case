@@ -1,0 +1,5 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+public final class Ma$0in
+//= expected
+/src/main/java/com/demo/Main.java:2:24  missing `{`

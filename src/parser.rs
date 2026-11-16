@@ -144,7 +144,7 @@ fn with_parsed_tree(
 
 fn finalize_parse(data: &mut FileData, root: Node, bytes: &[u8]) {
     data.declared_names = extract_declared_names(&data.lines);
-    data.syntax_errors = collect_syntax_errors(root, bytes);
+    data.syntax_errors = collect_syntax_errors(root, bytes, |_, _| None);
 }
 
 pub(crate) fn parse_kotlin(content: &str) -> FileData {
@@ -220,8 +220,37 @@ pub(crate) fn parse_java(content: &str) -> FileData {
             }
         }
         assign_containers(&mut data.symbols);
-        finalize_parse(data, root, bytes);
+        data.declared_names = extract_declared_names(&data.lines);
+        data.syntax_errors = java_syntax_errors(root, bytes);
     })
+}
+
+/// A Java file's syntax errors, where javac would report them: an unclosed
+/// string at its quote (the file is parsed again with it closed, so the
+/// rest of the file is read as the code it is), and the error shapes
+/// `java_syntax::describe_error` knows at their javac place.
+fn java_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
+    let errors = collect_syntax_errors(root, bytes, java_syntax::describe_error);
+    let Ok(source) = std::str::from_utf8(bytes) else {
+        return errors;
+    };
+    if errors.is_empty() {
+        return errors;
+    }
+    let repaired = java_syntax::Repaired::new(source);
+    if !repaired.has_unclosed_strings() {
+        return errors;
+    }
+    let Some(tree) = JAVA_PARSER.with(|parser| parser.borrow_mut().parse(&repaired.text, None))
+    else {
+        return errors;
+    };
+    let repaired_errors = collect_syntax_errors(
+        tree.root_node(),
+        repaired.text.as_bytes(),
+        java_syntax::describe_error,
+    );
+    repaired.report(repaired_errors)
 }
 
 pub(crate) fn parse_swift(content: &str) -> FileData {
@@ -1164,7 +1193,13 @@ fn extract_anonymous_companion_objects(root: Node, bytes: &[u8], data: &mut File
     }
 }
 
-fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
+/// `describe_error` words an ERROR node the language knows better than
+/// "unexpected `..`"; `None` leaves it to that generic description.
+fn collect_syntax_errors(
+    root: Node,
+    bytes: &[u8],
+    describe_error: impl Fn(Node, &[u8]) -> Option<SyntaxError>,
+) -> Vec<SyntaxError> {
     if !root.has_error() {
         return Vec::new();
     }
@@ -1192,6 +1227,13 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
             // Skip lone `,` inside @file:[...] bracket syntax (grammar still doesn't
             // support comma-separated file annotations — see is_file_annotation_comma_error).
             if is_file_annotation_comma_error(&node, bytes) {
+                continue;
+            }
+            if let Some(described) = describe_error(node, bytes) {
+                let start = described.range.start;
+                if seen.insert((start.line, start.character)) {
+                    errors.push(described);
+                }
                 continue;
             }
             let range = ts_to_lsp(node.range());
@@ -2916,6 +2958,8 @@ fn java_params_and_counts(node: &Node, bytes: &[u8]) -> (String, (u8, u8)) {
     }
     (String::new(), (0, 0))
 }
+
+mod java_syntax;
 
 #[cfg(test)]
 #[path = "parser_tests.rs"]
