@@ -578,16 +578,7 @@ fn with_open_documents(
     name: &str,
     on_disk: Vec<(Location, String)>,
 ) -> Vec<(Location, String)> {
-    let mut open = Vec::new();
-    for entry in index.live_lines.iter() {
-        let Ok(uri) = Url::parse(entry.key()) else {
-            continue;
-        };
-        if index.is_library_uri(&uri) {
-            continue;
-        }
-        open.push((uri, entry.value().clone()));
-    }
+    let open = index.open_documents();
     let mut found: Vec<(Location, String)> = on_disk
         .into_iter()
         .filter(|(location, _)| !open.iter().any(|(uri, _)| *uri == location.uri))

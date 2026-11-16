@@ -59,15 +59,15 @@ fn marked_nodes<'tree>(
     if let Some(class) = implementing_class(node) {
         return implementing_methods(indexer, uri, node, class, bytes);
     }
-    if let Some(target) = super::java_cst::jump_target(node, bytes) {
-        if let super::java_cst::JumpTarget::Label(label) = target {
-            let statement = label.parent()?;
-            let closing = statement
-                .child_by_field_name("body")
-                .or_else(|| statement.named_child(1))
-                .and_then(last_token)?;
-            return Some(vec![label, closing]);
-        }
+    if let Some(super::java_cst::JumpTarget::Label(label)) =
+        super::java_cst::jump_target(node, bytes)
+    {
+        let statement = label.parent()?;
+        let closing = statement
+            .child_by_field_name("body")
+            .or_else(|| statement.named_child(1))
+            .and_then(last_token)?;
+        return Some(vec![label, closing]);
     }
     None
 }

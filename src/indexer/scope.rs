@@ -92,6 +92,19 @@ impl Indexer {
         Some((word, range))
     }
 
+    /// Every workspace document open in the editor, with its live (possibly
+    /// unsaved) lines: what a search over the workspace has to read from the
+    /// buffer rather than the disk.
+    pub(crate) fn open_documents(&self) -> Vec<(Url, Arc<Vec<String>>)> {
+        self.live_lines
+            .iter()
+            .filter_map(|entry| {
+                let uri = Url::parse(entry.key()).ok()?;
+                (!self.is_library_uri(&uri)).then(|| (uri, entry.value().clone()))
+            })
+            .collect()
+    }
+
     /// Returns a clone of the live (possibly unsaved) lines for a URI.
     pub(crate) fn lines_for(&self, uri: &Url) -> Option<Arc<Vec<String>>> {
         // Prefer live (unsaved) lines, fall back to indexed file.
