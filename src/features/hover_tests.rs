@@ -501,7 +501,7 @@ async fn a_java_type_variable_shows_its_type_parameter_and_owner() {
         .await
         .expect("a hover for the type variable");
     let text = hover_text(&hover);
-    assert!(text.contains("<V extends Comparable<V>>"), "{text}");
+    assert!(text.contains("V extends Comparable<V>"), "{text}");
     assert!(text.contains("type parameter of `Box`"), "{text}");
 }
 

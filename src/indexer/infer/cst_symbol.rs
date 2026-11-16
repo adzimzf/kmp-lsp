@@ -886,6 +886,164 @@ pub(crate) fn java_type_parameter_definition(
     node_to_location(uri, declared, text)
 }
 
+/// The record component the Java name under `position` is (see
+/// [`super::java_records::RecordComponent::at`]): every name in its record
+/// that is it, the header's first. `None` when the name is no component.
+pub(crate) fn java_record_component_occurrences(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Vec<Location>> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let node = super::cst_lambda::cursor_node_at(&doc, position.into())?;
+    let component = super::java_records::RecordComponent::at(node, &doc.bytes)?;
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    Some(
+        component
+            .occurrences(&doc.bytes)
+            .into_iter()
+            .filter_map(|occurrence| node_to_location(uri, occurrence, text))
+            .collect(),
+    )
+}
+
+/// The names the Java type parameter under `position` (declared or used)
+/// binds, its declaration first; `None` when the cursor is on none.
+pub(crate) fn java_type_parameter_occurrences(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Vec<Location>> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let name_node = super::cst_lambda::cursor_node_at(&doc, position.into())?;
+    let declared = super::java_cst::type_parameter_declaration(name_node, &doc.bytes)?;
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    Some(
+        super::java_cst::type_parameter_uses(declared, &doc.bytes)
+            .into_iter()
+            .filter_map(|node| node_to_location(uri, node, text))
+            .collect(),
+    )
+}
+
+/// The name in the `@param` tag documenting the Java parameter declared at
+/// `declaration`, when its method's doc comment has one.
+pub(crate) fn java_javadoc_parameter_tag(
+    indexer: &Indexer,
+    declaration: &Location,
+) -> Option<Location> {
+    let doc = indexer.live_doc_or_parse(&declaration.uri)?;
+    let name_node = super::cst_lambda::cursor_node_at(&doc, declaration.range.start.into())?;
+    let (_, tag_byte) = super::java_cst::javadoc_parameter_tag(name_node, &doc.bytes)?;
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    let line = text[..tag_byte].matches('\n').count();
+    let line_start = text[..tag_byte].rfind('\n').map_or(0, |at| at + 1);
+    let start = crate::features::text_utils::utf16_column(&text[line_start..tag_byte]);
+    let length = declaration.range.end.character - declaration.range.start.character;
+    Some(Location::new(
+        declaration.uri.clone(),
+        tower_lsp::lsp_types::Range::new(
+            Position::new(line as u32, start),
+            Position::new(line as u32, start + length),
+        ),
+    ))
+}
+
+/// Where the Java `break`/`continue` under `position` goes: the label it
+/// names, or the keyword of the loop or switch it leaves (as jdtls answers
+/// go-to-definition on it). `None` when the cursor isn't on one.
+pub(crate) fn java_jump_target(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Location> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let node = super::cst_lambda::cursor_node_at(&doc, position.into())?;
+    let target = super::java_cst::jump_target(node, &doc.bytes)?;
+    let target_node = match target {
+        super::java_cst::JumpTarget::Label(label) => label,
+        super::java_cst::JumpTarget::Statement(statement) => statement.child(0)?,
+    };
+    let text = std::str::from_utf8(&doc.bytes).ok()?;
+    node_to_location(uri, target_node, text)
+}
+
+/// Whether the cursor is on the type a Java `new` creates (`Circle` of
+/// `new Circle(2.0)`).
+pub(crate) fn is_java_created_type_at(indexer: &Indexer, uri: &Url, position: Position) -> bool {
+    if !super::java_cst::is_java_file(uri) {
+        return false;
+    }
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return false;
+    };
+    super::cst_lambda::cursor_node_at(&doc, position.into())
+        .and_then(super::java_cst::object_creation_of_type_name)
+        .is_some()
+}
+
+/// The hover line of the Java local or parameter declared at `declaration`
+/// (see [`super::java_cst::java_local_hover_line`]).
+pub(crate) fn java_local_hover_line(indexer: &Indexer, declaration: &Location) -> Option<String> {
+    let doc = indexer.live_doc_or_parse(&declaration.uri)?;
+    let name_node = super::cst_lambda::cursor_node_at(&doc, declaration.range.start.into())?;
+    super::java_cst::java_local_hover_line(name_node, &doc.bytes)
+}
+
+/// What kind of name the identifier under a position in a Java file is,
+/// for the requests that treat them differently (rename refuses some).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JavaNameSite {
+    /// A part of a `package` or `import` declaration's name.
+    PackageOrImport,
+    /// A type written where it is used: `Exception` of `extends Exception`,
+    /// or a segment of `java.lang.Exception`.
+    TypeReference,
+    /// Anything else: a declaration's own name, a member, a local.
+    Other,
+}
+
+/// The [`JavaNameSite`] of the identifier under `position`, or `None` when
+/// the file isn't Java or no name is there.
+pub(crate) fn java_name_site(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<JavaNameSite> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let name_node = super::cst_lambda::cursor_node_at(&doc, cursor)?;
+    let mut ancestor = Some(name_node);
+    while let Some(node) = ancestor {
+        if matches!(node.kind(), "package_declaration" | "import_declaration") {
+            return Some(JavaNameSite::PackageOrImport);
+        }
+        ancestor = node.parent();
+    }
+    let declares_a_type_parameter = name_node
+        .parent()
+        .is_some_and(|parent| parent.kind() == "type_parameter");
+    if name_node.kind() == "type_identifier" && !declares_a_type_parameter {
+        return Some(JavaNameSite::TypeReference);
+    }
+    Some(JavaNameSite::Other)
+}
+
 /// The declaration of the Java local variable or parameter that the
 /// identifier under `position` reads, or `None` when it reads a member (or
 /// isn't Java). Scoped like javac: a field of the same name is shadowed.

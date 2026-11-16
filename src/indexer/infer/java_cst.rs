@@ -426,6 +426,223 @@ pub(crate) fn enclosing_java_class_names(node: Node<'_>, bytes: &[u8]) -> Vec<St
     names
 }
 
+/// A Java local or parameter as jdtls shows it in a hover: its written
+/// type and name, then the method it belongs to with that method's
+/// parameter types — `int total - com.demo.Main.sum(int, int)`. `None` when
+/// `name_node` isn't one whose type is written (`var`, a lambda's inferred
+/// parameter).
+pub(crate) fn java_local_hover_line(name_node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let type_text = local_written_type(name_node, bytes)?;
+    let name = name_node.utf8_text(bytes).ok()?;
+    let declaration = format!("{type_text} {name}");
+    let Some(method) = std::iter::successors(name_node.parent(), |node| node.parent())
+        .find(|node| matches!(node.kind(), METHOD_DECLARATION | CONSTRUCTOR_DECLARATION))
+    else {
+        return Some(declaration);
+    };
+    let method_name = method.child_by_field_name("name")?.utf8_text(bytes).ok()?;
+    let parameter_types: Vec<String> = method
+        .child_by_field_name("parameters")
+        .map(|parameters| {
+            parameters
+                .named_children(&mut parameters.walk())
+                .filter_map(|parameter| parameter_type_text(parameter, bytes))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut owner: Vec<String> = enclosing_java_class_names(method, bytes);
+    owner.reverse();
+    if let Some(package) = java_package_name(name_node, bytes) {
+        owner.insert(0, package);
+    }
+    owner.push(method_name.to_owned());
+    Some(format!(
+        "{declaration} - {}({})",
+        owner.join("."),
+        parameter_types.join(", ")
+    ))
+}
+
+/// The written type of the local or parameter whose name is `name_node`.
+fn local_written_type(name_node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let parent = name_node.parent()?;
+    let type_text = match parent.kind() {
+        FORMAL_PARAMETER | CATCH_FORMAL_PARAMETER | ENHANCED_FOR | RESOURCE => {
+            parameter_type_text(parent, bytes)?
+        }
+        VARIABLE_DECLARATOR => {
+            let declaration = parent.parent()?;
+            match declaration.kind() {
+                SPREAD_PARAMETER => parameter_type_text(declaration, bytes)?,
+                LOCAL_VARIABLE_DECLARATION => {
+                    compact(declaration.child_by_field_name("type")?, bytes)?
+                }
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+    (type_text != "var").then_some(type_text)
+}
+
+/// The type a parameter is declared with, as source text with its spacing
+/// normalized; a varargs parameter's ends in `...`.
+fn parameter_type_text(parameter: Node<'_>, bytes: &[u8]) -> Option<String> {
+    if let Some(type_node) = parameter.child_by_field_name("type") {
+        return compact(type_node, bytes);
+    }
+    let type_node = parameter
+        .named_children(&mut parameter.walk())
+        .find(|child| !matches!(child.kind(), "modifiers" | VARIABLE_DECLARATOR | IDENTIFIER))?;
+    let type_text = compact(type_node, bytes)?;
+    if parameter.kind() == SPREAD_PARAMETER {
+        return Some(format!("{type_text}..."));
+    }
+    Some(type_text)
+}
+
+fn compact(node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let text = node.utf8_text(bytes).ok()?;
+    Some(text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+/// The package the file containing `node` declares.
+fn java_package_name(node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let mut root = node;
+    while let Some(parent) = root.parent() {
+        root = parent;
+    }
+    let declaration = root
+        .named_children(&mut root.walk())
+        .find(|child| child.kind() == "package_declaration")?;
+    let name = declaration
+        .named_children(&mut declaration.walk())
+        .find(|child| matches!(child.kind(), "scoped_identifier" | IDENTIFIER))?;
+    compact(name, bytes)
+}
+
+/// Where a Java `break` or `continue` goes.
+pub(crate) enum JumpTarget<'tree> {
+    /// `break outer;`: the label of the statement it leaves.
+    Label(Node<'tree>),
+    /// A bare `break`/`continue`: the loop (or, for `break`, the switch)
+    /// around it.
+    Statement(Node<'tree>),
+}
+
+/// The [`JumpTarget`] of the `break`/`continue` whose keyword or label is
+/// `node`, or `None` when `node` is neither.
+pub(crate) fn jump_target<'tree>(node: Node<'tree>, bytes: &[u8]) -> Option<JumpTarget<'tree>> {
+    let statement = node
+        .parent()
+        .filter(|parent| matches!(parent.kind(), "break_statement" | "continue_statement"))?;
+    let is_break = statement.kind() == "break_statement";
+    let label = statement
+        .named_children(&mut statement.walk())
+        .find(|child| child.kind() == IDENTIFIER);
+    let stops_the_search = |kind: &str| {
+        matches!(
+            kind,
+            METHOD_DECLARATION | CONSTRUCTOR_DECLARATION | LAMBDA_EXPRESSION
+        ) || is_class_like_body(kind)
+    };
+    let mut ancestor = statement.parent();
+    while let Some(current) = ancestor {
+        if stops_the_search(current.kind()) {
+            return None;
+        }
+        match &label {
+            Some(label) if current.kind() == "labeled_statement" => {
+                let declared = current.named_child(0)?;
+                let label_text = label.utf8_text(bytes).ok()?;
+                if declared.utf8_text(bytes).ok() == Some(label_text) {
+                    return Some(JumpTarget::Label(declared));
+                }
+            }
+            Some(_) => {}
+            None => {
+                let is_loop = matches!(
+                    current.kind(),
+                    "for_statement" | ENHANCED_FOR | "while_statement" | "do_statement"
+                );
+                let is_switch = matches!(current.kind(), "switch_expression" | "switch_statement");
+                if is_loop || (is_break && is_switch) {
+                    return Some(JumpTarget::Statement(current));
+                }
+            }
+        }
+        ancestor = current.parent();
+    }
+    None
+}
+
+/// Every name in `declaration_name`'s scope that the type parameter it
+/// declares binds — its own name first; a same-named type parameter of a
+/// nested method or class shadows it.
+pub(crate) fn type_parameter_uses<'tree>(
+    declaration_name: Node<'tree>,
+    bytes: &[u8],
+) -> Vec<Node<'tree>> {
+    let Some(scope) = declaration_name
+        .parent()
+        .and_then(|parameter| parameter.parent())
+        .and_then(|parameters| parameters.parent())
+    else {
+        return Vec::new();
+    };
+    let Ok(name) = declaration_name.utf8_text(bytes) else {
+        return Vec::new();
+    };
+    let mut uses = Vec::new();
+    let mut pending = vec![scope];
+    while let Some(node) = pending.pop() {
+        let binds_here = node.kind() == TYPE_IDENTIFIER
+            && node.utf8_text(bytes).ok() == Some(name)
+            && type_parameter_declaration(node, bytes)
+                .or_else(|| (node.id() == declaration_name.id()).then_some(node))
+                .is_some_and(|declared| declared.id() == declaration_name.id());
+        if binds_here {
+            uses.push(node);
+        }
+        let mut cursor = node.walk();
+        pending.extend(node.named_children(&mut cursor));
+    }
+    uses.sort_by_key(|node| node.start_byte());
+    uses
+}
+
+/// The `name` of a `@param name` tag in the doc comment of the method or
+/// constructor that declares the parameter `parameter_name`.
+pub(crate) fn javadoc_parameter_tag<'tree>(
+    parameter_name: Node<'tree>,
+    bytes: &[u8],
+) -> Option<(Node<'tree>, usize)> {
+    let parameter = parameter_name.parent()?;
+    if !matches!(parameter.kind(), FORMAL_PARAMETER | SPREAD_PARAMETER) {
+        return None;
+    }
+    let method = parameter.parent()?.parent()?;
+    if !matches!(method.kind(), METHOD_DECLARATION | CONSTRUCTOR_DECLARATION) {
+        return None;
+    }
+    let comment = method.prev_named_sibling().filter(|comment| {
+        comment.kind() == "block_comment"
+            && comment
+                .utf8_text(bytes)
+                .is_ok_and(|text| text.starts_with("/**"))
+    })?;
+    let name = parameter_name.utf8_text(bytes).ok()?;
+    let text = comment.utf8_text(bytes).ok()?;
+    let tag = format!("@param {name}");
+    let at = text.match_indices(&tag).find_map(|(at, _)| {
+        let after = text[at + tag.len()..].chars().next();
+        let ends_the_word =
+            after.is_none_or(|character| !character.is_alphanumeric() && character != '_');
+        ends_the_word.then_some(at + "@param ".len())
+    })?;
+    Some((comment, comment.start_byte() + at))
+}
+
 // ─── local bindings ──────────────────────────────────────────────────────────
 
 /// Which declaration binds a Java name at a use site.
@@ -802,8 +1019,82 @@ fn local_in_scope<'tree>(
             declared_parameter(scope.child_by_field_name("parameters")?, name, bytes)
         }
         LAMBDA_EXPRESSION => lambda_parameter(scope, name, bytes),
+        // A pattern variable (`shape instanceof Circle circle`) is in scope
+        // where its test is known to have passed: the `if`'s condition and
+        // its then-branch, a `while`'s body, the right of `&&`, and the
+        // true branch of `?:`.
+        "if_statement" => {
+            let in_else = scope
+                .child_by_field_name("alternative")
+                .is_some_and(|alternative| alternative.id() == inner.id());
+            if in_else {
+                return None;
+            }
+            pattern_binding(scope.child_by_field_name("condition")?, name, bytes)
+        }
+        "while_statement" => {
+            let in_body = scope
+                .child_by_field_name("body")
+                .is_some_and(|body| body.id() == inner.id());
+            if !in_body {
+                return None;
+            }
+            pattern_binding(scope.child_by_field_name("condition")?, name, bytes)
+        }
+        "binary_expression" => {
+            let is_and = scope
+                .child_by_field_name("operator")
+                .is_some_and(|operator| operator.kind() == "&&");
+            let in_right = scope
+                .child_by_field_name("right")
+                .is_some_and(|right| right.id() == inner.id());
+            if !(is_and && in_right) {
+                return None;
+            }
+            pattern_binding(scope.child_by_field_name("left")?, name, bytes)
+        }
+        "ternary_expression" => {
+            let in_consequence = scope
+                .child_by_field_name("consequence")
+                .is_some_and(|consequence| consequence.id() == inner.id());
+            if !in_consequence {
+                return None;
+            }
+            pattern_binding(scope.child_by_field_name("condition")?, name, bytes)
+        }
         _ => None,
     }
+}
+
+/// The pattern variable called `name` that an `instanceof` test in
+/// `condition` declares (`Circle circle` of `shape instanceof Circle
+/// circle`), not looking into lambdas or classes declared there.
+fn pattern_binding<'tree>(
+    condition: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<JavaLocal<'tree>> {
+    let mut pending = vec![condition];
+    while let Some(node) = pending.pop() {
+        if node.kind() == "instanceof_expression" {
+            let declared = node
+                .child_by_field_name("name")
+                .filter(|declared| declared.utf8_text(bytes).ok() == Some(name));
+            if let Some(declared) = declared {
+                let binding = node
+                    .child_by_field_name("right")
+                    .and_then(|type_node| type_node.utf8_text_owned(bytes))
+                    .map_or(JavaLocalBinding::Untyped, JavaLocalBinding::Typed);
+                return Some(JavaLocal::new(declared, binding));
+            }
+        }
+        if matches!(node.kind(), LAMBDA_EXPRESSION | "class_body") {
+            continue;
+        }
+        let mut cursor = node.walk();
+        pending.extend(node.named_children(&mut cursor));
+    }
+    None
 }
 
 /// The nearest local `name` declared in `block` before the use site at
@@ -986,6 +1277,49 @@ pub(crate) fn java_expr_type(
     uri: &Url,
 ) -> Option<(String, Url)> {
     expr_type_at_depth(node, bytes, deps, uri, 0)
+        .map(|(type_text, type_uri)| (without_wildcard(&type_text), type_uri))
+}
+
+/// The type a wildcard type argument stands for where a value of it is
+/// used: `Dog` of `? extends Dog`; `Object` of `?` and `? super Dog`.
+fn without_wildcard(type_text: &str) -> String {
+    let trimmed = type_text.trim();
+    let Some(rest) = trimmed.strip_prefix('?') else {
+        return trimmed.to_owned();
+    };
+    match rest.trim_start().strip_prefix("extends") {
+        Some(bound) => bound.trim().to_owned(),
+        None => JAVA_OBJECT.to_owned(),
+    }
+}
+
+/// `type_text` with a type variable an enclosing class or method of `node`
+/// declares replaced by its bound (`Animal` for `T` of `<T extends
+/// Animal>`), or `Object` when unbounded: the members a value of it has.
+fn erased_type_variable(node: Node<'_>, type_text: String, bytes: &[u8]) -> String {
+    let is_simple_name = type_text
+        .chars()
+        .all(|character| character.is_alphanumeric() || character == '_');
+    if !is_simple_name {
+        return type_text;
+    }
+    let mut scope = node.parent();
+    while let Some(current) = scope {
+        let declares_type_parameters = is_class_like_declaration(current.kind())
+            || matches!(current.kind(), METHOD_DECLARATION | CONSTRUCTOR_DECLARATION);
+        if declares_type_parameters {
+            if let Some(declared) = declared_type_parameter(current, &type_text, bytes) {
+                let parameter = declared.parent();
+                let bound = parameter
+                    .and_then(|parameter| parameter.first_child_of_kind("type_bound"))
+                    .and_then(|bound| bound.named_child(0))
+                    .and_then(|bound| bound.utf8_text_owned(bytes));
+                return bound.unwrap_or_else(|| JAVA_OBJECT.to_owned());
+            }
+        }
+        scope = current.parent();
+    }
+    type_text
 }
 
 fn expr_type_at_depth(
@@ -1030,6 +1364,11 @@ fn expr_type_at_depth(
         PARENTHESIZED_EXPRESSION => {
             expr_type_at_depth(node.named_child(0)?, bytes, deps, uri, depth + 1)
         }
+        // `first ? left : right` is what its branches are.
+        "ternary_expression" => ["consequence", "alternative"].iter().find_map(|branch| {
+            let branch = node.child_by_field_name(branch)?;
+            expr_type_at_depth(branch, bytes, deps, uri, depth + 1)
+        }),
         METHOD_INVOCATION => method_invocation_type(node, bytes, deps, uri, depth),
         FIELD_ACCESS => {
             let receiver = node.child_by_field_name("object")?;
@@ -1038,14 +1377,56 @@ fn expr_type_at_depth(
             if field_node.kind() == THIS {
                 return here(receiver.utf8_text_owned(bytes)?);
             }
-            let field = field_node.utf8_text_owned(bytes)?;
-            let (receiver_type, receiver_uri) =
-                expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)?;
-            let lookup_name = receiver_type.dotted_ident_prefix();
-            resolve_field_type_on(&lookup_name, &receiver_type, &field, deps, &receiver_uri)
+            member_access_type(node, receiver, field_node, bytes, deps, uri, depth)
+        }
+        // `Color.RED` or `com.demo.Units` before the line is finished: the
+        // parser reads a dotted name followed by nothing as a type.
+        SCOPED_TYPE_IDENTIFIER => {
+            let mut cursor = node.walk();
+            let segments: Vec<Node<'_>> = node.named_children(&mut cursor).collect();
+            let [receiver, field_node] = segments.as_slice() else {
+                return None;
+            };
+            member_access_type(node, *receiver, *field_node, bytes, deps, uri, depth)
         }
         _ => None,
     }
+}
+
+/// The type of `receiver.field` (`access`): the field's type on the
+/// receiver's, or — when the receiver has no type, as `com.demo` of
+/// `com.demo.Units` — the type the whole dotted name spells.
+fn member_access_type(
+    access: Node<'_>,
+    receiver: Node<'_>,
+    field_node: Node<'_>,
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> Option<(String, Url)> {
+    let field = field_node.utf8_text_owned(bytes)?;
+    let Some((receiver_type, receiver_uri)) =
+        expr_type_at_depth(receiver, bytes, deps, uri, depth + 1)
+    else {
+        let qualified = access.utf8_text_owned(bytes)?;
+        let names_a_type = field.starts_with_uppercase()
+            && is_dotted_name(&qualified)
+            && deps.names_type_in_scope(&qualified, uri);
+        return names_a_type.then(|| (qualified, uri.clone()));
+    };
+    let lookup_name = receiver_type.dotted_ident_prefix();
+    resolve_field_type_on(&lookup_name, &receiver_type, &field, deps, &receiver_uri)
+}
+
+/// Whether `text` is a dotted name and nothing else: `com.demo.Units`.
+fn is_dotted_name(text: &str) -> bool {
+    text.split('.').all(|segment| {
+        !segment.is_empty()
+            && segment
+                .chars()
+                .all(|character| character.is_alphanumeric() || matches!(character, '_' | '$'))
+    })
 }
 
 /// `ArrayList<>` → `ArrayList`: a diamond carries no type arguments.
@@ -1061,7 +1442,9 @@ fn identifier_type(
     depth: usize,
 ) -> Option<(String, Url)> {
     match java_local_binding_at(node, bytes) {
-        JavaLocalBinding::Typed(type_text) => Some((type_text, uri.clone())),
+        JavaLocalBinding::Typed(type_text) => {
+            Some((erased_type_variable(node, type_text, bytes), uri.clone()))
+        }
         JavaLocalBinding::Inferred(initializer) => {
             expr_type_at_depth(initializer, bytes, deps, uri, depth + 1)
         }
@@ -1164,10 +1547,81 @@ fn method_invocation_type(
             deps,
             &receiver_uri,
         ) {
-            return Some(found);
+            return Some(inferred_from_arguments(
+                node,
+                &lookup_name,
+                &method,
+                found,
+                bytes,
+                deps,
+                uri,
+                depth,
+            ));
         }
     }
-    resolve_method_return_type_on(&lookup_name, &receiver_type, &method, deps, &receiver_uri)
+    // A method's own type variable (`<T> T unwrap(T)`) is no type of the
+    // receiver's to substitute: read the declared return type as it is.
+    let found =
+        resolve_method_return_type_on(&lookup_name, &receiver_type, &method, deps, &receiver_uri)
+            .or_else(|| {
+            deps.find_method_return_type_with_origin_for_type(&lookup_name, &method, &receiver_uri)
+        })?;
+    Some(inferred_from_arguments(
+        node,
+        &lookup_name,
+        &method,
+        found,
+        bytes,
+        deps,
+        uri,
+        depth,
+    ))
+}
+
+/// A generic method's result where its return type is one of its own type
+/// variables: the type of the argument passed for a parameter of that type
+/// (`Dog` for `Boxes.unwrap(dog)` of `<T> T unwrap(T value)`). Any other
+/// result is `found` as it is.
+#[allow(clippy::too_many_arguments)]
+fn inferred_from_arguments(
+    invocation: Node<'_>,
+    class_name: &str,
+    method: &str,
+    found: (String, Url),
+    bytes: &[u8],
+    deps: &impl InferDeps,
+    uri: &Url,
+    depth: usize,
+) -> (String, Url) {
+    let (type_text, _) = &found;
+    let is_type_variable = type_text
+        .chars()
+        .all(|character| character.is_alphanumeric() || character == '_')
+        && !deps.has_type_definition(type_text);
+    if !is_type_variable {
+        return found;
+    }
+    let Some(params) =
+        deps.find_method_params_text(class_name, method, uri, java_call_shape(invocation))
+    else {
+        return found;
+    };
+    let Some(arguments) = invocation.child_by_field_name("arguments") else {
+        return found;
+    };
+    let mut cursor = arguments.walk();
+    let argument_nodes: Vec<Node<'_>> = arguments.named_children(&mut cursor).collect();
+    let parameter_index =
+        crate::indexer::split_params_at_depth_zero(params.trim_matches(|c| c == '(' || c == ')'))
+            .iter()
+            .position(|parameter| {
+                let words: Vec<&str> = parameter.split_whitespace().collect();
+                words.len() >= 2 && words[words.len() - 2] == type_text
+            });
+    parameter_index
+        .and_then(|index| argument_nodes.get(index))
+        .and_then(|argument| expr_type_at_depth(*argument, bytes, deps, uri, depth + 1))
+        .unwrap_or(found)
 }
 
 /// `foo()` with no receiver: a method of an enclosing class — declared in
@@ -1783,6 +2237,11 @@ pub(crate) fn lambda_target<'tree>(name_node: Node<'tree>) -> Option<LambdaTarge
     let target_type = match written_around.kind() {
         CAST_EXPRESSION => written_around.child_by_field_name("type")?,
         VARIABLE_DECLARATOR => written_around.parent()?.child_by_field_name("type")?,
+        // `return circle -> ..` targets the type the method returns.
+        "return_statement" => std::iter::successors(written_around.parent(), |node| node.parent())
+            .find(|node| matches!(node.kind(), METHOD_DECLARATION | LAMBDA_EXPRESSION))
+            .filter(|owner| owner.kind() == METHOD_DECLARATION)?
+            .child_by_field_name("type")?,
         _ => return None,
     };
     Some(LambdaTarget {
@@ -1914,6 +2373,18 @@ fn variable_declarator_type<'tree>(
             .named_child(0)
             .filter(|element| element.kind() != VARIABLE_DECLARATOR)
             .and_then(|element| type_name_node(element, bytes))
+            .map_or(JavaDeclaredType::Untyped, JavaDeclaredType::Written);
+    }
+    let is_var = declaration
+        .child_by_field_name("type")
+        .is_some_and(|type_node| type_node.utf8_text(bytes).ok() == Some(INFERRED_LOCAL_TYPE));
+    if is_var {
+        // `var circle = new Circle()` is a `Circle`.
+        return declarator
+            .child_by_field_name("value")
+            .filter(|value| value.kind() == OBJECT_CREATION)
+            .and_then(|creation| creation.child_by_field_name("type"))
+            .and_then(|created| type_name_node(created, bytes))
             .map_or(JavaDeclaredType::Untyped, JavaDeclaredType::Written);
     }
     written_type(declaration, bytes)

@@ -238,6 +238,10 @@ pub(crate) async fn find_definition(
     if let Some(declared) = crate::indexer::java_type_parameter_definition(index, uri, position) {
         return Some(GotoDefinitionResponse::Scalar(declared));
     }
+    // A Java `break`/`continue` goes to the statement it leaves.
+    if let Some(target) = crate::indexer::java_jump_target(index, uri, position) {
+        return Some(GotoDefinitionResponse::Scalar(target));
+    }
     // So is a Java local or parameter: a same-named member elsewhere is not it.
     if let Some(declared) = crate::indexer::java_local_definition(index, uri, position) {
         return Some(GotoDefinitionResponse::Scalar(declared));
@@ -245,8 +249,15 @@ pub(crate) async fn find_definition(
 
     // A bare name in a Java type position names a type, whatever field or
     // method the enclosing class declares by the same name.
-    let is_bare_type_name =
-        ctx.qualifier.is_none() && crate::indexer::is_java_type_name_at(index, uri, position);
+    let is_java_type_name = crate::indexer::is_java_type_name_at(index, uri, position);
+    // `com.demo.shapes.Circle` names exactly that type.
+    if let (true, Some(qualifier)) = (is_java_type_name, ctx.qualifier.as_deref()) {
+        let qualified_name = format!("{qualifier}.{}", ctx.word);
+        if let Some(declared) = crate::resolver::find_qualified_type(index, &qualified_name) {
+            return Some(GotoDefinitionResponse::Scalar(declared));
+        }
+    }
+    let is_bare_type_name = ctx.qualifier.is_none() && is_java_type_name;
     if is_bare_type_name {
         let types = crate::resolver::resolve_type_name(index, &ctx.word, uri);
         if !types.is_empty() {

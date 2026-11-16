@@ -381,7 +381,28 @@ pub(crate) fn cursor_node_at(
         row,
         column: byte_col,
     };
-    crate::indexer::node_ext::descendant_for_point(doc.tree.root_node(), &doc.bytes, point)
+    let root = doc.tree.root_node();
+    let found = crate::indexer::node_ext::descendant_for_point(root, &doc.bytes, point)?;
+    // A Java name the cursor sits just past (`T| get()`, `circle|.area()`)
+    // is the one asked about, as jdtls reads a position: an editor puts the
+    // cursor after the last character of the word it is on.
+    let is_java = root.kind() == "program";
+    if is_java && !is_java_name(found) && byte_col > 0 {
+        let before = Point {
+            row,
+            column: byte_col - 1,
+        };
+        let previous = crate::indexer::node_ext::descendant_for_point(root, &doc.bytes, before);
+        if let Some(previous) = previous.filter(|node| is_java_name(*node)) {
+            return Some(previous);
+        }
+    }
+    Some(found)
+}
+
+/// Whether `node` is a Java name token.
+fn is_java_name(node: tree_sitter::Node<'_>) -> bool {
+    matches!(node.kind(), "identifier" | "type_identifier")
 }
 
 /// If `lambda` is part of an enclosing call (trailing or named-argument —

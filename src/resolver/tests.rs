@@ -11825,3 +11825,26 @@ fn decompiled_kotlin_object_access_through_instance_resolves() {
     assert_eq!(locs[0].uri, uris[0]);
     assert_eq!(locs[0].range.start.line, 2);
 }
+
+#[test]
+fn a_java_star_import_resolves_a_type_of_its_package_only() {
+    let idx = crate::indexer::Indexer::new();
+    let shapes = Url::parse("file:///w/com/demo/shapes/Circle.java").unwrap();
+    let drawing = Url::parse("file:///w/com/demo/drawing/Circle.java").unwrap();
+    let main = Url::parse("file:///w/com/demo/Main.java").unwrap();
+    idx.index_content(
+        &shapes,
+        "package com.demo.shapes;\n\npublic class Circle {\n}\n",
+    );
+    idx.index_content(
+        &drawing,
+        "package com.demo.drawing;\n\npublic class Circle {\n}\n",
+    );
+    idx.index_content(
+        &main,
+        "package com.demo;\n\nimport com.demo.shapes.*;\n\nclass Main {\n    Circle circle;\n}\n",
+    );
+    let types = crate::resolver::resolve_type_name(&idx, "Circle", &main);
+    assert_eq!(types.len(), 1, "{types:?}");
+    assert_eq!(types[0].uri, shapes);
+}

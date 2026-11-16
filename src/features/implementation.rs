@@ -41,6 +41,9 @@ pub(crate) async fn find_implementation_at(
     uri: &Url,
     position: Position,
 ) -> Option<GotoDefinitionResponse> {
+    if let Some(found) = java_use_site_implementations(indexer, uri, position).await {
+        return locs_to_opt_response(found);
+    }
     if let Some(sym) = classify_cursor(indexer, uri, position) {
         if let SymbolRole::Reference {
             receiver_type: Some(receiver_type),
@@ -58,6 +61,102 @@ pub(crate) async fn find_implementation_at(
     }
     let (word, _) = indexer.word_and_qualifier_at(uri, position)?;
     find_implementation(&word, indexer, uri, position.line).await
+}
+
+/// Implementations of what a Java name used (not declared) at `position`
+/// names, as jdtls answers them:
+/// - `super.method()` is the superclass's method itself;
+/// - a class's own method or the class itself is one of its
+///   implementations, unless it is abstract (or an interface's) and
+///   something implements it;
+/// - an interface's method or the interface itself is only its
+///   implementations, or itself when nothing implements it.
+///
+/// `None` when the cursor is not on a used Java type or method.
+async fn java_use_site_implementations(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Vec<Location>> {
+    if crate::Language::from_path(uri.path()) != crate::Language::Java {
+        return None;
+    }
+    let symbol = classify_cursor(indexer, uri, position)?;
+    if matches!(symbol.role, SymbolRole::Declaration { .. }) {
+        return None;
+    }
+    let context = crate::backend::cursor::CursorContext::build(indexer, uri, position)?;
+    let declarations: Vec<Location> =
+        match crate::features::definition::find_definition(&context, indexer, uri, position).await?
+        {
+            GotoDefinitionResponse::Scalar(location) => vec![location],
+            GotoDefinitionResponse::Array(locations) => locations,
+            GotoDefinitionResponse::Link(_) => return None,
+        };
+    if context.qualifier.as_deref() == Some("super") {
+        return Some(declarations);
+    }
+    let [declaration] = declarations.as_slice() else {
+        return None;
+    };
+    let declared = indexer
+        .file_symbols(&declaration.uri)
+        .into_iter()
+        .find(|entry| entry.selection_range == declaration.range)?;
+    if is_class_kind(declared.kind) {
+        let below = find_type_implementations(&declared.name, indexer, uri)
+            .await
+            .map(response_locations)
+            .unwrap_or_default();
+        let is_interface = declared.kind == SymbolKind::INTERFACE;
+        return Some(with_declaration(declaration, below, !is_interface));
+    }
+    if declared.kind != SymbolKind::METHOD {
+        return None;
+    }
+    let container = declared.container.as_deref()?;
+    let overriding = find_method_implementations(&declared.name, container, indexer, uri)
+        .await
+        .map(response_locations)
+        .unwrap_or_default();
+    let in_an_interface = indexer
+        .file_symbols(&declaration.uri)
+        .iter()
+        .any(|entry| entry.name == container && entry.kind == SymbolKind::INTERFACE);
+    let has_a_body = !in_an_interface
+        && !declared
+            .detail
+            .split_whitespace()
+            .any(|word| word == "abstract");
+    Some(with_declaration(declaration, overriding, has_a_body))
+}
+
+/// `found` with `declaration` in front when it is `itself_one` or nothing
+/// else was found.
+fn with_declaration(
+    declaration: &Location,
+    found: Vec<Location>,
+    itself_one: bool,
+) -> Vec<Location> {
+    let mut found: Vec<Location> = found
+        .into_iter()
+        .filter(|location| location != declaration)
+        .collect();
+    if itself_one || found.is_empty() {
+        found.insert(0, declaration.clone());
+    }
+    found
+}
+
+fn response_locations(response: GotoDefinitionResponse) -> Vec<Location> {
+    match response {
+        GotoDefinitionResponse::Scalar(location) => vec![location],
+        GotoDefinitionResponse::Array(locations) => locations,
+        GotoDefinitionResponse::Link(links) => links
+            .into_iter()
+            .map(|link| Location::new(link.target_uri, link.target_selection_range))
+            .collect(),
+    }
 }
 
 /// Find all implementations/subtypes of the symbol under the cursor at `uri`.

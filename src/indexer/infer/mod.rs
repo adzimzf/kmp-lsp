@@ -70,6 +70,8 @@ pub(super) mod deps;
 pub(super) mod expr_type;
 pub(super) mod it_this;
 pub(super) mod java_cst;
+pub(super) mod java_marks;
+pub(super) mod java_records;
 pub(super) mod lambda;
 pub(super) mod lambda_resolution;
 pub(super) mod occurrences;

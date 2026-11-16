@@ -53,7 +53,7 @@ pub(crate) use infer_lines::{
     extract_return_nullability_from_detail, extract_return_type_from_detail,
     is_collection_constructor, ReturnNullability,
 };
-pub(crate) use package_scope::find_symbol_in_package;
+pub(crate) use package_scope::{find_qualified_type, find_symbol_in_package};
 pub(crate) use resolve::{
     ensure_file_data, fqns_for_name, resolve_callee_definition,
     resolve_symbol_hierarchy_ambiguity_safe, resolve_symbol_no_rg, resolve_symbol_scoped_only,
