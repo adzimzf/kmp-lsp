@@ -1,0 +1,24 @@
+//- /com/demo/util/MathUtil.java
+package com.demo.util;
+
+public class MathUtil {
+    public static int twice(int value) {
+        return value * 2;
+    }
+
+    public static int twice(String value) {
+        return value.length() * 2;
+    }
+}
+//- /com/demo/app/Main.java
+package com.demo.app;
+
+import static com.demo.util.MathUtil.twice;
+
+class Main {
+    int run() {
+        return twi$0ce(21);
+    }
+}
+//= expected
+/com/demo/util/MathUtil.java:4:23  public static int twice(int value) {

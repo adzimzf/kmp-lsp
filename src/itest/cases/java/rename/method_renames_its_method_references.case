@@ -1,0 +1,25 @@
+//- /com/demo/Checks.java
+package com.demo;
+
+class Checks {
+    static boolean blank(String text) {
+        return text.isBlank();
+    }
+}
+//- /com/demo/Test.java
+package com.demo;
+
+interface Test {
+    boolean test(String text);
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Test test = Checks::bla$0nk;
+    boolean direct = Checks.blank(" ");
+}
+//= expected
+/com/demo/Checks.java:4:20  static boolean blank(String text) {
+/com/demo/Main.java:4:25  Test test = Checks::blank;
+/com/demo/Main.java:5:29  boolean direct = Checks.blank(" ");

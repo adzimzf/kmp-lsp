@@ -1,0 +1,12 @@
+//- /com/demo/Person.java
+package com.demo;
+
+class Person {
+    private final String name;
+
+    Person(String name) {
+        this.na$0me = name;
+    }
+}
+//= expected
+/com/demo/Person.java:4:26  private final String name;

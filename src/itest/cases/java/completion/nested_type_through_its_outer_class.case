@@ -1,0 +1,21 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    static class Nested {
+    }
+
+    static class NestedToo {
+    }
+
+    static int count;
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Outer.Nes$0
+}
+//= expected
+Nested
+NestedToo

@@ -1,0 +1,21 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Shape {
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle implements Shape {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Object run() {
+        Shape shape = new Circle();
+        return sha$0pe;
+    }
+}
+//= expected
+/com/demo/Shape.java:3:11  interface Shape {

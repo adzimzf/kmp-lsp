@@ -1,0 +1,12 @@
+//- /com/demo/Registry.java
+package com.demo;
+
+class Registry {
+    static int count;
+
+    static {
+        cou$0nt = 3;
+    }
+}
+//= expected
+/com/demo/Registry.java:4:16  static int count;

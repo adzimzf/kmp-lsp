@@ -1,0 +1,12 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+abstract class Shape {
+    abstract double area(double scale);
+
+    double doubled() {
+        return ar$0ea(2);
+    }
+}
+//= expected
+double area(double scale)

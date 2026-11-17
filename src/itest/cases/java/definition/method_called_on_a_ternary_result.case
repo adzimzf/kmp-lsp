@@ -1,0 +1,17 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    void bark() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(boolean first, Dog one, Dog two) {
+        (first ? one : two).ba$0rk();
+    }
+}
+//= expected
+/com/demo/Dog.java:4:10  void bark() {

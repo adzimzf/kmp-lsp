@@ -1,0 +1,14 @@
+//- /com/demo/NotNull.java
+package com.demo;
+
+@interface NotNull {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(@NotN$0ull String text) {
+    }
+}
+//= expected
+/com/demo/NotNull.java:3:12  @interface NotNull {

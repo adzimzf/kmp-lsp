@@ -1,0 +1,20 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Bo$0x<T> {
+    Box<T> copy() {
+        return new Box<>();
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Box<String> box = new Box<String>();
+}
+//= expected
+/com/demo/Box.java:3:7  class Box<T> {
+/com/demo/Box.java:4:5  Box<T> copy() {
+/com/demo/Box.java:5:20  return new Box<>();
+/com/demo/Main.java:4:5  Box<String> box = new Box<String>();
+/com/demo/Main.java:4:27  Box<String> box = new Box<String>();

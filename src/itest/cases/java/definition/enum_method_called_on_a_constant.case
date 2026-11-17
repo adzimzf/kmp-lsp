@@ -1,0 +1,27 @@
+//- /com/demo/Planet.java
+package com.demo;
+
+enum Planet {
+    MERCURY(3.3),
+    EARTH(5.9);
+
+    private final double mass;
+
+    Planet(double mass) {
+        this.mass = mass;
+    }
+
+    double mass() {
+        return mass;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run() {
+        return Planet.EARTH.ma$0ss();
+    }
+}
+//= expected
+/com/demo/Planet.java:13:12  double mass() {

@@ -1,0 +1,20 @@
+//- /com/demo/Mapper.java
+package com.demo;
+
+interface Mapper {
+    int map(int value);
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int apply(Mapper mapper, int value) {
+        return mapper.map(value);
+    }
+
+    int run() {
+        return apply(value -> value * 2, $0);
+    }
+}
+//= expected
+apply(Mapper mapper, [int value])

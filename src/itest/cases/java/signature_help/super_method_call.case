@@ -1,0 +1,18 @@
+//- /com/demo/Animal.java
+package com.demo;
+
+class Animal {
+    void speak(String sound, int times) {
+    }
+}
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog extends Animal {
+    @Override
+    void speak(String sound, int times) {
+        super.speak(sound, $0);
+    }
+}
+//= expected
+speak(String sound, [int times])

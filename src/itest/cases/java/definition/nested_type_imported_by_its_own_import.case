@@ -1,0 +1,22 @@
+//- /com/demo/model/Outer.java
+package com.demo.model;
+
+public class Outer {
+    public static class Nested {
+        public int size() {
+            return 0;
+        }
+    }
+}
+//- /com/demo/app/Main.java
+package com.demo.app;
+
+import com.demo.model.Outer.Nested;
+
+class Main {
+    int run(Nest$0ed nested) {
+        return nested.size();
+    }
+}
+//= expected
+/com/demo/model/Outer.java:4:25  public static class Nested {

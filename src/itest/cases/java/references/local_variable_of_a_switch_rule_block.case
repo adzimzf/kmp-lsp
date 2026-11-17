@@ -1,0 +1,20 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run(int kind) {
+        return switch (kind) {
+            case 1 -> {
+                int re$0sult = kind * 2;
+                yield result;
+            }
+            default -> {
+                int result = 0;
+                yield result;
+            }
+        };
+    }
+}
+//= expected
+/com/demo/Main.java:7:21  int result = kind * 2;
+/com/demo/Main.java:8:23  yield result;

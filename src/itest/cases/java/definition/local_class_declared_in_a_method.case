@@ -1,0 +1,16 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        class Helper {
+            int help() {
+                return 1;
+            }
+        }
+        Hel$0per helper = new Helper();
+        helper.help();
+    }
+}
+//= expected
+/com/demo/Main.java:5:15  class Helper {

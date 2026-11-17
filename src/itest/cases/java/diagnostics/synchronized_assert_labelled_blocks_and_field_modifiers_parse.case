@@ -1,0 +1,23 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    private final Object lock = new Object();
+    private transient volatile int count;
+
+    double run(int limit) {
+        synchronized (lock) {
+            count++;
+        }
+        assert limit > 0 : "limit must be positive";
+        block: {
+            if (limit > 10) {
+                break block;
+            }
+            count += limit;
+        }
+        return count;
+    }
+}
+//= expected
+(nothing)

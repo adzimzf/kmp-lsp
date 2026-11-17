@@ -1,0 +1,27 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class D$0og {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Dog[] dogs = new Dog[1];
+    Object type = Dog.class;
+
+    Dog run(Object value) throws Exception {
+        if (value instanceof Dog dog) {
+            return dog;
+        }
+        return (Dog) value;
+    }
+}
+//= expected
+/com/demo/Dog.java:3:7  class Dog {
+/com/demo/Main.java:4:5  Dog[] dogs = new Dog[1];
+/com/demo/Main.java:4:22  Dog[] dogs = new Dog[1];
+/com/demo/Main.java:5:19  Object type = Dog.class;
+/com/demo/Main.java:7:5  Dog run(Object value) throws Exception {
+/com/demo/Main.java:8:30  if (value instanceof Dog dog) {
+/com/demo/Main.java:11:17  return (Dog) value;

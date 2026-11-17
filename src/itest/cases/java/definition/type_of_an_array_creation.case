@@ -1,0 +1,13 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Dog[] dogs = new D$0og[3];
+}
+//= expected
+/com/demo/Dog.java:3:7  class Dog {

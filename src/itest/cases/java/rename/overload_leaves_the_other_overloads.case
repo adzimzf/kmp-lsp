@@ -1,0 +1,18 @@
+//- /com/demo/Printer.java
+package com.demo;
+
+class Printer {
+    void print(String text) {
+    }
+
+    void print(int number) {
+    }
+
+    void run() {
+        print("a");
+        pri$0nt(1);
+    }
+}
+//= expected
+/com/demo/Printer.java:7:10  void print(int number) {
+/com/demo/Printer.java:12:9  print(1);

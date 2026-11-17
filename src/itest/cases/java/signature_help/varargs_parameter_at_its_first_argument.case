@@ -1,0 +1,17 @@
+//- /com/demo/Logger.java
+package com.demo;
+
+class Logger {
+    void log(String format, Object... arguments) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Logger logger) {
+        logger.log("%s", $0);
+    }
+}
+//= expected
+log(String format, [Object... arguments])

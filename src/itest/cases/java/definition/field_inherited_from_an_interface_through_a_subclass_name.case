@@ -1,0 +1,21 @@
+//- /com/demo/Colors.java
+package com.demo;
+
+interface Colors {
+    String RED = "red";
+}
+//- /com/demo/Palette.java
+package com.demo;
+
+class Palette implements Colors {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run() {
+        return Palette.R$0ED;
+    }
+}
+//= expected
+/com/demo/Colors.java:4:12  String RED = "red";

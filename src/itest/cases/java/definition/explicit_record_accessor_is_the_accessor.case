@@ -1,0 +1,18 @@
+//- /com/demo/Name.java
+package com.demo;
+
+record Name(String value) {
+    public String value() {
+        return value.trim();
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run(Name name) {
+        return name.val$0ue();
+    }
+}
+//= expected
+/com/demo/Name.java:4:19  public String value() {

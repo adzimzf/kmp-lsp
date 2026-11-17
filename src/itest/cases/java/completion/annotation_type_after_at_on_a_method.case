@@ -1,0 +1,15 @@
+//- /com/demo/Audited.java
+package com.demo;
+
+@interface Audited {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    @Aud$0
+    void run() {
+    }
+}
+//= expected
+Audited

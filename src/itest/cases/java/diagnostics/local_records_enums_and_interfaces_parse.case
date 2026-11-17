@@ -1,0 +1,20 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    int run() {
+        record Pair(int left, int right) {
+        }
+        enum Side {
+            LEFT,
+            RIGHT
+        }
+        interface Picker {
+            int pick(Pair pair, Side side);
+        }
+        Picker picker = (pair, side) -> side == Side.LEFT ? pair.left() : pair.right();
+        return picker.pick(new Pair(1, 2), Side.RIGHT);
+    }
+}
+//= expected
+(nothing)

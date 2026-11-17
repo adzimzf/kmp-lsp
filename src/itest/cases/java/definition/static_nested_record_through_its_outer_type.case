@@ -1,0 +1,17 @@
+//- /com/demo/Shapes.java
+package com.demo;
+
+class Shapes {
+    record Circle(double radius) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run(Shapes.Circ$0le circle) {
+        return circle.radius();
+    }
+}
+//= expected
+/com/demo/Shapes.java:4:12  record Circle(double radius) {

@@ -1,0 +1,18 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    static class Middle {
+        enum Deepest {
+            ONE
+        }
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    // Deepe$0st
+}
+//= expected
+Deepest  /com/demo/Outer.java:5

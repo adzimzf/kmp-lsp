@@ -1,0 +1,27 @@
+//- /com/demo/Walker.java
+package com.demo;
+
+interface Walker {
+    default String move() {
+        return "walk";
+    }
+}
+//- /com/demo/Swimmer.java
+package com.demo;
+
+interface Swimmer {
+    default String move() {
+        return "swim";
+    }
+}
+//- /com/demo/Duck.java
+package com.demo;
+
+class Duck implements Walker, Swimmer {
+    @Override
+    public String move() {
+        return Swimmer.super.mo$0ve();
+    }
+}
+//= expected
+/com/demo/Swimmer.java:4:20  default String move() {

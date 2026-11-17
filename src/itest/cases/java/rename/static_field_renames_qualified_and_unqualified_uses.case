@@ -1,0 +1,24 @@
+//- /com/demo/Limits.java
+package com.demo;
+
+class Limits {
+    static final int MAX = 10;
+
+    int twice() {
+        return MAX * 2;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int MAX = 1;
+
+    int run() {
+        return Limits.MA$0X + MAX;
+    }
+}
+//= expected
+/com/demo/Limits.java:4:22  static final int MAX = 10;
+/com/demo/Limits.java:7:16  return MAX * 2;
+/com/demo/Main.java:7:23  return Limits.MAX + MAX;

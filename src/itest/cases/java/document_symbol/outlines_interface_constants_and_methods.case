@@ -1,0 +1,22 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Sha$0pe {
+    int SIDES = 0;
+
+    double area();
+
+    default String describe() {
+        return "shape";
+    }
+
+    static Shape unit() {
+        return null;
+    }
+}
+//= expected
+interface Shape
+constant SIDES
+method area
+method describe
+method unit

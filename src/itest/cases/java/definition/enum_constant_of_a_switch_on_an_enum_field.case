@@ -1,0 +1,22 @@
+//- /com/demo/Color.java
+package com.demo;
+
+enum Color {
+    RED,
+    GREEN
+}
+//- /com/demo/Light.java
+package com.demo;
+
+class Light {
+    Color color;
+
+    boolean go() {
+        return switch (color) {
+            case GRE$0EN -> true;
+            case RED -> false;
+        };
+    }
+}
+//= expected
+/com/demo/Color.java:5:5  GREEN

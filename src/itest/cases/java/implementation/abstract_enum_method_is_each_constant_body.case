@@ -1,0 +1,22 @@
+//- /com/demo/Operation.java
+package com.demo;
+
+enum Operation {
+    PLUS {
+        @Override
+        int apply(int left, int right) {
+            return left + right;
+        }
+    },
+    TIMES {
+        @Override
+        int apply(int left, int right) {
+            return left * right;
+        }
+    };
+
+    abstract int app$0ly(int left, int right);
+}
+//= expected
+/com/demo/Operation.java:6:13  int apply(int left, int right) {
+/com/demo/Operation.java:12:13  int apply(int left, int right) {

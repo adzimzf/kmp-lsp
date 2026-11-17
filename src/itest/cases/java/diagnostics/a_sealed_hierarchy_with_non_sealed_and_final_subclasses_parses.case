@@ -1,0 +1,15 @@
+//- /src/main/java/com/demo/Shape.java
+package com.demo;
+
+sealed interface Sh$0ape permits Shape.Circle, Shape.Square, Shape.Blob {
+    final class Circle implements Shape {
+    }
+
+    record Square(double side) implements Shape {
+    }
+
+    non-sealed class Blob implements Shape {
+    }
+}
+//= expected
+(nothing)

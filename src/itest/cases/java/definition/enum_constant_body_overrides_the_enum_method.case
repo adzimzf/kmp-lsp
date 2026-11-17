@@ -1,0 +1,19 @@
+//- /com/demo/Operation.java
+package com.demo;
+
+enum Operation {
+    PLUS {
+        @Override
+        int apply(int left, int right) {
+            return left + right;
+        }
+    };
+
+    abstract int apply(int left, int right);
+
+    int twice(int value) {
+        return ap$0ply(value, value);
+    }
+}
+//= expected
+/com/demo/Operation.java:11:18  abstract int apply(int left, int right);

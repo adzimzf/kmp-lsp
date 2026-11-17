@@ -1,0 +1,20 @@
+//- /com/demo/Task.java
+package com.demo;
+
+interface Task {
+    int run();
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int count = 3;
+
+    Task task() {
+        int cou$0nt = 1;
+        return () -> count + this.count;
+    }
+}
+//= expected
+/com/demo/Main.java:7:13  int count = 1;
+/com/demo/Main.java:8:22  return () -> count + this.count;

@@ -1,0 +1,19 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run(int kind) {
+        switch (kind) {
+            case 1: {
+                int size = 1;
+                return si$0ze;
+            }
+            default: {
+                int size = 2;
+                return size;
+            }
+        }
+    }
+}
+//= expected
+/com/demo/Main.java:7:21  int size = 1;

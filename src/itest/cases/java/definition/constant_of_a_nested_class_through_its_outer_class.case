@@ -1,0 +1,20 @@
+//- /com/demo/Config.java
+package com.demo;
+
+class Config {
+    static class Defaults {
+        static final int PORT = 8080;
+    }
+
+    static final int PORT = 80;
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int port() {
+        return Config.Defaults.PO$0RT;
+    }
+}
+//= expected
+/com/demo/Config.java:5:26  static final int PORT = 8080;

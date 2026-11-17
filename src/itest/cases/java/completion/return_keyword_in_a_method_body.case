@@ -1,0 +1,10 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run() {
+        retu$0
+    }
+}
+//= expected
+return

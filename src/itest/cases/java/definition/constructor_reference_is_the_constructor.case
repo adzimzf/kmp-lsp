@@ -1,0 +1,24 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    Dog() {
+    }
+
+    Dog(String name) {
+    }
+}
+//- /com/demo/Factory.java
+package com.demo;
+
+interface Factory {
+    Dog make(String name);
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Factory factory = Dog::n$0ew;
+}
+//= expected
+/com/demo/Dog.java:7:5  Dog(String name) {

@@ -1,0 +1,23 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    static int count;
+
+    static {
+        count = 1;
+    }
+
+    Runnable task = () -> {
+        int inner = 2;
+    };
+
+    void run() {
+        int local = 3;
+    }
+}
+//= expected
+class Main
+field count
+field task
+method run

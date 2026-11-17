@@ -1,0 +1,24 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+class Shape {
+    final String name;
+
+    Shape() {
+        this("shape");
+    }
+
+    Shape(String name) {
+        this.name = name;
+    }
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle extends Shape {
+    Circle() {
+        sup$0er("circle");
+    }
+}
+//= expected
+/com/demo/Shape.java:10:5  Shape(String name) {

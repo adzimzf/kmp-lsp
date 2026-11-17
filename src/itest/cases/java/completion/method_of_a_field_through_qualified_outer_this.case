@@ -1,0 +1,21 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    void bark() {
+    }
+}
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    Dog dog;
+
+    class Inner {
+        void run() {
+            Outer.this.dog.ba$0
+        }
+    }
+}
+//= expected
+bark

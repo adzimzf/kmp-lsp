@@ -1,0 +1,7 @@
+//- /com/demo/Point.java
+package com.demo;
+
+record Po$0int(int x, int y) {
+}
+//= expected
+/com/demo/Point.java:3:8  record Point(int x, int y) {

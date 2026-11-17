@@ -1,0 +1,24 @@
+//- /com/demo/Counter.java
+package com.demo;
+
+class Counter {
+    static int active;
+    int count;
+
+    static void resetAll() {
+    }
+
+    void reset() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        Counter.$0
+    }
+}
+//= expected
+active
+resetAll

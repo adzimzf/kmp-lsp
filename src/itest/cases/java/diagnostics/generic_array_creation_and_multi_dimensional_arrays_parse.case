@@ -1,0 +1,15 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    int[][] grid = new int[3][];
+    int[] legacy[] = {{1}, {2, 3}};
+    String[][] names = new String[][] {{"a"}, {}};
+
+    int run() {
+        grid[0] = new int[] {1, 2};
+        return grid[0][1] + legacy[1][0] + names[0].length;
+    }
+}
+//= expected
+(nothing)

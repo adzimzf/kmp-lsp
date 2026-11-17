@@ -1,0 +1,22 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+}
+//- /com/demo/Apple.java
+package com.demo;
+
+class Apple {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Box<Apple> box;
+
+    Object run() {
+        return bo$0x;
+    }
+}
+//= expected
+/com/demo/Box.java:3:7  class Box<T> {

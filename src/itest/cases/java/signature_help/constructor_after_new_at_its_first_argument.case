@@ -1,0 +1,15 @@
+//- /com/demo/Point.java
+package com.demo;
+
+class Point {
+    Point(int x, int y) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Point point = new Point($0);
+}
+//= expected
+Point([int x], int y)

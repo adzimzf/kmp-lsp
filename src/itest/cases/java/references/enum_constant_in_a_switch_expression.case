@@ -1,0 +1,21 @@
+//- /com/demo/Level.java
+package com.demo;
+
+enum Level {
+    LOW,
+    HI$0GH
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int score(Level level) {
+        return switch (level) {
+            case LOW -> 1;
+            case HIGH -> 2;
+        };
+    }
+}
+//= expected
+/com/demo/Level.java:5:5  HIGH
+/com/demo/Main.java:7:18  case HIGH -> 2;

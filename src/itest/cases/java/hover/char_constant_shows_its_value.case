@@ -1,0 +1,12 @@
+//- /com/demo/Limits.java
+package com.demo;
+
+class Limits {
+    static final char SEPARATOR = ',';
+
+    char separator() {
+        return SEPARA$0TOR;
+    }
+}
+//= expected
+char SEPARATOR = ','

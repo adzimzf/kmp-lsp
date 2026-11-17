@@ -1,0 +1,17 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+import java.util.function.Function;
+import java.util.function.IntFunction;
+import java.util.function.Supplier;
+
+class Ma$0in {
+    Supplier<Main> constructor = Main::new;
+    IntFunction<int[]> array = int[]::new;
+    Function<String, Integer> parse = Integer::parseInt;
+    Function<String, Integer> length = String::length;
+    Supplier<String> bound = "text"::trim;
+    Supplier<String> parent = super::toString;
+}
+//= expected
+(nothing)

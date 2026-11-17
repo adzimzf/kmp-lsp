@@ -1,0 +1,20 @@
+//- /com/demo/Util.java
+package com.demo;
+
+class Util {
+    static <T> T fi$0rst(T[] values) {
+        return values[0];
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run(String[] values) {
+        return Util.<String>first(values) + Util.first(values);
+    }
+}
+//= expected
+/com/demo/Main.java:5:29  return Util.<String>first(values) + Util.first(values);
+/com/demo/Main.java:5:50  return Util.<String>first(values) + Util.first(values);
+/com/demo/Util.java:4:18  static <T> T first(T[] values) {

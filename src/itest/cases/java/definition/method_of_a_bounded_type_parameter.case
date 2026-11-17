@@ -1,0 +1,24 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Shape {
+    double area();
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square {
+    double area() {
+        return 4;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    <T extends Shape> double measure(T shape) {
+        return shape.ar$0ea();
+    }
+}
+//= expected
+/com/demo/Shape.java:4:12  double area();

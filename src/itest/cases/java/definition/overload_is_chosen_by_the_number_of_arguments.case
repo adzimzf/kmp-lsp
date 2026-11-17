@@ -1,0 +1,22 @@
+//- /com/demo/Area.java
+package com.demo;
+
+class Area {
+    static int of(int side) {
+        return side * side;
+    }
+
+    static int of(int width, int height) {
+        return width * height;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run() {
+        return Area.o$0f(2, 3);
+    }
+}
+//= expected
+/com/demo/Area.java:8:16  static int of(int width, int height) {

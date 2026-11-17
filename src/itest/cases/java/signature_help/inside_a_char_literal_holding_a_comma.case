@@ -1,0 +1,14 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String join(char separator, String first, String second) {
+        return first + separator + second;
+    }
+
+    String run() {
+        return join(',$0', "a", "b");
+    }
+}
+//= expected
+join([char separator], String first, String second)

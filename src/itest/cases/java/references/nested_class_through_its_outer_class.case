@@ -1,0 +1,23 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    static class Ne$0sted {
+    }
+
+    Nested make() {
+        return new Nested();
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Outer.Nested nested = new Outer.Nested();
+}
+//= expected
+/com/demo/Main.java:4:5  Outer.Nested nested = new Outer.Nested();
+/com/demo/Main.java:4:31  Outer.Nested nested = new Outer.Nested();
+/com/demo/Outer.java:4:18  static class Nested {
+/com/demo/Outer.java:7:5  Nested make() {
+/com/demo/Outer.java:8:20  return new Nested();

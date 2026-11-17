@@ -1,0 +1,20 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    Runnable first = () -> {
+        System.out.println("one");
+    };
+
+    Runnable second = new Runnable() {
+        @Override
+        public void run() {
+            System.out.println("two");
+        }
+    };
+}
+//= expected
+3..14
+4..6
+8..13
+10..12

@@ -1,0 +1,10 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run() {
+        ret$0urn 0;
+    }
+}
+//= expected
+(nothing)

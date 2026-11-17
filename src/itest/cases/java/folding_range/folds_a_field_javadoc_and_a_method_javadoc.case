@@ -1,0 +1,21 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    /**
+     * The digits.
+     */
+    int[] digits = {1, 2, 3};
+
+    /**
+     * Sums them.
+     */
+    int sum() {
+        return 6;
+    }
+}
+//= expected
+3..15
+4..6
+9..11
+12..14

@@ -1,0 +1,24 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    void bark() {
+    }
+}
+//- /com/demo/Owner.java
+package com.demo;
+
+record Owner(Dog dog) {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Object value) {
+        if (value instanceof Owner(Dog pet)) {
+            pet.ba$0
+        }
+    }
+}
+//= expected
+bark

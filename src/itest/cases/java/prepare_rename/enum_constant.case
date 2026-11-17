@@ -1,0 +1,9 @@
+//- /com/demo/Color.java
+package com.demo;
+
+enum Color {
+    RED,
+    GR$0EEN
+}
+//= expected
+/com/demo/Color.java:5:5  GREEN

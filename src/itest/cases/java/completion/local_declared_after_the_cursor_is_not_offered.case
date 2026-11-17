@@ -1,0 +1,12 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        int counter = 0;
+        cou$0
+        int countdown = 3;
+    }
+}
+//= expected
+counter

@@ -1,0 +1,18 @@
+//- /com/demo/Util.java
+package com.demo;
+
+class Util {
+    static <T> T pick(boolean first, T one, T two) {
+        return first ? one : two;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        Util.pick(true, "a", $0);
+    }
+}
+//= expected
+pick(boolean first, T one, [T two])

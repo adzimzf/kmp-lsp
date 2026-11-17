@@ -1,0 +1,12 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int size = comp$0ute();
+
+    static int compute() {
+        return 1;
+    }
+}
+//= expected
+/com/demo/Main.java:6:16  static int compute() {

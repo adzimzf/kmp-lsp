@@ -1,0 +1,34 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+enum Ma$0in implements Named {
+    ONE("one") {
+        @Override
+        public String label() {
+            return "uno";
+        }
+    };
+
+    private final String text;
+
+    Main(String text) {
+        this.text = text;
+    }
+
+    String text() {
+        return text;
+    }
+}
+
+interface Named {
+    String label();
+
+    class Default implements Named {
+        @Override
+        public String label() {
+            return "default";
+        }
+    }
+}
+//= expected
+(nothing)

@@ -1,0 +1,14 @@
+//- /com/demo/Failure.java
+package com.demo;
+
+class Failure extends Exception {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() throws Fail$0ure {
+    }
+}
+//= expected
+/com/demo/Failure.java:3:7  class Failure extends Exception {

@@ -1,0 +1,22 @@
+//- /com/demo/Point.java
+package com.demo;
+
+class Point {
+    final int x;
+    final int y;
+
+    Point(int x, int y) {
+        this.x = x;
+        this.y = y;
+    }
+
+    Point(int both) {
+        th$0is(both, both);
+    }
+
+    Point() {
+        this(0);
+    }
+}
+//= expected
+/com/demo/Point.java:7:5  Point(int x, int y) {

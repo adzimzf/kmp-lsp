@@ -1,0 +1,24 @@
+//- /com/demo/Color.java
+package com.demo;
+
+public enum Color {
+    R$0ED,
+    GREEN
+}
+//- /com/demo/app/Main.java
+package com.demo.app;
+
+import static com.demo.Color.RED;
+
+import com.demo.Color;
+
+class Main {
+    Color first = RED;
+    Color second = Color.RED;
+    Color third = Color.GREEN;
+}
+//= expected
+/com/demo/Color.java:4:5  RED,
+/com/demo/app/Main.java:3:30  import static com.demo.Color.RED;
+/com/demo/app/Main.java:8:19  Color first = RED;
+/com/demo/app/Main.java:9:26  Color second = Color.RED;

@@ -1,0 +1,21 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    void bark() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Object value) {
+        switch (value) {
+            case Dog dog -> dog.ba$0
+            default -> {
+            }
+        }
+    }
+}
+//= expected
+bark

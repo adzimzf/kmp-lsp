@@ -1,0 +1,17 @@
+//- /src/main/java/com/demo/Node.java
+package com.demo;
+
+import java.util.List;
+import java.util.Map;
+
+abstract class No$0de<N extends Node<N, V> & Comparable<N>, V> {
+    Map<? super String, List<? extends V>> children;
+
+    abstract <R extends Comparable<? super R>> R max(List<? extends R> values);
+
+    @SafeVarargs
+    final void addAll(V... values) {
+    }
+}
+//= expected
+(nothing)

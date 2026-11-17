@@ -1,0 +1,23 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Sha$0pe {
+}
+//- /com/demo/Solid.java
+package com.demo;
+
+interface Solid extends Shape {
+}
+//- /com/demo/Cube.java
+package com.demo;
+
+class Cube implements Solid {
+}
+//- /com/demo/Point.java
+package com.demo;
+
+class Point {
+}
+//= expected
+/com/demo/Cube.java:3:7  class Cube implements Solid {
+/com/demo/Solid.java:3:11  interface Solid extends Shape {

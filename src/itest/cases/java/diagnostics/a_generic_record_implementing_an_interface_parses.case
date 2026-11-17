@@ -1,0 +1,25 @@
+//- /src/main/java/com/demo/Pair.java
+package com.demo;
+
+import java.util.Objects;
+
+record Pa$0ir<L, R extends Comparable<R>>(L left, R right) implements Comparable<Pair<L, R>> {
+    Pair {
+        Objects.requireNonNull(left);
+    }
+
+    Pair(L left) {
+        this(left, null);
+    }
+
+    static <T extends Comparable<T>> Pair<T, T> twin(T value) {
+        return new Pair<>(value, value);
+    }
+
+    @Override
+    public int compareTo(Pair<L, R> other) {
+        return right.compareTo(other.right);
+    }
+}
+//= expected
+(nothing)

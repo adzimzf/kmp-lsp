@@ -1,0 +1,18 @@
+//- /com/demo/Operation.java
+package com.demo;
+
+enum Operati$0on {
+    PLUS {
+        @Override
+        int apply(int left, int right) {
+            return left + right;
+        }
+    };
+
+    abstract int apply(int left, int right);
+}
+//= expected
+enum Operation
+enum-member PLUS
+method apply
+method apply

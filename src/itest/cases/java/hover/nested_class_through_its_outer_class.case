@@ -1,0 +1,15 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    static class Nested {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Outer.Nes$0ted nested;
+}
+//= expected
+Nested

@@ -1,0 +1,12 @@
+//- /com/demo/Limits.java
+package com.demo;
+
+class Limits {
+    static final long MAX = 1_000L;
+
+    long twice() {
+        return MA$0X * 2;
+    }
+}
+//= expected
+long MAX = 1000

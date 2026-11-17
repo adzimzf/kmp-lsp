@@ -1,0 +1,22 @@
+//- /com/demo/Failure.java
+package com.demo;
+
+class Failure extends Exception {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void risky() throws Failure {
+    }
+
+    void run() {
+        try {
+            risky();
+        } catch (Failure failure) {
+            System.out.println(fail$0ure);
+        }
+    }
+}
+//= expected
+/com/demo/Failure.java:3:7  class Failure extends Exception {

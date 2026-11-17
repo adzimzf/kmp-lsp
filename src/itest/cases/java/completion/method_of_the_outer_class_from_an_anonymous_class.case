@@ -1,0 +1,18 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void refresh() {
+    }
+
+    Runnable task() {
+        return new Runnable() {
+            @Override
+            public void run() {
+                refr$0
+            }
+        };
+    }
+}
+//= expected
+refresh

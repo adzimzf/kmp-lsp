@@ -1,0 +1,25 @@
+//- /com/demo/Greeter.java
+package com.demo;
+
+interface Greeter {
+    default String gre$0et() {
+        return "hi";
+    }
+}
+//- /com/demo/Polite.java
+package com.demo;
+
+class Polite implements Greeter {
+    @Override
+    public String greet() {
+        return "good day";
+    }
+}
+//- /com/demo/Casual.java
+package com.demo;
+
+class Casual implements Greeter {
+}
+//= expected
+/com/demo/Greeter.java:4:20  default String greet() {
+/com/demo/Polite.java:5:19  public String greet() {

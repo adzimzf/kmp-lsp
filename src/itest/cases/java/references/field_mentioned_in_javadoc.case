@@ -1,0 +1,17 @@
+//- /com/demo/Counter.java
+package com.demo;
+
+class Counter {
+    int co$0unt;
+
+    /**
+     * Adds one to {@link #count}.
+     */
+    void increment() {
+        count++;
+    }
+}
+//= expected
+/com/demo/Counter.java:4:9  int count;
+/com/demo/Counter.java:7:28  * Adds one to {@link #count}.
+/com/demo/Counter.java:10:9  count++;
