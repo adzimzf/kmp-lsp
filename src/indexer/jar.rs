@@ -388,6 +388,32 @@ pub(crate) fn index_sources_jar_paths(
     total_symbols
 }
 
+/// The jars the shared Gradle module cache contributes, given the project's
+/// own dependency list (`None` when no sync has run). `scan` is the crawl
+/// itself, called only when its result can still be needed.
+///
+/// `~/.gradle/caches` holds every artifact resolved by every project ever
+/// built on this machine — on a real machine ~760 jars across ~280 groups,
+/// most of them from unrelated builds. For a project whose own classpath is
+/// fully known ([`DependencyManifest::covers_whole_classpath`]) those jars
+/// can only contribute same-named decoys: `jsoup`, whose 21 Maven
+/// dependencies contain no YAML parser at all, otherwise offers
+/// `org.yaml.snakeyaml.parser.Parser` (and 85 other `Parser`s from
+/// exoplayer, protobuf, rxjava, groovy, scala, …) when completing `Par`.
+pub(crate) fn gradle_cache_jars(
+    project: Option<&crate::dependency_sync::DependencyManifest>,
+    scan: impl FnOnce() -> Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    if project.is_some_and(|manifest| manifest.covers_whole_classpath()) {
+        log::info!(
+            "jar: the last dependency sync resolved the project's whole classpath — \
+             skipping the shared Gradle-cache crawl"
+        );
+        return Vec::new();
+    }
+    scan()
+}
+
 /// The cache scan's sources jars, with every artifact the project's own
 /// dependency list names swapped for the version the project resolved.
 pub(crate) fn sources_jars_to_mount(

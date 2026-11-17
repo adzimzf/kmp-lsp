@@ -541,7 +541,14 @@ fn load_dependencies(index: &Indexer, root: &Path, dependencies: Dependencies, v
 }
 
 fn load_dependency_jars(index: &Indexer, root: &Path) -> LoadedDependencies {
-    let mut jars = compiled_jar_paths_for_cli(root, crate::indexer::jar::scan_gradle_jars(None));
+    // Same scoping as the LSP's background phase: a project whose own
+    // classpath is fully resolved must not also index every artifact in the
+    // shared Gradle cache (see `crate::indexer::jar::gradle_cache_jars`).
+    let project = crate::dependency_sync::load_manifest(root);
+    let gradle_paths = crate::indexer::jar::gradle_cache_jars(project.as_ref(), || {
+        crate::indexer::jar::scan_gradle_jars(None)
+    });
+    let mut jars = compiled_jar_paths_for_cli(root, gradle_paths);
     jars.extend(crate::indexer::jdk_sources::jdk_compiled_modules_for(index));
     let compiled_symbols = index_compiled_jars(index, &jars);
     let library_source_names = crate::workspace::scan_handler::index_library_sources(index);
