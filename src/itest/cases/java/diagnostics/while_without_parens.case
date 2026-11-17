@@ -1,0 +1,11 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run(int x, int[] a) {
+    while true {
+    }
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:4:10  missing `(`
+/src/main/java/com/demo/Main.java:4:15  missing `)`

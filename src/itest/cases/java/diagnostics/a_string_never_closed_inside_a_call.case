@@ -1,0 +1,9 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run() {
+    System.out.println("hi);
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:4:24  unclosed string literal

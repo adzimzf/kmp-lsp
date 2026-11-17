@@ -1,0 +1,6 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo
+class Ma$0in {
+}
+//= expected
+/src/main/java/com/demo/Main.java:1:17  missing `;`

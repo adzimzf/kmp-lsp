@@ -32,7 +32,7 @@ use crate::features::signature_help::{
 use crate::features::type_hierarchy::{declared_name, resolve_type, supertypes};
 use crate::indexer::{
     closed_before, java_receiver_node_for_marker, speculative_doc, split_params_at_depth_zero,
-    CstQuery, Indexer, LiveDoc, Resolution, COMPLETION_MARKER,
+    CstQuery, Indexer, JavaCompletionPlace, LiveDoc, Resolution, COMPLETION_MARKER,
 };
 use crate::inlay_hints::{line_starts, ts_pos_to_lsp};
 use crate::resolver::complete::completion_item_for_nested_symbol;
@@ -183,6 +183,43 @@ pub(crate) fn retain_typed_matches(
         CompletionResponse::List(list) => list.items.is_empty(),
     };
     (!is_empty).then_some(kept)
+}
+
+/// `response` with only what can start a class body's member when the
+/// cursor is at one (see [`JavaCompletionPlace::MemberStart`]): keywords
+/// and types, not the methods and fields already there.
+pub(crate) fn retain_member_starts(
+    place: JavaCompletionPlace,
+    response: Option<CompletionResponse>,
+) -> Option<CompletionResponse> {
+    if place != JavaCompletionPlace::MemberStart {
+        return response;
+    }
+    let starts_a_member = |item: &CompletionItem| {
+        matches!(
+            item.kind,
+            Some(
+                CompletionItemKind::KEYWORD
+                    | CompletionItemKind::CLASS
+                    | CompletionItemKind::INTERFACE
+                    | CompletionItemKind::ENUM
+                    | CompletionItemKind::STRUCT
+                    | CompletionItemKind::TYPE_PARAMETER
+                    | CompletionItemKind::SNIPPET
+            )
+        )
+    };
+    let kept = match response? {
+        CompletionResponse::Array(mut items) => {
+            items.retain(starts_a_member);
+            CompletionResponse::Array(items)
+        }
+        CompletionResponse::List(mut list) => {
+            list.items.retain(starts_a_member);
+            CompletionResponse::List(list)
+        }
+    };
+    Some(kept)
 }
 
 /// The identifier typed right before `position`; `None` when there is none.

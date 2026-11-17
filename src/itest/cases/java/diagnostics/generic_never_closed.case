@@ -1,0 +1,9 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run(int x, int[] a) {
+    java.util.List<String names = null;
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:4:27  missing `>`

@@ -29,7 +29,9 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[cfg(test)]
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
-pub(crate) use self::infer::java_cst::{closed_before, java_scope_locals_at, JavaScopeLocal};
+pub(crate) use self::infer::java_cst::{
+    closed_before, java_scope_locals_at, JavaCompletionPlace, JavaScopeLocal,
+};
 pub(crate) use self::infer::speculative::{
     java_receiver_node_for_marker, lambda_doc_at, receiver_node_for_marker, speculative_doc,
     COMPLETION_MARKER,
@@ -43,9 +45,9 @@ pub(crate) use self::infer::{
         classify_cursor, classify_occurrence_at, classify_symbol_at, declared_parameters_at,
         enclosing_nav_expr_if_member, implicit_receiver_of, is_call_callee, is_declaration_site,
         is_java_created_type_at, is_java_type_name_at, is_local_declaration_at,
-        is_local_value_reference, java_javadoc_parameter_tag, java_jump_target,
-        java_local_declaration_at, java_local_definition, java_local_hover_line, java_name_site,
-        java_record_component_occurrences, java_type_parameter_definition,
+        is_local_value_reference, java_completion_place_at, java_javadoc_parameter_tag,
+        java_jump_target, java_local_declaration_at, java_local_definition, java_local_hover_line,
+        java_name_site, java_record_component_occurrences, java_type_parameter_definition,
         java_type_parameter_occurrences, local_scope_occurrences, narrow_java_overloads,
         navigation_member_ident, navigation_receiver_node, resolve_identity,
         resolve_identity_with_io, shape_filter_locations, type_definition_step, JavaNameSite,

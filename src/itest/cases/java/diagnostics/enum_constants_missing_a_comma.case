@@ -1,0 +1,7 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+enum Ma$0in {
+  A B
+}
+//= expected
+/src/main/java/com/demo/Main.java:3:4  missing `,`

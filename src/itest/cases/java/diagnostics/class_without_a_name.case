@@ -1,0 +1,6 @@
+//- /src/main/java/com/demo/Main.java
+$0package com.demo;
+class {
+}
+//= expected
+/src/main/java/com/demo/Main.java:2:6  missing name

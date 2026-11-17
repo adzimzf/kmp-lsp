@@ -144,7 +144,7 @@ fn with_parsed_tree(
 
 fn finalize_parse(data: &mut FileData, root: Node, bytes: &[u8]) {
     data.declared_names = extract_declared_names(&data.lines);
-    data.syntax_errors = collect_syntax_errors(root, bytes);
+    data.syntax_errors = collect_syntax_errors(root, bytes, |_, _| None);
 }
 
 pub(crate) fn parse_kotlin(content: &str) -> FileData {
@@ -220,8 +220,52 @@ pub(crate) fn parse_java(content: &str) -> FileData {
             }
         }
         assign_containers(&mut data.symbols);
-        finalize_parse(data, root, bytes);
+        data.declared_names = extract_declared_names(&data.lines);
+        data.syntax_errors = java_syntax_errors(root, bytes);
     })
+}
+
+/// A Java file's syntax errors, where javac would report them (see
+/// `java_syntax`): what javac's scanner rejects is reported and blanked out
+/// first, so the file is parsed again as the code the rest of it is.
+fn java_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
+    let Ok(source) = std::str::from_utf8(bytes) else {
+        return java_tree_errors(root, bytes);
+    };
+    let scanned = java_syntax::Scanned::new(source);
+    if !scanned.is_repaired() {
+        return java_tree_errors(root, bytes);
+    }
+    let Some(tree) = JAVA_PARSER.with(|parser| parser.borrow_mut().parse(&scanned.text, None))
+    else {
+        return java_tree_errors(root, bytes);
+    };
+    scanned.report(java_tree_errors(tree.root_node(), scanned.text.as_bytes()))
+}
+
+/// The errors of a Java tree: its error and missing nodes, and the
+/// declarations that parse but are not Java (each explains the errors
+/// inside it).
+fn java_tree_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
+    let declarations = java_syntax::declaration_errors(root, bytes);
+    let explained = |error: &SyntaxError| {
+        declarations.iter().any(|declaration| {
+            let start = error.range.start;
+            declaration.explains.start <= start && start <= declaration.explains.end
+        })
+    };
+    let mut errors: Vec<SyntaxError> =
+        collect_syntax_errors(root, bytes, java_syntax::describe_node)
+            .into_iter()
+            .filter(|error| !explained(error))
+            .collect();
+    errors.extend(
+        declarations
+            .into_iter()
+            .map(|declaration| declaration.error),
+    );
+    errors.sort_by_key(|error| (error.range.start.line, error.range.start.character));
+    errors
 }
 
 pub(crate) fn parse_swift(content: &str) -> FileData {
@@ -1164,7 +1208,14 @@ fn extract_anonymous_companion_objects(root: Node, bytes: &[u8], data: &mut File
     }
 }
 
-fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
+/// `describe` words an ERROR or MISSING node the language knows better
+/// than "unexpected `..`" / "missing `..`"; `None` leaves it to that
+/// generic description.
+fn collect_syntax_errors(
+    root: Node,
+    bytes: &[u8],
+    describe: impl Fn(Node, &[u8]) -> Option<Vec<SyntaxError>>,
+) -> Vec<SyntaxError> {
     if !root.has_error() {
         return Vec::new();
     }
@@ -1178,6 +1229,18 @@ fn collect_syntax_errors(root: Node, bytes: &[u8]) -> Vec<SyntaxError> {
             break;
         }
 
+        let described = (node.is_error() || node.is_missing())
+            .then(|| describe(node, bytes))
+            .flatten();
+        if let Some(described) = described {
+            for error in described {
+                let start = error.range.start;
+                if seen.insert((start.line, start.character)) {
+                    errors.push(error);
+                }
+            }
+            continue;
+        }
         if node.is_missing() {
             let range = ts_to_lsp(node.range());
             let key = (range.start.line, range.start.character);
@@ -2916,6 +2979,8 @@ fn java_params_and_counts(node: &Node, bytes: &[u8]) -> (String, (u8, u8)) {
     }
     (String::new(), (0, 0))
 }
+
+mod java_syntax;
 
 #[cfg(test)]
 #[path = "parser_tests.rs"]

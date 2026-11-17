@@ -1,0 +1,11 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run(int x, int[] a) {
+    try {
+      x++;
+    }
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:4:5  `try` without `catch` or `finally`

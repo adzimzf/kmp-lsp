@@ -4,4 +4,5 @@ class Ma$0in {
   String broken() { return "unterminated; }
 }
 //= expected
-/src/main/java/com/demo/Main.java:2:1  unexpected `class Main {`
+/src/main/java/com/demo/Main.java:3:28  unclosed string literal
+/src/main/java/com/demo/Main.java:4:2  missing `}`

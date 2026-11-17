@@ -2,4 +2,4 @@
 package com.demo;
 class Ma$0in
 //= expected
-/src/main/java/com/demo/Main.java:2:1  unexpected `class Main`
+/src/main/java/com/demo/Main.java:2:11  missing `{`

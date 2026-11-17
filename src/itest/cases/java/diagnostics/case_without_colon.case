@@ -1,0 +1,11 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run(int x, int[] a) {
+    switch (x) {
+      case 1 break;
+    }
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:5:13  missing `:`

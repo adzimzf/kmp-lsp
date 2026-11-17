@@ -2254,3 +2254,51 @@ fn java_visibility_reads_the_modifiers() {
     assert_eq!(visibility("I"), Some(Visibility::Package));
     assert_eq!(visibility("run"), Some(Visibility::Public));
 }
+
+/// `(line, column, message)` of each syntax error of the Java `source`,
+/// 1-based as javac numbers them.
+fn java_errors(source: &str) -> Vec<(u32, u32, String)> {
+    parse_java(source)
+        .syntax_errors
+        .into_iter()
+        .map(|error| {
+            let start = error.range.start;
+            (start.line + 1, start.character + 1, error.message)
+        })
+        .collect()
+}
+
+#[test]
+fn java_unclosed_string_is_reported_at_its_quote_not_as_the_whole_class() {
+    let source = "class Main {\n  String broken() { return \"unterminated; }\n}\n";
+    assert_eq!(
+        java_errors(source),
+        vec![
+            (2, 28, "unclosed string literal".to_owned()),
+            (3, 2, "missing `}`".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn java_quote_in_a_text_block_or_comment_is_no_unclosed_string() {
+    let source = "class Main {\n  // a \" quote\n  String t = \"\"\"\n    \"x\n    \"\"\";\n}\n";
+    assert!(java_errors(source).is_empty());
+}
+
+#[test]
+fn java_class_header_without_a_body_misses_its_brace_at_the_end() {
+    assert_eq!(
+        java_errors("public final class Main\n"),
+        vec![(1, 24, "missing `{`".to_owned())]
+    );
+}
+
+#[test]
+fn java_initializer_without_an_expression_misses_it_before_the_semicolon() {
+    let source = "class Main {\n  void run() {\n    int x = ;\n  }\n}\n";
+    assert_eq!(
+        java_errors(source),
+        vec![(3, 13, "missing expression".to_owned())]
+    );
+}

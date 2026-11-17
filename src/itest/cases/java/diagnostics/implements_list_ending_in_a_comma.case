@@ -1,0 +1,7 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in implements Runnable, {
+  public void run() {}
+}
+//= expected
+/src/main/java/com/demo/Main.java:2:33  missing type

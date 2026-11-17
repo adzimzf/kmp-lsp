@@ -45,7 +45,9 @@ Notes on how an answer is written down:
   and number their checks differently. kmp-lsp reports a Java file's syntax
   errors and its missing `package` declaration, so a case either names those
   or expects `(nothing)`; a `(nothing)` case is the regression guard that a
-  shape the parser handles stays unflagged. The missing-package check reads
+  shape the parser handles stays unflagged. Where a case expects an error,
+  it is at the line and column javac reports it (the wording is kmp-lsp's);
+  every `(nothing)` case compiles with javac. The missing-package check reads
   the package out of the path, so those cases live under `/src/main/java/`.
 - **signature_help** cases that end in a syntax error do so on purpose, as
   the jdtls tests do: help is asked while a call is being typed.
@@ -347,15 +349,19 @@ jdtls: `WorkspaceSymbolHandlerTest`.
 ## diagnostics
 
 jdtls: none — kmp-lsp's own checks (syntax errors, missing `package`).
+Every case was compiled with javac: a `(nothing)` case compiles, and every
+error a case expects is at a line and column where javac reports one.
 
 | case | what it asks |
 | --- | --- |
 | `a_body_that_is_never_closed` | the unclosed brace of a method body |
 | `a_brace_with_nothing_left_to_close` | a `}` past the end of the class |
 | `a_call_whose_parenthesis_is_never_closed` | the `)` a call never gets |
-| `a_class_declared_without_a_body` | a class header with no `{}` after it |
+| `a_class_declared_without_a_body` | the `{` missing after the class header (javac: at the end of `Main`) |
+| `a_class_with_modifiers_declared_without_a_body` | the same, after `public final class Main` |
 | `a_deeply_nested_package_is_named_in_full` | `com.demo.data.local`, every segment of the path |
 | `a_directory_that_is_not_an_identifier_names_no_package` | nothing: `my-demo` is no package segment |
+| `a_field_initializer_with_no_expression` | the same in a field |
 | `a_field_without_its_semicolon` | the missing `;` of a field |
 | `a_file_directly_at_its_source_root_has_no_package` | nothing: no package to name |
 | `a_file_that_declares_its_package` | nothing |
@@ -369,9 +375,11 @@ jdtls: none — kmp-lsp's own checks (syntax errors, missing `package`).
 | `a_nested_class_an_inner_class_and_a_local_class_parse` | nothing |
 | `a_package_declared_after_a_licence_header_is_a_package` | nothing: a comment above it is not a declaration |
 | `a_package_declared_after_an_import_is_still_a_package` | nothing |
+| `a_parenthesized_expression_never_closed` | `(x + 1;`: the `)` missing before the `;` |
 | `a_record_with_a_compact_constructor_and_a_static_member_parses` | nothing |
 | `a_statement_without_its_semicolon` | the missing `;` |
-| `a_string_that_is_never_closed` | what the parser makes of the rest of the file |
+| `a_string_never_closed_inside_a_call` | the unclosed string only: the call it is in is its fault |
+| `a_string_that_is_never_closed` | the unclosed string at its quote, then the class it leaves unclosed (as javac) |
 | `a_switch_statement_with_fall_through_and_a_default_parses` | nothing |
 | `a_test_source_root_is_read_the_same_way` | the missing package of a `src/test/java` file |
 | `a_text_block_containing_quotes_and_braces_parses` | nothing: `"""` is not an unclosed string |
@@ -382,14 +390,60 @@ jdtls: none — kmp-lsp's own checks (syntax errors, missing `package`).
 | `an_arrow_switch_with_a_yielding_block_parses` | nothing: `yield` from a block arm |
 | `an_empty_file_is_only_its_missing_package` | the missing `package`, nothing else |
 | `an_enum_with_a_constructor_fields_and_a_constant_body_parses` | nothing: a constant with a body of its own |
-| `an_initializer_with_no_expression` | `int x = ;` |
+| `an_initializer_with_no_expression` | `int x = ;`: the expression missing at the `;` (as javac) |
 | `an_instanceof_pattern_and_a_ternary_parse` | nothing |
+| `an_interface_never_closed` | the `}` missing at the end of the file |
 | `an_interface_with_default_static_and_private_methods_parses` | nothing |
 | `annotated_members_parse` | nothing: `@Override`/`@SafeVarargs` are not errors |
+| `argument_list_with_a_trailing_comma` | `run(1, a,)`: the argument missing at the `)` |
+| `argument_list_with_an_empty_argument` | `run(1,, a)`: the argument missing at the second `,` |
+| `array_access_missing_bracket` | `a[0;`: the missing `]` |
+| `array_initializer_never_closed` | `{1, 2;`: the missing `}` |
+| `array_type_never_closed` | `int[ values;`: the missing `]` |
+| `assignment_to_a_literal` | `1 = x;` |
+| `binary_missing_right_operand` | `1 + ;`: the operand missing at the `;` |
 | `braces_and_quotes_inside_comments_are_not_code` | nothing: an unbalanced `{` in a comment is text |
+| `call_statement_missing_semicolon` | the `;` missing after a call, not the next line |
+| `case_without_colon` | `case 1 break;`: the missing `:` |
+| `class_closed_twice_then_a_method` | a `}` past the end of the class |
+| `class_without_a_name` | `class {`: the missing name |
+| `const_is_reserved` | `const` is no name |
+| `dangling_dot` | `this.;` |
+| `do_without_while` | the `while` missing after the `do` body |
+| `doubled_operator` | `1 * * 2`: the second `*` |
 | `each_statement_without_a_semicolon_is_its_own_error` | one error per statement |
+| `else_without_if` | an `else` with no `if` |
+| `empty_char_literal` | `''` |
+| `enum_constants_missing_a_comma` | `A B`: the `,` missing after `A` |
+| `extends_without_a_type` | `extends {`: the type missing at the `{` |
+| `extra_closing_parenthesis` | `run(1, a));`: the extra `)` |
+| `field_with_two_types` | `int String name;`: the `;` missing after `String` |
+| `generic_never_closed` | `List<String names`: the `>` missing at `names` |
+| `goto_is_reserved` | `goto` is no name |
+| `if_missing_close_paren` | `if (x > 0 {`: the missing `)` |
+| `if_missing_open_paren` | `if x > 0)`: the `(` missing after `if` |
+| `illegal_character` | `#` in code |
+| `illegal_escape` | `\q` in a string |
+| `implements_list_ending_in_a_comma` | `implements Runnable, {`: the type missing at the `{` |
+| `import_missing_semicolon` | the `;` missing after an import |
+| `invalid_octal_literal` | `09` |
+| `method_without_a_return_type` | `run() {}` in `class Main`: no return type |
+| `method_without_body_or_semicolon` | `void run()` followed by the next method |
+| `missing_variable_name` | `int = 1;`: the missing name |
+| `modifier_without_a_declaration` | `public` with no member after it |
+| `new_without_parentheses` | `new Object;`: the `(` missing after the type |
 | `numeric_character_and_escape_literals_parse` | nothing: hex, binary, `_` groups, escapes |
+| `package_missing_semicolon` | the `;` missing after the package |
+| `parameters_missing_a_comma` | `int a int b`: the `,` missing after `a` |
 | `records_sealed_types_switch_patterns_and_text_blocks_parse` | nothing: modern Java is not a syntax error |
+| `return_missing_semicolon` | `return` followed by `}`, then a `return 1` without `;` |
 | `static_and_instance_initializer_blocks_parse` | nothing |
+| `throws_without_a_type` | `throws {`: the type missing after `throws` |
+| `trailing_underscore_in_a_number` | `1_` |
 | `try_with_resources_and_a_multi_catch_parse` | nothing |
+| `try_without_catch` | a `try` with no `catch` or `finally` |
+| `unclosed_block_comment_at_the_top` | a `/*` never closed above the class: nothing after it is code |
+| `unclosed_block_comment_in_a_method` | a `/*` never closed in a method |
+| `unclosed_char_literal` | `'a;` |
 | `varargs_an_array_initializer_and_a_cast_parse` | nothing |
+| `while_without_parens` | `while true {`: both parentheses missing |

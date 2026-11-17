@@ -1,0 +1,11 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run(int x, int[] a) {
+    do {
+      x++;
+    }
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:6:6  missing `while`

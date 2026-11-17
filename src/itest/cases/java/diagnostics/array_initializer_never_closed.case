@@ -1,0 +1,9 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+class Ma$0in {
+  void run(int x, int[] a) {
+    int[] b = {1, 2;
+  }
+}
+//= expected
+/src/main/java/com/demo/Main.java:4:20  missing `}`
