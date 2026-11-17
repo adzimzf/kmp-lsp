@@ -1,0 +1,25 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+class Ma$0in {
+    <T> Main(T seed) {
+    }
+
+    <T> T echo(T value) {
+        return value;
+    }
+
+    String run() {
+        List<String> empty = Collections.<String>emptyList();
+        String text = this.<String>echo("a");
+        Main main = new <String>Main("seed");
+        List<String> list = new ArrayList<>(empty);
+        return text + main + list;
+    }
+}
+//= expected
+(nothing)

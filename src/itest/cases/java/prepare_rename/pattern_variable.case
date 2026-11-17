@@ -1,0 +1,13 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run(Object value) {
+        if (value instanceof String text) {
+            return te$0xt.length();
+        }
+        return 0;
+    }
+}
+//= expected
+/com/demo/Main.java:6:20  return text.length();

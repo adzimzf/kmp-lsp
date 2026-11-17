@@ -1,0 +1,19 @@
+//- /com/demo/Mapper.java
+package com.demo;
+
+interface Mapper {
+    int map(int value);
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int value = 2;
+
+    Mapper doubler() {
+        return val$0ue -> value * this.value;
+    }
+}
+//= expected
+/com/demo/Main.java:7:16  return value -> value * this.value;
+/com/demo/Main.java:7:25  return value -> value * this.value;

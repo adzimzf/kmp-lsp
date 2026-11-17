@@ -1,0 +1,19 @@
+//- /com/demo/util/Limits.java
+package com.demo.util;
+
+public class Limits {
+    public static final int MAX = 10;
+    public static final int MIN = 0;
+}
+//- /com/demo/app/Main.java
+package com.demo.app;
+
+import static com.demo.util.Limits.*;
+
+class Main {
+    int run() {
+        return MA$0X - MIN;
+    }
+}
+//= expected
+/com/demo/util/Limits.java:4:29  public static final int MAX = 10;

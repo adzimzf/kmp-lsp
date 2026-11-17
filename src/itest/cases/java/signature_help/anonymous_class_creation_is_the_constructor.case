@@ -1,0 +1,21 @@
+//- /com/demo/Task.java
+package com.demo;
+
+abstract class Task {
+    Task(String name, int priority) {
+    }
+
+    abstract void run();
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Task task = new Task("job", $0) {
+        @Override
+        void run() {
+        }
+    };
+}
+//= expected
+Task(String name, [int priority])

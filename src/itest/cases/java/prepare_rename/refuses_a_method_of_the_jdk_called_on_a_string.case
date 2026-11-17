@@ -1,0 +1,10 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run(String text) {
+        return text.len$0gth();
+    }
+}
+//= expected
+(nothing)

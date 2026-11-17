@@ -1,0 +1,18 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    int hex = 0xCAFE_BABE;
+    int octal = 0_17;
+    int binary = 0b1010_1010;
+    long big = 9_223_372_036_854_775_807L;
+    float single = 1.5e-3f;
+    double hexFloat = 0x1.8p1;
+    double plain = .5;
+    double trailing = 5.;
+    double exponent = 1E10D;
+    char unicode = 'A';
+    char octalEscape = '\101';
+}
+//= expected
+(nothing)

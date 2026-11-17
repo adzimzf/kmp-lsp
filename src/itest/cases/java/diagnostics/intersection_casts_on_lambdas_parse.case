@@ -1,0 +1,13 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+import java.io.Serializable;
+
+class Ma$0in {
+    Runnable task = (Runnable & Serializable) () -> {
+    };
+
+    Object supplier = (java.util.function.IntSupplier & Serializable) () -> 1;
+}
+//= expected
+(nothing)

@@ -1,0 +1,15 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Shape {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    <T extends Sha$0pe> T first(T shape) {
+        return shape;
+    }
+}
+//= expected
+/com/demo/Shape.java:3:11  interface Shape {

@@ -1,0 +1,19 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    int record = 1;
+    int yield = 2;
+    int sealed = 3;
+    int permits = 4;
+    String module = "m";
+    String open = "o";
+    String when = "w";
+
+    int var() {
+        int var = record + yield + sealed + permits;
+        return var;
+    }
+}
+//= expected
+(nothing)

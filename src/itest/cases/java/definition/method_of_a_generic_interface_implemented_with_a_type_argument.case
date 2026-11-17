@@ -1,0 +1,24 @@
+//- /com/demo/Repository.java
+package com.demo;
+
+interface Repository<T> {
+    T find(int id);
+}
+//- /com/demo/User.java
+package com.demo;
+
+class User {
+    String name() {
+        return "";
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run(Repository<User> users) {
+        return users.find(1).na$0me();
+    }
+}
+//= expected
+/com/demo/User.java:4:12  String name() {

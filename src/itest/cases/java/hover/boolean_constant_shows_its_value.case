@@ -1,0 +1,12 @@
+//- /com/demo/Flags.java
+package com.demo;
+
+class Flags {
+    static final boolean DEBUG = false;
+
+    boolean debug() {
+        return DEB$0UG;
+    }
+}
+//= expected
+boolean DEBUG = false

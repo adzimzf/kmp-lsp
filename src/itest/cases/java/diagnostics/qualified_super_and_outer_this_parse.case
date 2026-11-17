@@ -1,0 +1,21 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    interface Walker {
+        default String move() {
+            return "walk";
+        }
+    }
+
+    class Duck implements Walker {
+        @Override
+        public String move() {
+            return Walker.super.move() + Main.this.hashCode();
+        }
+    }
+
+    Duck duck = this.new Duck();
+}
+//= expected
+(nothing)

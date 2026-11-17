@@ -1,0 +1,17 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+sealed interface Shape permits Circle, Squ$0are {
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+final class Circle implements Shape {
+}
+//- /com/demo/Square.java
+package com.demo;
+
+final class Square implements Shape {
+}
+//= expected
+/com/demo/Square.java:3:13  final class Square implements Shape {

@@ -1,0 +1,15 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int sum(int[] values) {
+        int total = 0;
+        for (int value : values) {
+            total += val$0ue;
+        }
+        return total;
+    }
+}
+//= expected
+/com/demo/Main.java:6:18  for (int value : values) {
+/com/demo/Main.java:7:22  total += value;

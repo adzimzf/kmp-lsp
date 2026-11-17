@@ -1,0 +1,21 @@
+//- /com/demo/model/User.java
+package com.demo.model;
+
+public class User {
+    public User() {
+    }
+}
+//- /com/demo/app/Main.java
+package com.demo.app;
+
+import com.demo.model.User;
+
+class Main {
+    Us$0er user = new User();
+}
+//= expected
+/com/demo/app/Main.java:3:23  import com.demo.model.User;
+/com/demo/app/Main.java:6:5  User user = new User();
+/com/demo/app/Main.java:6:21  User user = new User();
+/com/demo/model/User.java:3:14  public class User {
+/com/demo/model/User.java:4:12  public User() {

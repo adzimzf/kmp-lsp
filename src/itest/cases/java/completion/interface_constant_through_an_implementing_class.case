@@ -1,0 +1,22 @@
+//- /com/demo/Sizes.java
+package com.demo;
+
+interface Sizes {
+    int SMALL = 1;
+    int LARGE = 3;
+}
+//- /com/demo/Box.java
+package com.demo;
+
+class Box implements Sizes {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run() {
+        return Box.SMA$0
+    }
+}
+//= expected
+SMALL

@@ -1,0 +1,30 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    enum Mode {
+        FAST,
+        SLOW
+    }
+
+    int run(String name, Mode mode) {
+        int score = 0;
+        switch (name) {
+            case "a", "b":
+                score++;
+            case "c":
+                score += 2;
+                break;
+            default:
+        }
+        switch (mode) {
+            case FAST -> score *= 2;
+            case SLOW -> {
+                score /= 2;
+            }
+        }
+        return score;
+    }
+}
+//= expected
+(nothing)

@@ -1,0 +1,24 @@
+//- /com/demo/Color.java
+package com.demo;
+
+enum Color {
+    RED,
+    GREEN
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Color color = Color.GREEN;
+
+    boolean go(Color current) {
+        return switch (current) {
+            case GR$0EEN -> true;
+            case RED -> false;
+        };
+    }
+}
+//= expected
+/com/demo/Color.java:5:5  GREEN
+/com/demo/Main.java:4:25  Color color = Color.GREEN;
+/com/demo/Main.java:8:18  case GREEN -> true;

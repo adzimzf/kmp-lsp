@@ -1,0 +1,18 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+}
+//- /com/demo/Apple.java
+package com.demo;
+
+class Apple {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Box<App$0le> box;
+}
+//= expected
+/com/demo/Apple.java:3:7  class Apple {

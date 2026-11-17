@@ -1,0 +1,14 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main<T> {
+    T field;
+
+    <T$0> T echo(T value) {
+        return value;
+    }
+}
+//= expected
+/com/demo/Main.java:6:6  <T> T echo(T value) {
+/com/demo/Main.java:6:9  <T> T echo(T value) {
+/com/demo/Main.java:6:16  <T> T echo(T value) {

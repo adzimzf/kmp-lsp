@@ -1,0 +1,19 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    void bark() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Object value) {
+        if (value instanceof Dog dog) {
+            dog.ba$0
+        }
+    }
+}
+//= expected
+bark

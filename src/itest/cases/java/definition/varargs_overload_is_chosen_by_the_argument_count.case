@@ -1,0 +1,20 @@
+//- /com/demo/Logger.java
+package com.demo;
+
+class Logger {
+    void log(String message) {
+    }
+
+    void log(String format, Object... arguments) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Logger logger) {
+        logger.l$0og("%s and %s", "a", "b");
+    }
+}
+//= expected
+/com/demo/Logger.java:7:10  void log(String format, Object... arguments) {

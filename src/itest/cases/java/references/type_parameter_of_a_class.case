@@ -1,0 +1,18 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T$0> {
+    T value;
+
+    T get() {
+        return value;
+    }
+
+    <T> T other(T value) {
+        return value;
+    }
+}
+//= expected
+/com/demo/Box.java:3:11  class Box<T> {
+/com/demo/Box.java:4:5  T value;
+/com/demo/Box.java:6:5  T get() {

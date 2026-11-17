@@ -1,0 +1,16 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        var dog = new Dog();
+        System.out.println(d$0og);
+    }
+}
+//= expected
+Dog dog - com.demo.Main.run()

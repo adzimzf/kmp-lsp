@@ -1,0 +1,34 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+    T value;
+
+    T get() {
+        return value;
+    }
+}
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    void bark() {
+    }
+}
+//- /com/demo/Cat.java
+package com.demo;
+
+class Cat {
+    void bark() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Box<Dog> box) {
+        box.get().ba$0rk();
+    }
+}
+//= expected
+/com/demo/Dog.java:4:10  void bark() {

@@ -1,0 +1,25 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Sha$0pe {
+}
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T extends Shape> {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Box<Shape> box;
+
+    <S extends Shape> S pick(S shape) {
+        return shape;
+    }
+}
+//= expected
+/com/demo/Box.java:3:21  class Box<T extends Shape> {
+/com/demo/Main.java:4:9  Box<Shape> box;
+/com/demo/Main.java:6:16  <S extends Shape> S pick(S shape) {
+/com/demo/Shape.java:3:11  interface Shape {

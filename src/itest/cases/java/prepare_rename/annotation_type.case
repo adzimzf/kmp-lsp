@@ -1,0 +1,13 @@
+//- /com/demo/Audited.java
+package com.demo;
+
+@interface Audited {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+@Audi$0ted
+class Main {
+}
+//= expected
+/com/demo/Main.java:3:2  @Audited

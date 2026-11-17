@@ -1,0 +1,14 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    String json = """
+        {"name": "a\tb", \
+        "end": true}
+        "\"" \s
+        """;
+    String empty = """
+        """;
+}
+//= expected
+(nothing)

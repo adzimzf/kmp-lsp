@@ -1,0 +1,26 @@
+//- /com/demo/Registry.java
+package com.demo;
+
+class Registry {
+    static int si$0ze;
+
+    static {
+        size = 1;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int size = 0;
+
+    int run() {
+        Registry.size += 1;
+        return Registry.size + size;
+    }
+}
+//= expected
+/com/demo/Main.java:7:18  Registry.size += 1;
+/com/demo/Main.java:8:25  return Registry.size + size;
+/com/demo/Registry.java:4:16  static int size;
+/com/demo/Registry.java:7:9  size = 1;

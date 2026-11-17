@@ -1,0 +1,39 @@
+//- /com/demo/Builder.java
+package com.demo;
+
+abstract class Builder<B extends Builder<B>> {
+    String name;
+
+    B name(String name) {
+        this.name = name;
+        return self();
+    }
+
+    abstract B self();
+}
+//- /com/demo/CarBuilder.java
+package com.demo;
+
+class CarBuilder extends Builder<CarBuilder> {
+    int wheels;
+
+    CarBuilder wheels(int wheels) {
+        this.wheels = wheels;
+        return this;
+    }
+
+    @Override
+    CarBuilder self() {
+        return this;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        new CarBuilder().name("car").whe$0els(4);
+    }
+}
+//= expected
+/com/demo/CarBuilder.java:6:16  CarBuilder wheels(int wheels) {

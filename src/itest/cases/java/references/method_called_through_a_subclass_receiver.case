@@ -1,0 +1,25 @@
+//- /com/demo/Animal.java
+package com.demo;
+
+class Animal {
+    void br$0eathe() {
+    }
+}
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog extends Animal {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Dog dog, Animal animal) {
+        dog.breathe();
+        animal.breathe();
+    }
+}
+//= expected
+/com/demo/Animal.java:4:10  void breathe() {
+/com/demo/Main.java:5:13  dog.breathe();
+/com/demo/Main.java:6:16  animal.breathe();

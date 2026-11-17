@@ -1,0 +1,23 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    @interface Tag {
+        String value();
+    }
+
+    @interface Tags {
+        Tag[] value() default {};
+
+        Class<?> type() default Object.class;
+
+        int[] numbers() default {1, 2};
+    }
+
+    @Tags(value = {@Tag("a"), @Tag(value = "b")}, type = String.class, numbers = 3)
+    @Deprecated(since = "1", forRemoval = false)
+    void run() {
+    }
+}
+//= expected
+(nothing)

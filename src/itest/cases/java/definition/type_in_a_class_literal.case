@@ -1,0 +1,13 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Object type = Do$0g.class;
+}
+//= expected
+/com/demo/Dog.java:3:7  class Dog {

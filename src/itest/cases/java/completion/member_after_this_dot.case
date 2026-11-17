@@ -1,0 +1,13 @@
+//- /com/demo/Counter.java
+package com.demo;
+
+class Counter {
+    int count;
+    int capacity;
+
+    void reset() {
+        this.ca$0
+    }
+}
+//= expected
+capacity

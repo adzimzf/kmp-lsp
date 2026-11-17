@@ -1,0 +1,18 @@
+//- /com/demo/Clock.java
+package com.demo;
+
+class Clock {
+    long now() {
+        return 0;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    long run(Clock clock) {
+        return clock.now($0);
+    }
+}
+//= expected
+now()

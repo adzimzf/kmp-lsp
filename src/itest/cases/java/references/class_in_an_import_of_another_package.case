@@ -1,0 +1,17 @@
+//- /com/demo/model/User.java
+package com.demo.model;
+
+public class Us$0er {
+}
+//- /com/demo/app/Main.java
+package com.demo.app;
+
+import com.demo.model.User;
+
+class Main {
+    User user;
+}
+//= expected
+/com/demo/app/Main.java:3:8  import com.demo.model.User;
+/com/demo/app/Main.java:6:5  User user;
+/com/demo/model/User.java:3:14  public class User {

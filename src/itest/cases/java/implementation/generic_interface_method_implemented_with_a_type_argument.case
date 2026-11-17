@@ -1,0 +1,26 @@
+//- /com/demo/Repository.java
+package com.demo;
+
+interface Repository<T> {
+    T fi$0nd(int id);
+}
+//- /com/demo/User.java
+package com.demo;
+
+class User {
+}
+//- /com/demo/UserRepository.java
+package com.demo;
+
+class UserRepository implements Repository<User> {
+    @Override
+    public User find(int id) {
+        return new User();
+    }
+
+    public User find(String name) {
+        return new User();
+    }
+}
+//= expected
+/com/demo/UserRepository.java:5:17  public User find(int id) {

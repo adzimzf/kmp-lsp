@@ -1,0 +1,19 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Sha$0pe {
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle implements Shape {
+}
+//- /com/demo/Solid.java
+package com.demo;
+
+interface Solid extends Shape {
+}
+//= expected
+/com/demo/Circle.java:3:25  class Circle implements Shape {
+/com/demo/Shape.java:3:11  interface Shape {
+/com/demo/Solid.java:3:25  interface Solid extends Shape {

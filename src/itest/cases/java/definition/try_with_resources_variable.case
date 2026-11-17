@@ -1,0 +1,23 @@
+//- /com/demo/Resource.java
+package com.demo;
+
+class Resource implements AutoCloseable {
+    void use() {
+    }
+
+    @Override
+    public void close() {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        try (Resource resource = new Resource()) {
+            resou$0rce.use();
+        }
+    }
+}
+//= expected
+/com/demo/Main.java:5:23  try (Resource resource = new Resource()) {

@@ -1,0 +1,25 @@
+//- /com/demo/Task.java
+package com.demo;
+
+interface Task {
+    int run();
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int count = 5;
+
+    Task task() {
+        return new Task() {
+            int count = 1;
+
+            @Override
+            public int run() {
+                return cou$0nt;
+            }
+        };
+    }
+}
+//= expected
+/com/demo/Main.java:8:17  int count = 1;

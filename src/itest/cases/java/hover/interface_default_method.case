@@ -1,0 +1,18 @@
+//- /com/demo/Greeter.java
+package com.demo;
+
+interface Greeter {
+    default String greet(String name) {
+        return "hi " + name;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run(Greeter greeter) {
+        return greeter.gre$0et("bob");
+    }
+}
+//= expected
+String greet(String name)

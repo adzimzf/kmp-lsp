@@ -1,0 +1,19 @@
+//- /com/demo/Point.java
+package com.demo;
+
+record Point(int x, int y) {
+    int xPlusY() {
+        return x + y;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run(Point point) {
+        return point.x$0
+    }
+}
+//= expected
+x
+xPlusY

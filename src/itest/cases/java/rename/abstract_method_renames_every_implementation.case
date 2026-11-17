@@ -1,0 +1,32 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+abstract class Shape {
+    abstract double ar$0ea();
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle extends Shape {
+    @Override
+    double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Square.java
+package com.demo;
+
+class Square extends Shape {
+    @Override
+    double area() {
+        return 4;
+    }
+
+    double area(int scale) {
+        return 4 * scale;
+    }
+}
+//= expected
+/com/demo/Circle.java:5:12  double area() {
+/com/demo/Shape.java:4:21  abstract double area();
+/com/demo/Square.java:5:12  double area() {

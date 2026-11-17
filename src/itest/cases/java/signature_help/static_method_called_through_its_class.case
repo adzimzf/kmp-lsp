@@ -1,0 +1,18 @@
+//- /com/demo/MathUtil.java
+package com.demo;
+
+class MathUtil {
+    static int clamp(int value, int low, int high) {
+        return Math.max(low, Math.min(value, high));
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run() {
+        return MathUtil.clamp(5, $0);
+    }
+}
+//= expected
+clamp(int value, [int low], int high)

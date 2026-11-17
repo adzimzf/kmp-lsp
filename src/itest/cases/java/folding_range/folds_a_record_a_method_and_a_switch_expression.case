@@ -1,0 +1,16 @@
+//- /com/demo/Point.java
+package com.demo;
+
+record Poi$0nt(int x, int y) {
+    String quadrant() {
+        return switch (Integer.signum(x)) {
+            case 1 -> "right";
+            case -1 -> "left";
+            default -> "axis";
+        };
+    }
+}
+//= expected
+3..11
+4..10
+5..9

@@ -1,0 +1,24 @@
+//- /com/demo/util/Strings.java
+package com.demo.util;
+
+public class Strings {
+    public static String shout(String text) {
+        return text;
+    }
+
+    public static String whisper(String text) {
+        return text;
+    }
+}
+//- /com/demo/app/Main.java
+package com.demo.app;
+
+import static com.demo.util.Strings.shout;
+
+class Main {
+    String run() {
+        return sho$0
+    }
+}
+//= expected
+shout

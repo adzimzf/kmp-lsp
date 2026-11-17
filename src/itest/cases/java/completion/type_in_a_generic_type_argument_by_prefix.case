@@ -1,0 +1,23 @@
+//- /com/demo/Apple.java
+package com.demo;
+
+class Apple {
+}
+//- /com/demo/Apricot.java
+package com.demo;
+
+class Apricot {
+}
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Box<Apr$0> box;
+}
+//= expected
+Apricot

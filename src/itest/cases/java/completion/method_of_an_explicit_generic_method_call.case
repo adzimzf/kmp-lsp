@@ -1,0 +1,25 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    void bark() {
+    }
+}
+//- /com/demo/Util.java
+package com.demo;
+
+class Util {
+    static <T> T make() {
+        return null;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        Util.<Dog>make().ba$0
+    }
+}
+//= expected
+bark

@@ -1,0 +1,24 @@
+//- /com/demo/util/Strings.java
+package com.demo.util;
+
+public class Strings {
+    public static String sh$0out(String text) {
+        return text.toUpperCase();
+    }
+}
+//- /com/demo/app/Main.java
+package com.demo.app;
+
+import static com.demo.util.Strings.shout;
+
+import com.demo.util.Strings;
+
+class Main {
+    String one = shout("a");
+    String two = Strings.shout("b");
+}
+//= expected
+/com/demo/app/Main.java:3:37  import static com.demo.util.Strings.shout;
+/com/demo/app/Main.java:8:18  String one = shout("a");
+/com/demo/app/Main.java:9:26  String two = Strings.shout("b");
+/com/demo/util/Strings.java:4:26  public static String shout(String text) {

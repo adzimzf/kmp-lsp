@@ -1,0 +1,24 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    record Point(int x, int y) {
+    }
+
+    record Line(Point from, Point to) {
+    }
+
+    static String describe(Object value) {
+        return switch (value) {
+            case null -> "null";
+            case Line(Point(var x1, var y1), Point to) when x1 == to.x() -> "vertical " + y1;
+            case Line line -> "line " + line;
+            case Integer number when number > 10 -> "big";
+            case Integer number -> "small " + number;
+            case String text -> text;
+            default -> "other";
+        };
+    }
+}
+//= expected
+(nothing)

@@ -1,0 +1,22 @@
+//- /com/demo/Readable.java
+package com.demo;
+
+interface Readable {
+    String read();
+}
+//- /com/demo/Document.java
+package com.demo;
+
+interface Document extends Readable {
+    String title();
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    String run(Document document) {
+        return document.re$0ad();
+    }
+}
+//= expected
+/com/demo/Readable.java:4:12  String read();

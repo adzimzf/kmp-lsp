@@ -1,0 +1,17 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    class Inner {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Object run(Outer outer) {
+        return outer.new Inn$0er();
+    }
+}
+//= expected
+/com/demo/Outer.java:4:11  class Inner {

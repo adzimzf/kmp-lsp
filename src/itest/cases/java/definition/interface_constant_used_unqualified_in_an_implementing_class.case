@@ -1,0 +1,16 @@
+//- /com/demo/Sizes.java
+package com.demo;
+
+interface Sizes {
+    int SMALL = 1;
+}
+//- /com/demo/Box.java
+package com.demo;
+
+class Box implements Sizes {
+    int size() {
+        return SMA$0LL;
+    }
+}
+//= expected
+/com/demo/Sizes.java:4:9  int SMALL = 1;

@@ -1,0 +1,14 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        try {
+            Integer.parseInt("x");
+        } catch (NumberFormatException error) {
+            err$0or.printStackTrace();
+        }
+    }
+}
+//= expected
+NumberFormatException error - com.demo.Main.run()

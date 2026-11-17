@@ -1,0 +1,12 @@
+//- /com/demo/Audited.java
+package com.demo;
+
+public @interface Audi$0ted {
+    String value();
+
+    int level() default 1;
+}
+//= expected
+interface Audited
+method value
+method level

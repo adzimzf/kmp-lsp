@@ -1,0 +1,18 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int run(Object value) {
+        if (value instanceof String text && !te$0xt.isEmpty()) {
+            return text.length();
+        }
+        if (value instanceof String text) {
+            return text.length() + 1;
+        }
+        return 0;
+    }
+}
+//= expected
+/com/demo/Main.java:5:37  if (value instanceof String text && !text.isEmpty()) {
+/com/demo/Main.java:5:46  if (value instanceof String text && !text.isEmpty()) {
+/com/demo/Main.java:6:20  return text.length();

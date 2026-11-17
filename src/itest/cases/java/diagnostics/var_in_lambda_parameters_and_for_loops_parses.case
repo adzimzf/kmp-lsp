@@ -1,0 +1,22 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+import java.util.List;
+import java.util.function.BiFunction;
+
+class Ma$0in {
+    BiFunction<Integer, Integer, Integer> add = (var left, var right) -> left + right;
+
+    int run(List<Integer> values) {
+        var total = 0;
+        for (var value : values) {
+            total += value;
+        }
+        for (var index = 0; index < 3; index++) {
+            total += index;
+        }
+        return total;
+    }
+}
+//= expected
+(nothing)

@@ -1,0 +1,24 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    void bark() {
+    }
+
+    void bite() {
+    }
+}
+//- /com/demo/DogAction.java
+package com.demo;
+
+interface DogAction {
+    void act(Dog dog);
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    DogAction action = dog -> dog.ba$0
+}
+//= expected
+bark

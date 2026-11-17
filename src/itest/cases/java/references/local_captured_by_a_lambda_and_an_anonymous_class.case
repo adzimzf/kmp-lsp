@@ -1,0 +1,20 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Runnable[] run() {
+        String mes$0sage = "hi";
+        Runnable first = () -> System.out.println(message);
+        Runnable second = new Runnable() {
+            @Override
+            public void run() {
+                System.out.println(message);
+            }
+        };
+        return new Runnable[] {first, second};
+    }
+}
+//= expected
+/com/demo/Main.java:5:16  String message = "hi";
+/com/demo/Main.java:6:51  Runnable first = () -> System.out.println(message);
+/com/demo/Main.java:10:36  System.out.println(message);

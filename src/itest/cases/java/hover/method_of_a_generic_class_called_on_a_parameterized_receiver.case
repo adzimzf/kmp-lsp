@@ -1,0 +1,17 @@
+//- /com/demo/Box.java
+package com.demo;
+
+class Box<T> {
+    void put(T value) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run(Box<String> box) {
+        box.pu$0t("a");
+    }
+}
+//= expected
+void put(String value)

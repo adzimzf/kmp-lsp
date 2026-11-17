@@ -1,0 +1,20 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+    D$0og() {
+    }
+
+    Dog(String name) {
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Dog first = new Dog();
+    Dog second = new Dog("rex");
+}
+//= expected
+/com/demo/Dog.java:4:5  Dog() {
+/com/demo/Main.java:4:17  Dog first = new Dog();

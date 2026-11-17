@@ -1,0 +1,19 @@
+//- /com/demo/Labeled.java
+package com.demo;
+
+interface Label$0ed {
+    String label();
+}
+//- /com/demo/Size.java
+package com.demo;
+
+enum Size implements Labeled {
+    SMALL;
+
+    @Override
+    public String label() {
+        return "s";
+    }
+}
+//= expected
+/com/demo/Size.java:3:6  enum Size implements Labeled {

@@ -1,0 +1,19 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Target;
+import java.util.List;
+
+class Ma$0in {
+    @Target({ElementType.TYPE_USE, ElementType.PARAMETER})
+    @interface NonNull {
+    }
+
+    void run(@NonNull Main this, List<@NonNull String> names) {
+        String @NonNull [] array = new String[names.size()];
+        System.out.println(array.length);
+    }
+}
+//= expected
+(nothing)

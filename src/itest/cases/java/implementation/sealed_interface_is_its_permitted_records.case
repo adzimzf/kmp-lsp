@@ -1,0 +1,18 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+sealed interface Sha$0pe permits Circle, Square {
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+record Circle(double radius) implements Shape {
+}
+//- /com/demo/Square.java
+package com.demo;
+
+record Square(double side) implements Shape {
+}
+//= expected
+/com/demo/Circle.java:3:8  record Circle(double radius) implements Shape {
+/com/demo/Square.java:3:8  record Square(double side) implements Shape {

@@ -1,0 +1,18 @@
+//- /com/demo/Task.java
+package com.demo;
+
+interface Task {
+    void ru$0n();
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Task task = new Task() {
+        @Override
+        public void run() {
+        }
+    };
+}
+//= expected
+/com/demo/Main.java:6:21  public void run() {

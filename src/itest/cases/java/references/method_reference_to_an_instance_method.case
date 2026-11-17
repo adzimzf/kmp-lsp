@@ -1,0 +1,26 @@
+//- /com/demo/Printer.java
+package com.demo;
+
+class Printer {
+    void pri$0nt(String text) {
+    }
+}
+//- /com/demo/Sink.java
+package com.demo;
+
+interface Sink {
+    void accept(String text);
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    Sink sink(Printer printer) {
+        printer.print("start");
+        return printer::print;
+    }
+}
+//= expected
+/com/demo/Main.java:5:17  printer.print("start");
+/com/demo/Main.java:6:25  return printer::print;
+/com/demo/Printer.java:4:10  void print(String text) {

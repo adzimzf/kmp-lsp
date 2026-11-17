@@ -1,0 +1,27 @@
+//- /com/demo/Shape.java
+package com.demo;
+
+interface Sha$0pe {
+    double area();
+}
+//- /com/demo/Circle.java
+package com.demo;
+
+class Circle implements Shape {
+    @Override
+    public double area() {
+        return 3.14;
+    }
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    double run(Shape shape) {
+        return shape.area();
+    }
+}
+//= expected
+/com/demo/Circle.java:3:25  class Circle implements Shape {
+/com/demo/Main.java:4:16  double run(Shape shape) {
+/com/demo/Shape.java:3:11  interface Shape {

@@ -1,0 +1,13 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    enum Mode {
+        FAST,
+        SLOW
+    }
+
+    Mode mode = Mode.FA$0ST;
+}
+//= expected
+FAST

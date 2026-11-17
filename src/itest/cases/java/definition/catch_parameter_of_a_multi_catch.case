@@ -1,0 +1,14 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    void run() {
+        try {
+            Integer.parseInt("1");
+        } catch (IllegalStateException | IllegalArgumentException error) {
+            err$0or.printStackTrace();
+        }
+    }
+}
+//= expected
+/com/demo/Main.java:7:67  } catch (IllegalStateException | IllegalArgumentException error) {

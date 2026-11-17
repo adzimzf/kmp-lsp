@@ -1,0 +1,12 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int[][] grid;
+
+    int run() {
+        return gri$0d.length;
+    }
+}
+//= expected
+int[][] grid

@@ -1,0 +1,16 @@
+//- /com/demo/Outer.java
+package com.demo;
+
+class Outer {
+    int count;
+
+    class Inner {
+        int count;
+
+        int outer() {
+            return Outer.this.cou$0nt;
+        }
+    }
+}
+//= expected
+/com/demo/Outer.java:4:9  int count;

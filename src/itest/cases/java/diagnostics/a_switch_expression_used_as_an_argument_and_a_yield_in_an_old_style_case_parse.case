@@ -1,0 +1,19 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    int score(int kind) {
+        return Math.max(0, switch (kind) {
+            case 1:
+                yield 10;
+            case 2: {
+                int base = 5;
+                yield base * 2;
+            }
+            default:
+                yield 0;
+        });
+    }
+}
+//= expected
+(nothing)

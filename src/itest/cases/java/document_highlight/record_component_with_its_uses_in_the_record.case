@@ -1,0 +1,18 @@
+//- /com/demo/Range.java
+package com.demo;
+
+record Range(int lo$0w, int high) {
+    Range {
+        if (low > high) {
+            throw new IllegalArgumentException();
+        }
+    }
+
+    int width() {
+        return high - low;
+    }
+}
+//= expected
+/com/demo/Range.java:3:18  record Range(int low, int high) {
+/com/demo/Range.java:5:13  if (low > high) {
+/com/demo/Range.java:11:23  return high - low;

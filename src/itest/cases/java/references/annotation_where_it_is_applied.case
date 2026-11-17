@@ -1,0 +1,21 @@
+//- /com/demo/Audited.java
+package com.demo;
+
+@interface Audi$0ted {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+@Audited
+class Main {
+    @Audited
+    int count;
+
+    void run(@Audited String text) {
+    }
+}
+//= expected
+/com/demo/Audited.java:3:12  @interface Audited {
+/com/demo/Main.java:3:2  @Audited
+/com/demo/Main.java:5:6  @Audited
+/com/demo/Main.java:8:15  void run(@Audited String text) {

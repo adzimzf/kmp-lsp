@@ -1,0 +1,15 @@
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    boolean run(Object value) {
+        return value instanceof D$0og;
+    }
+}
+//= expected
+/com/demo/Dog.java:3:7  class Dog {

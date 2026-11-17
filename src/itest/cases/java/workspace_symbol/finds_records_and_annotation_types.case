@@ -1,0 +1,19 @@
+//- /com/demo/Point.java
+package com.demo;
+
+record Point(int x, int y) {
+}
+//- /com/demo/Pointer.java
+package com.demo;
+
+@interface Pointer {
+}
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    // Poi$0
+}
+//= expected
+Point  /com/demo/Point.java:3
+Pointer  /com/demo/Pointer.java:3

@@ -1,0 +1,16 @@
+//- /com/demo/Main.java
+package com.demo;
+
+class Main {
+    int total;
+
+    void run() {
+        {
+            int total = 1;
+            total++;
+        }
+        tot$0al++;
+    }
+}
+//= expected
+/com/demo/Main.java:4:9  int total;

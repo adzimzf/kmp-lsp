@@ -1,0 +1,22 @@
+//- /com/demo/Color.java
+package com.demo;
+
+enum Color {
+    RED,
+    GREEN;
+
+    boolean warm() {
+        return switch (this) {
+            case R$0ED -> true;
+            case GREEN -> false;
+        };
+    }
+
+    static Color first() {
+        return RED;
+    }
+}
+//= expected
+/com/demo/Color.java:4:5  RED,
+/com/demo/Color.java:9:18  case RED -> true;
+/com/demo/Color.java:15:16  return RED;

@@ -1,0 +1,12 @@
+//- /com/demo/Animal.java
+package com.demo;
+
+class Animal {
+}
+//- /com/demo/Dog.java
+package com.demo;
+
+class Dog extends Anim$0al {
+}
+//= expected
+/com/demo/Animal.java:3:7  class Animal {

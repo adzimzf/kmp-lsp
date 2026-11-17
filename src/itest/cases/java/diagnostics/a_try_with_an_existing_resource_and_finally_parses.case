@@ -1,0 +1,20 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+import java.io.IOException;
+import java.io.StringReader;
+
+class Ma$0in {
+    int run() throws IOException {
+        StringReader reader = new StringReader("a");
+        try (reader; StringReader other = new StringReader("b")) {
+            return reader.read() + other.read();
+        } catch (IOException | RuntimeException error) {
+            throw error;
+        } finally {
+            reader.close();
+        }
+    }
+}
+//= expected
+(nothing)
