@@ -568,16 +568,23 @@ pub(crate) fn promote_file_imports(indexer: &Indexer, uri: &Url) {
 #[path = "document_handler_tests.rs"]
 mod tests;
 
-/// The diagnostics of an open file as they stand: its syntax errors and the
-/// semantic checks. What a republish sends and a pull
+/// The diagnostics of an open file as they stand: its syntax errors, what
+/// its language version does not accept, and the semantic checks. What a republish sends and a pull
 /// (`textDocument/diagnostic`) answers. CPU-bound: call it off the async
 /// runtime. While the workspace scan is still running the semantic checks
 /// are left out: the index is partial and they would report false positives.
+use crate::language_version::feature_diagnostics;
+
 pub(crate) fn file_diagnostics(indexer: &Indexer, uri: &Url) -> Vec<Diagnostic> {
+    let versions = indexer.language_versions.current();
     let mut diagnostics = indexer
         .files
         .get(uri.as_str())
-        .map(|file| syntax_diagnostics(&file.syntax_errors))
+        .map(|file| {
+            let mut found = syntax_diagnostics(&file.syntax_errors);
+            found.extend(feature_diagnostics(&file.language_features, versions));
+            found
+        })
         .unwrap_or_default();
     let semantic = !indexer.indexing_in_progress.load(Ordering::Acquire);
     if semantic {

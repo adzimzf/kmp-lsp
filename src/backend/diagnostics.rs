@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use super::helpers::syntax_diagnostics;
 use super::Backend;
+use crate::language_version::feature_diagnostics;
 use crate::workspace::document_handler::file_diagnostics;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -45,6 +46,7 @@ impl Backend {
     ) -> Result<WorkspaceDiagnosticReportResult> {
         let indexer = Arc::clone(&self.indexer);
         let items = tokio::task::spawn_blocking(move || {
+            let versions = indexer.language_versions.current();
             let open: Vec<String> = indexer
                 .live_trees
                 .iter()
@@ -56,8 +58,11 @@ impl Backend {
                 .filter(|entry| !open.contains(entry.key()))
                 .filter_map(|entry| {
                     let uri = Url::parse(entry.key()).ok()?;
+                    let file = entry.value();
+                    let mut diagnostics = syntax_diagnostics(&file.syntax_errors);
+                    diagnostics.extend(feature_diagnostics(&file.language_features, versions));
                     (uri.scheme() == "file" && !indexer.is_library_uri(&uri))
-                        .then(|| (uri, syntax_diagnostics(&entry.value().syntax_errors)))
+                        .then_some((uri, diagnostics))
                 })
                 .collect();
             for key in open {

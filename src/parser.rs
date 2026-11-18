@@ -9,21 +9,22 @@ use crate::indexer::NodeExt;
 use crate::queries::{
     self, JAVA_INFERRED_LOCAL_TYPE, KIND_ANNOTATION_ELEMENT_DECL, KIND_ANNOTATION_TYPE_DECL,
     KIND_BINDING_PATTERN_KIND, KIND_CALLABLE_REF, KIND_CALL_EXPR, KIND_CALL_SUFFIX,
-    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPANION_OBJ, KIND_COMPUTED_PROPERTY,
-    KIND_CTOR_DECL, KIND_DELEGATION_SPEC, KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ,
-    KIND_EXTENDS_INTERFACES, KIND_EXTENSION_KW, KIND_FIELD_DECL, KIND_FORMAL_PARAM,
-    KIND_FORMAL_PARAMS, KIND_FUNCTION_TYPE, KIND_FUN_BODY, KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS,
-    KIND_GENERIC_TYPE, KIND_IDENTIFIER, KIND_IMPORT_ALIAS, KIND_IMPORT_DECL, KIND_IMPORT_HEADER,
-    KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC, KIND_INHERITANCE_SPECS,
-    KIND_INIT_DECL, KIND_INTERFACE_DECL, KIND_JAVA_ENHANCED_FOR, KIND_JAVA_LOCAL_VAR_DECL,
-    KIND_LAMBDA_LIT, KIND_LPAREN, KIND_METHOD_DECL, KIND_MODIFIERS, KIND_MOD_FINAL,
-    KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_CREATION, KIND_OBJECT_DECL,
-    KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR, KIND_PRIMARY_CTOR,
-    KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL, KIND_PROTOCOL_FUNC_DECL,
-    KIND_RECEIVER_TYPE, KIND_RECORD_DECL, KIND_SCOPED_IDENT, KIND_SECONDARY_CTOR,
-    KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS, KIND_SUPER_INTERFACES,
-    KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS, KIND_VAR_DECL,
-    KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS, SWIFT_DEFINITIONS,
+    KIND_CLASS_BODY, KIND_CLASS_DECL, KIND_CLASS_PARAM, KIND_COMPACT_CTOR_DECL, KIND_COMPANION_OBJ,
+    KIND_COMPUTED_PROPERTY, KIND_CONSTANT_DECL, KIND_CTOR_DECL, KIND_DELEGATION_SPEC,
+    KIND_ENUM_CONSTANT, KIND_ENUM_DECL, KIND_EQ, KIND_EXTENDS_INTERFACES, KIND_EXTENSION_KW,
+    KIND_FIELD_DECL, KIND_FORMAL_PARAM, KIND_FORMAL_PARAMS, KIND_FUNCTION_TYPE, KIND_FUN_BODY,
+    KIND_FUN_DECL, KIND_FUN_VALUE_PARAMS, KIND_GENERIC_TYPE, KIND_IDENTIFIER, KIND_IMPORT_ALIAS,
+    KIND_IMPORT_DECL, KIND_IMPORT_HEADER, KIND_IMPORT_LIST, KIND_INFIX_EXPR, KIND_INHERITANCE_SPEC,
+    KIND_INHERITANCE_SPECS, KIND_INIT_DECL, KIND_INTERFACE_DECL, KIND_JAVA_ENHANCED_FOR,
+    KIND_JAVA_LOCAL_VAR_DECL, KIND_LAMBDA_LIT, KIND_LPAREN, KIND_METHOD_DECL, KIND_MODIFIERS,
+    KIND_MOD_FINAL, KIND_MOD_STATIC, KIND_NAV_EXPR, KIND_NULLABLE_TYPE, KIND_OBJECT_CREATION,
+    KIND_OBJECT_DECL, KIND_PACKAGE_DECL, KIND_PACKAGE_HEADER, KIND_PARAMETER, KIND_PREFIX_EXPR,
+    KIND_PRIMARY_CTOR, KIND_PROP_DECL, KIND_PROP_DELEGATE, KIND_PROTOCOL_DECL,
+    KIND_PROTOCOL_FUNC_DECL, KIND_RECEIVER_TYPE, KIND_RECORD_DECL, KIND_SCOPED_IDENT,
+    KIND_SECONDARY_CTOR, KIND_SIMPLE_IDENT, KIND_SOURCE_FILE, KIND_STATEMENTS, KIND_SUPERCLASS,
+    KIND_SUPER_INTERFACES, KIND_TYPE_IDENT, KIND_USER_TYPE, KIND_VALUE_ARG, KIND_VALUE_ARGS,
+    KIND_VAR_DECL, KIND_VAR_DECLARATOR, KIND_WILDCARD_IMPORT, KOTLIN_DEFINITIONS,
+    SWIFT_DEFINITIONS,
 };
 use crate::StrExt;
 
@@ -142,9 +143,14 @@ fn with_parsed_tree(
     data
 }
 
-fn finalize_parse(data: &mut FileData, root: Node, bytes: &[u8]) {
+fn finalize_parse(
+    data: &mut FileData,
+    root: Node,
+    bytes: &[u8],
+    describe: impl Fn(Node, &[u8]) -> Option<Vec<SyntaxError>>,
+) {
     data.declared_names = extract_declared_names(&data.lines);
-    data.syntax_errors = collect_syntax_errors(root, bytes, |_, _| None);
+    data.syntax_errors = collect_syntax_errors(root, bytes, describe);
 }
 
 pub(crate) fn parse_kotlin(content: &str) -> FileData {
@@ -202,7 +208,8 @@ pub(crate) fn parse_kotlin(content: &str) -> FileData {
         // ── synthesize compiler-generated entries/values/valueOf for every enum ──
         synthesize_enum_members(&mut data.symbols);
 
-        finalize_parse(data, root, bytes);
+        data.language_features = kotlin_features::kotlin_features(root, bytes);
+        finalize_parse(data, root, bytes, kotlin_features::describe_kotlin_node);
     })
 }
 
@@ -222,6 +229,7 @@ pub(crate) fn parse_java(content: &str) -> FileData {
         assign_containers(&mut data.symbols);
         data.declared_names = extract_declared_names(&data.lines);
         data.syntax_errors = java_syntax_errors(root, bytes);
+        data.language_features = java_features::java_features(root, bytes);
     })
 }
 
@@ -336,7 +344,7 @@ pub(crate) fn parse_swift(content: &str) -> FileData {
         // ── synthesize compiler-generated init() for types with no explicit one ─
         synthesize_swift_implicit_init(root, bytes, &mut data.symbols);
 
-        finalize_parse(data, root, bytes);
+        finalize_parse(data, root, bytes, |_, _| None);
     })
 }
 
@@ -2777,8 +2785,9 @@ impl crate::types::FileData {
                 self.push_named(node, bytes, SymbolKind::METHOD)
             }
             KIND_CTOR_DECL => self.push_named(node, bytes, SymbolKind::CONSTRUCTOR),
+            KIND_COMPACT_CTOR_DECL => self.push_compact_constructor(node, bytes),
             KIND_ENUM_CONSTANT => self.push_named(node, bytes, SymbolKind::ENUM_MEMBER),
-            KIND_FIELD_DECL => self.push_field_declaration(node, bytes),
+            KIND_FIELD_DECL | KIND_CONSTANT_DECL => self.push_field_declaration(node, bytes),
             KIND_IMPORT_DECL => self.push_java_import(node, bytes),
             _ => {}
         }
@@ -2814,6 +2823,40 @@ impl crate::types::FileData {
                 deprecated,
             });
         }
+    }
+
+    /// `public Point { .. }` in `record Point(int x, int y)`: the canonical
+    /// constructor, whose parameters are the record's components.
+    fn push_compact_constructor(&mut self, node: &Node, bytes: &[u8]) {
+        let record_parameters = std::iter::successors(node.parent(), |current| current.parent())
+            .find(|current| current.kind() == KIND_RECORD_DECL)
+            .and_then(|record| record.child_by_field_name("parameters"));
+        let Some((name, selection_range)) = first_identifier(node, bytes) else {
+            return;
+        };
+        let (params, param_counts) = record_parameters
+            .map(|parameters| {
+                (
+                    extract_inner_text(&parameters, bytes),
+                    count_params_from_node(&parameters),
+                )
+            })
+            .unwrap_or_default();
+        let range = ts_to_lsp(node.range());
+        self.symbols.push(SymbolEntry {
+            name,
+            kind: SymbolKind::CONSTRUCTOR,
+            visibility: java_visibility(node),
+            range,
+            selection_range,
+            detail: extract_detail_from_node(*node, bytes, &self.lines),
+            container: None,
+            params,
+            param_counts,
+            cold: None,
+            trailing_lambda: false,
+            deprecated: deprecated_at_line(&self.lines, range.start.line as usize),
+        });
     }
 
     /// A record's components (`record Point(int x, int y)`) are its fields,
@@ -2883,7 +2926,10 @@ impl crate::types::FileData {
     }
 
     fn push_field_declaration(&mut self, node: &Node, bytes: &[u8]) {
-        let kind = if node
+        let is_interface_field = node.kind() == KIND_CONSTANT_DECL;
+        let kind = if is_interface_field {
+            SymbolKind::CONSTANT
+        } else if node
             .first_child_of_kind(KIND_MODIFIERS)
             .is_some_and(|mods| {
                 let found_kinds: Vec<&str> = (0..mods.child_count() as u32)
@@ -2893,7 +2939,8 @@ impl crate::types::FileData {
                 [KIND_MOD_STATIC, KIND_MOD_FINAL]
                     .iter()
                     .all(|&req| found_kinds.contains(&req))
-            }) {
+            })
+        {
             SymbolKind::CONSTANT
         } else {
             SymbolKind::FIELD
@@ -2980,7 +3027,9 @@ fn java_params_and_counts(node: &Node, bytes: &[u8]) -> (String, (u8, u8)) {
     (String::new(), (0, 0))
 }
 
+mod java_features;
 mod java_syntax;
+mod kotlin_features;
 
 #[cfg(test)]
 #[path = "parser_tests.rs"]

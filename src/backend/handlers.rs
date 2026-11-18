@@ -112,7 +112,9 @@ impl Backend {
                 }
             }
         }
-        Ok(crate::features::symbols::compute_document_symbols(symbols))
+        Ok(crate::features::symbols::compute_document_symbols(
+            uri, symbols,
+        ))
     }
 
     pub(super) async fn inlay_hint_impl(

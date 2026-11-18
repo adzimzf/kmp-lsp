@@ -910,6 +910,84 @@ pub(crate) fn java_record_component_occurrences(
     )
 }
 
+/// What a Java reference to a declaration is, for where jdtls starts it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JavaReferenceTarget {
+    /// A type: a use in a qualified name (`Outer.Nested`,
+    /// `import com.demo.User;`) starts where the qualified name does.
+    Type,
+    /// A constructor: a `new Dog()` starts at `new`.
+    Constructor,
+    /// A method or a field: at its name.
+    Member,
+}
+
+/// The range jdtls gives the reference to `target` whose name is at
+/// `location`: the node it reports is the whole qualified type name or the
+/// whole `new` expression, not the name in it. `location`'s own range when
+/// the name is in none of those.
+pub(crate) fn java_reference_range(
+    indexer: &Indexer,
+    location: &Location,
+    target: JavaReferenceTarget,
+) -> tower_lsp::lsp_types::Range {
+    let start = location.range.start;
+    let widened = (|| {
+        let doc = indexer.live_doc_or_parse(&location.uri)?;
+        let name = super::cst_lambda::cursor_node_at(&doc, start.into())?;
+        let node = match target {
+            JavaReferenceTarget::Member => return None,
+            JavaReferenceTarget::Type => outermost_qualified_name(name)?,
+            JavaReferenceTarget::Constructor => created_by(name)?,
+        };
+        // From the node's first token to the end of the name: a `new`
+        // expression may run over several lines.
+        let first_token = std::iter::successors(Some(node), |current| current.child(0)).last()?;
+        let text = std::str::from_utf8(&doc.bytes).ok()?;
+        let node_start = node_to_location(&location.uri, first_token, text)?
+            .range
+            .start;
+        Some(tower_lsp::lsp_types::Range::new(
+            node_start,
+            location.range.end,
+        ))
+    })();
+    widened.unwrap_or(location.range)
+}
+
+/// The qualified name `name` ends: `Outer.Nested` of `Nested`. `None` when
+/// `name` is not the last segment of one.
+fn outermost_qualified_name(name: Node<'_>) -> Option<Node<'_>> {
+    let mut qualified = None;
+    let mut segment = name;
+    while let Some(parent) = segment.parent() {
+        let is_qualified = matches!(
+            parent.kind(),
+            "scoped_type_identifier" | "scoped_identifier"
+        );
+        let is_last_segment = parent
+            .named_child(parent.named_child_count().saturating_sub(1) as u32)
+            .is_some_and(|last| last.id() == segment.id());
+        if !is_qualified || !is_last_segment {
+            break;
+        }
+        qualified = Some(parent);
+        segment = parent;
+    }
+    qualified
+}
+
+/// The `new Dog()` whose created type is `name` (or ends in it).
+fn created_by(name: Node<'_>) -> Option<Node<'_>> {
+    let type_node = outermost_qualified_name(name).unwrap_or(name);
+    let creation = type_node.parent()?;
+    let creates_it = creation.kind() == "object_creation_expression"
+        && creation
+            .child_by_field_name("type")
+            .is_some_and(|created| created.id() == type_node.id());
+    creates_it.then_some(creation)
+}
+
 /// The names the Java type parameter under `position` (declared or used)
 /// binds, its declaration first; `None` when the cursor is on none.
 pub(crate) fn java_type_parameter_occurrences(
@@ -1036,6 +1114,11 @@ pub(crate) enum JavaNameSite {
     /// A type written where it is used: `Exception` of `extends Exception`,
     /// or a segment of `java.lang.Exception`.
     TypeReference,
+    /// A method called or a field read through a receiver: `text.length()`.
+    /// Renamable only when it is declared in the workspace.
+    MemberThroughReceiver,
+    /// No name at all: a literal, an operator, a keyword.
+    NotAName,
     /// Anything else: a declaration's own name, a member, a local.
     Other,
 }
@@ -1063,13 +1146,37 @@ pub(crate) fn java_name_site(
         }
         ancestor = node.parent();
     }
+    if !matches!(name_node.kind(), "identifier" | "type_identifier") {
+        return Some(JavaNameSite::NotAName);
+    }
     let declares_a_type_parameter = name_node
         .parent()
         .is_some_and(|parent| parent.kind() == "type_parameter");
     if name_node.kind() == "type_identifier" && !declares_a_type_parameter {
         return Some(JavaNameSite::TypeReference);
     }
+    if is_member_through_receiver(name_node) {
+        return Some(JavaNameSite::MemberThroughReceiver);
+    }
     Some(JavaNameSite::Other)
+}
+
+/// `length` of `text.length()` or `size` of `list.size`: the name after a
+/// receiver, in a call or a field access.
+fn is_member_through_receiver(name_node: tree_sitter::Node<'_>) -> bool {
+    let Some(parent) = name_node.parent() else {
+        return false;
+    };
+    let field = match parent.kind() {
+        "method_invocation" => "name",
+        "field_access" => "field",
+        _ => return false,
+    };
+    let is_the_member = parent
+        .child_by_field_name(field)
+        .is_some_and(|member| member.id() == name_node.id());
+    let receiver = parent.child_by_field_name("object");
+    is_the_member && receiver.is_some()
 }
 
 /// The declaration of the Java local variable or parameter that the

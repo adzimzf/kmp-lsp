@@ -146,6 +146,15 @@ enum JavaDeclaration {
     Local,
 }
 
+/// `int x` of `record Point(int x, int y)`: a field of the record (with an
+/// accessor), not a parameter of a method.
+fn is_record_component(parameter: Node<'_>) -> bool {
+    parameter
+        .parent()
+        .and_then(|parameters| parameters.parent())
+        .is_some_and(|owner| owner.kind() == "record_declaration")
+}
+
 fn declaration_at(node: Node<'_>, parent: Node<'_>) -> Option<JavaDeclaration> {
     let parent_kind = parent.kind();
     let is_name = is_field_named(parent, "name", node);
@@ -161,14 +170,20 @@ fn declaration_at(node: Node<'_>, parent: Node<'_>) -> Option<JavaDeclaration> {
         if !is_name {
             return None;
         }
-        let declares_field = parent
-            .parent()
-            .is_some_and(|declaration| declaration.kind() == FIELD_DECLARATION);
+        let declares_field = parent.parent().is_some_and(|declaration| {
+            matches!(
+                declaration.kind(),
+                FIELD_DECLARATION | "constant_declaration"
+            )
+        });
         return Some(if declares_field {
             JavaDeclaration::Indexed
         } else {
             JavaDeclaration::Local
         });
+    }
+    if parent_kind == FORMAL_PARAMETER && is_name && is_record_component(parent) {
+        return Some(JavaDeclaration::Indexed);
     }
     let declares_local = matches!(
         parent_kind,
@@ -2189,11 +2204,14 @@ pub(crate) fn java_declared_type<'tree>(
         return lambda_parameter_name(name_node, parent).then_some(JavaDeclaredType::Untyped);
     }
     let declared = match parent_kind {
-        METHOD_DECLARATION
-        | FORMAL_PARAMETER
-        | CATCH_FORMAL_PARAMETER
-        | ENHANCED_FOR
-        | RESOURCE => written_type(parent, bytes),
+        METHOD_DECLARATION | FORMAL_PARAMETER | ENHANCED_FOR | RESOURCE => {
+            written_type(parent, bytes)
+        }
+        CATCH_FORMAL_PARAMETER => caught_type(parent, bytes),
+        "instanceof_expression" => parent
+            .child_by_field_name("right")
+            .and_then(|tested| type_name_node(tested, bytes))
+            .map_or(JavaDeclaredType::Untyped, JavaDeclaredType::Written),
         VARIABLE_DECLARATOR => variable_declarator_type(parent, bytes),
         CONSTRUCTOR_DECLARATION | COMPACT_CONSTRUCTOR | ENUM_CONSTANT => {
             enclosing_type_name(parent)
@@ -2352,6 +2370,19 @@ fn lambda_parameter_name(name_node: Node<'_>, parent: Node<'_>) -> bool {
 
 /// The type written in `declaration`'s `type` field (a field, local,
 /// parameter or method's return type).
+/// `Failure` of `catch (Failure failure)`; the first of a multi-catch
+/// `catch (A | B failure)`.
+fn caught_type<'tree>(parameter: Node<'tree>, bytes: &[u8]) -> JavaDeclaredType<'tree> {
+    let mut cursor = parameter.walk();
+    let catch_type = parameter
+        .named_children(&mut cursor)
+        .find(|part| part.kind() == "catch_type");
+    catch_type
+        .and_then(|catch_type| catch_type.named_child(0))
+        .and_then(|first| type_name_node(first, bytes))
+        .map_or(JavaDeclaredType::Untyped, JavaDeclaredType::Written)
+}
+
 fn written_type<'tree>(declaration: Node<'tree>, bytes: &[u8]) -> JavaDeclaredType<'tree> {
     declaration
         .child_by_field_name("type")

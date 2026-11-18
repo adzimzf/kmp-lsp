@@ -47,12 +47,12 @@ pub(crate) use self::infer::{
         is_java_created_type_at, is_java_type_name_at, is_local_declaration_at,
         is_local_value_reference, java_completion_place_at, java_javadoc_parameter_tag,
         java_jump_target, java_local_declaration_at, java_local_definition, java_local_hover_line,
-        java_name_site, java_record_component_occurrences, java_type_parameter_definition,
-        java_type_parameter_occurrences, local_scope_occurrences, narrow_java_overloads,
-        navigation_member_ident, navigation_receiver_node, resolve_identity,
+        java_name_site, java_record_component_occurrences, java_reference_range,
+        java_type_parameter_definition, java_type_parameter_occurrences, local_scope_occurrences,
+        narrow_java_overloads, navigation_member_ident, navigation_receiver_node, resolve_identity,
         resolve_identity_with_io, shape_filter_locations, type_definition_step, JavaNameSite,
-        NavigationSource, NotCodeKind, OccurrenceSite, SymbolAtCursor, SymbolRole,
-        TypeDefinitionStep,
+        JavaReferenceTarget, NavigationSource, NotCodeKind, OccurrenceSite, SymbolAtCursor,
+        SymbolRole, TypeDefinitionStep,
     },
     deps::{
         CallShape, CallableInfo, ExtensionCallable, InferDeps, MemberTypeParameters,
@@ -324,6 +324,10 @@ pub(crate) struct Indexer {
     /// `indexingOptions.jdkHome`: the JDK whose sources are indexed, ahead of
     /// `workspace.json`'s `jdkHome` and the environment (see [`jdk_sources`]).
     pub(crate) configured_jdk_home: std::sync::RwLock<Option<PathBuf>>,
+    /// The Java release and Kotlin language version the project is built
+    /// with, as the editor set them or the build says (see
+    /// [`crate::language_version`]).
+    pub(crate) language_versions: crate::language_version::ProjectLanguageVersions,
     /// Library sources jars known by name and loaded on first use
     /// (`indexingOptions.librarySources`, see [`library_sources`]).
     pub(crate) library_sources: library_sources::LibrarySources,
@@ -1119,6 +1123,7 @@ impl Indexer {
             library_uris: DashSet::new(),
             references_include_libraries: std::sync::atomic::AtomicBool::new(true),
             configured_jdk_home: std::sync::RwLock::new(None),
+            language_versions: Default::default(),
             library_sources: library_sources::LibrarySources::default(),
             extracted_jar_sources: DashMap::new(),
             importable_fqns: std::sync::RwLock::new(std::collections::HashMap::new()),

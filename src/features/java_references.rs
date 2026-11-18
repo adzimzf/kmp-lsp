@@ -27,7 +27,8 @@ use tower_lsp::lsp_types::{
 use super::text_utils::utf16_column;
 use crate::backend::cursor::CursorContext;
 use crate::indexer::{
-    Indexer, NotCodeKind, OccurrenceDetail, OccurrenceSite, SymbolAtCursor, SymbolRole,
+    Indexer, JavaReferenceTarget, NotCodeKind, OccurrenceDetail, OccurrenceSite, SymbolAtCursor,
+    SymbolRole,
 };
 use crate::resolver::{
     ReceiverTypeAgreement, Resolver, MAX_SYNC_JAR_PROMOTIONS_PER_HIERARCHY_WALK,
@@ -42,14 +43,36 @@ pub(crate) async fn find_java_references(
     position: Position,
     include_declaration: bool,
 ) -> Option<Vec<Location>> {
-    java_references(
+    let found = java_references(
         index,
         uri,
         position,
         include_declaration,
         Accessors::Included,
     )
-    .await
+    .await?;
+    let Some(target) = JavaTarget::at(index, uri, position).await else {
+        return Some(found);
+    };
+    let reported = match target.kind {
+        TargetKind::Type => JavaReferenceTarget::Type,
+        TargetKind::Constructor => JavaReferenceTarget::Constructor,
+        TargetKind::Method | TargetKind::Field => return Some(found),
+    };
+    // jdtls reports the node naming the declaration: the whole qualified
+    // type name, the whole `new` expression. Its own name stays.
+    Some(
+        found
+            .into_iter()
+            .map(|location| {
+                if location == target.location {
+                    return location;
+                }
+                let range = crate::indexer::java_reference_range(index, &location, reported);
+                Location::new(location.uri, range)
+            })
+            .collect(),
+    )
 }
 
 /// Whether a field's references include its getter and setter calls.
@@ -70,6 +93,15 @@ async fn java_references(
 ) -> Option<Vec<Location>> {
     if !is_java_file(uri) || index.is_library_uri(uri) {
         return None;
+    }
+    // A type parameter and a record component are scoped by their
+    // declaration, not found by name: `T` of a generic method is not `T`
+    // of its class, a component is also its accessor's calls.
+    if let Some(uses) = crate::indexer::java_type_parameter_occurrences(index, uri, position) {
+        return Some(declaration_first(uses, include_declaration));
+    }
+    if let Some(names) = record_component_names(index, uri, position).await {
+        return Some(declaration_first(names, include_declaration));
     }
     if let Some(local) = crate::indexer::java_local_declaration_at(index, uri, position) {
         return Some(local_references(index, &local, include_declaration));
@@ -98,6 +130,15 @@ async fn java_references(
         }
     }
     Some(found)
+}
+
+/// `names`, whose first is the declaration, without it unless
+/// `include_declaration`.
+fn declaration_first(mut names: Vec<Location>, include_declaration: bool) -> Vec<Location> {
+    if !include_declaration && !names.is_empty() {
+        names.remove(0);
+    }
+    names
 }
 
 /// The usages of `target` in workspace code, found by a word search from
@@ -225,6 +266,14 @@ pub(crate) async fn java_document_highlights(
     }
     if let Some(marked) = crate::indexer::java_marked_occurrences(index, uri, position) {
         return Some(as_highlights(marked, None));
+    }
+    let scoped = match crate::indexer::java_type_parameter_occurrences(index, uri, position) {
+        Some(uses) => Some(uses),
+        None => crate::indexer::java_record_component_occurrences(index, uri, position),
+    };
+    if let Some(names) = scoped {
+        let declaration = names.first().cloned();
+        return Some(as_highlights(names, declaration.as_ref()));
     }
     if let Some(local) = crate::indexer::java_local_declaration_at(index, uri, position) {
         let found = local_references(index, &local, true);

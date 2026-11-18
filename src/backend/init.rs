@@ -216,6 +216,26 @@ impl Backend {
         }
     }
 
+    /// `indexingOptions.javaRelease` and `indexingOptions.kotlinLanguageVersion`:
+    /// read whether or not the client names a workspace, since what a file
+    /// may use depends on them either way.
+    pub(super) fn apply_language_versions(
+        &self,
+        initialization_options: Option<&serde_json::Value>,
+    ) {
+        let indexing_options =
+            initialization_options.and_then(|options| options.get("indexingOptions"));
+        let configured_versions = crate::language_version::configured_versions(indexing_options);
+        log::info!(
+            "language versions set by the editor: java {:?}, kotlin {:?}",
+            configured_versions.java,
+            configured_versions.kotlin
+        );
+        self.indexer
+            .language_versions
+            .configure(configured_versions);
+    }
+
     fn collect_indexing_option_strings(
         initialization_options: Option<&serde_json::Value>,
         option_name: &str,

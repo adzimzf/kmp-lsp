@@ -92,7 +92,7 @@ impl Backend {
 
 impl Backend {
     /// A build file changed: let the dependency sync re-check now rather than
-    /// at its next poll.
+    /// at its next poll, and read the language versions it sets again.
     fn wake_dependency_sync_for(&self, uri: &Url) {
         let is_build_file = uri
             .path()
@@ -101,6 +101,10 @@ impl Backend {
             .is_some_and(crate::dependency_sync::is_build_file_name);
         if is_build_file {
             self.dependency_sync.wake();
+            let indexer = Arc::clone(&self.indexer);
+            tokio::task::spawn_blocking(move || {
+                crate::language_version::detect_for_workspace(&indexer);
+            });
         }
     }
 }
@@ -120,6 +124,8 @@ impl LanguageServer for Backend {
             .client_label_details_support
             .store(supports_label_details, Ordering::Relaxed);
         log::info!("client labelDetails support: {supports_label_details}");
+
+        self.apply_language_versions(params.initialization_options.as_ref());
 
         let resolved_workspace_root = Self::resolve_workspace_root(&params);
         let workspace_pinned = resolved_workspace_root.is_some();

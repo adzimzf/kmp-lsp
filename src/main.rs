@@ -14,6 +14,7 @@ mod inlay_hints;
 mod itest;
 mod jar_extract;
 mod language;
+mod language_version;
 mod lines_ext;
 mod parser;
 mod path_util;
