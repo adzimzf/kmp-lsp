@@ -1,0 +1,13 @@
+//- /src/main/kotlin/com/demo/Counter.kt
+package com.demo
+
+class Coun$0ter {
+    val total: Number
+        field = 0
+}
+//= expected
+(nothing)
+//= expected kotlin ..2.3
+/src/main/kotlin/com/demo/Counter.kt:5:9  explicit backing fields need Kotlin 2.4 or later
+//= expected kotlin 2.4..
+(nothing)

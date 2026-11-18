@@ -1,0 +1,14 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    void run() {
+        var count = 1;
+    }
+}
+//= expected
+(nothing)
+//= expected java ..9
+/src/main/java/com/demo/Main.java:5:9  `var` needs Java 10 or later
+//= expected java 10..
+(nothing)

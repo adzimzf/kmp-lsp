@@ -1,0 +1,14 @@
+//- /src/main/kotlin/com/demo/Registry.kt
+package com.demo
+
+class Regi$0stry {
+    typealias Entries = Map<String, Int>
+
+    val entries: Entries = emptyMap()
+}
+//= expected
+(nothing)
+//= expected kotlin ..2.2
+/src/main/kotlin/com/demo/Registry.kt:4:5  nested type aliases need Kotlin 2.3 or later
+//= expected kotlin 2.3..
+(nothing)

@@ -1,0 +1,17 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    int length(Object value) {
+        if (value instanceof String text) {
+            return text.length();
+        }
+        return 0;
+    }
+}
+//= expected
+(nothing)
+//= expected java ..15
+/src/main/java/com/demo/Main.java:5:37  patterns in `instanceof` need Java 16 or later
+//= expected java 16..
+(nothing)

@@ -1,0 +1,14 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    String greeting = """
+        Hello
+        """;
+}
+//= expected
+(nothing)
+//= expected java ..14
+/src/main/java/com/demo/Main.java:4:23  text blocks need Java 15 or later
+//= expected java 15..
+(nothing)

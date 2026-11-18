@@ -1,0 +1,25 @@
+//- /src/main/java/com/demo/Point.java
+package com.demo;
+
+record Point(int x, int y) {
+}
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    int x(Object value) {
+        if (value instanceof Point(int x, _)) {
+            return x;
+        }
+        return 0;
+    }
+}
+//= expected
+(nothing)
+//= expected java ..20
+/src/main/java/com/demo/Main.java:5:35  record patterns need Java 21 or later
+/src/main/java/com/demo/Main.java:5:44  unnamed variables need Java 22 or later
+//= expected java 21
+/src/main/java/com/demo/Main.java:5:44  unnamed variables need Java 22 or later
+//= expected java 22..
+(nothing)

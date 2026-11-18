@@ -1,0 +1,19 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+interface Sum {
+    int apply(int a, int b);
+}
+
+class Ma$0in {
+    Sum sum = (var a, var b) -> a + b;
+}
+//= expected
+(nothing)
+//= expected java ..9
+/src/main/java/com/demo/Main.java:8:16  `var` needs Java 10 or later
+/src/main/java/com/demo/Main.java:8:23  `var` needs Java 10 or later
+//= expected java 10
+/src/main/java/com/demo/Main.java:8:20  `var` lambda parameters need Java 11 or later
+//= expected java 11..
+(nothing)

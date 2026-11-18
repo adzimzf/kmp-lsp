@@ -14,6 +14,11 @@
 //! /com/demo/Greeter.java:2:24  class Greeter { String greet() { return ""; } }
 //! ```
 //!
+//! A case whose answer depends on the language version the project is
+//! built with has one `//= expected <language> <range>` block per range
+//! ([`super::versions`]); a block without a range is asked without a
+//! version, as every case written before versions were is.
+//!
 //! The directory a case sits in says which request is asked of it and which
 //! language it is written in, so a new case is a new file and no Rust: the
 //! set scales to thousands of them. One `#[test]` per language and kind runs
@@ -30,6 +35,7 @@ use futures::stream::{self, StreamExt};
 use super::fixture::Fixture;
 use super::request::{Kind, Settles, NOTHING};
 use super::server::Session;
+use super::versions::{check_cover, Versions};
 
 const EXTENSION: &str = "case";
 const SEPARATOR: &str = "//= expected";
@@ -103,6 +109,7 @@ suites! {
         document_symbol => DocumentSymbol,
         folding_range => FoldingRange,
         workspace_symbol => WorkspaceSymbol,
+        diagnostics => Diagnostics,
     }
 }
 
@@ -128,6 +135,25 @@ fn every_case_directory_is_run_by_a_suite() {
         unrun.join(", "),
         file!()
     );
+}
+
+/// Every case file splits into a fixture and expectations whose ranges
+/// cover every version: checked without `INTEGRATION=1`, so a bad range is
+/// caught by a plain `cargo test`.
+#[test]
+fn every_case_file_reads() {
+    let mut broken = Vec::new();
+    for language in read_directory(&cases_root()) {
+        for request in read_directory(&language) {
+            for file in case_files(&request) {
+                let text = std::fs::read_to_string(&file).expect("a readable case");
+                if let Err(problem) = Case::parse(&text) {
+                    broken.push(format!("{}: {problem}", file.display()));
+                }
+            }
+        }
+    }
+    assert!(broken.is_empty(), "{}", broken.join("\n"));
 }
 
 /// Asks `kind` of every case in `cases/<language>/<kind_directory>` and
@@ -166,23 +192,36 @@ fn suite(language: &str, kind_directory: &str, kind: Kind) {
     );
 }
 
-/// `None` when the case passes, otherwise what it answered instead.
+/// `None` when the case passes, otherwise what it answered instead, at
+/// every version it answered differently at.
 async fn run_case(file: &Path, kind: Kind) -> Option<String> {
     let case = Case::read(file);
     let fixture = Fixture::parse(&case.fixture);
-    let mut session = Session::open(&fixture).await;
-    let actual = kind
-        .ask(&mut session, &fixture, &case.expected, case.settles())
-        .await;
-    if actual == case.expected {
-        return None;
+    let mut disagreements = Vec::new();
+    for expectation in &case.expectations {
+        for version in expectation.versions.asked_at() {
+            let mut session = Session::open(&fixture, version).await;
+            let actual = kind
+                .ask(
+                    &mut session,
+                    &fixture,
+                    &expectation.expected,
+                    expectation.settles(),
+                )
+                .await;
+            if actual == expectation.expected {
+                continue;
+            }
+            let at = version.map_or_else(String::new, |version| format!(" ({version})"));
+            disagreements.push(format!(
+                "{}{at}\n  expected:\n{}  answered:\n{}",
+                file.display(),
+                indented(&expectation.expected),
+                indented(&actual)
+            ));
+        }
     }
-    Some(format!(
-        "{}\n  expected:\n{}  answered:\n{}",
-        file.display(),
-        indented(&case.expected),
-        indented(&actual)
-    ))
+    (!disagreements.is_empty()).then(|| disagreements.join("\n"))
 }
 
 /// Whether the cases were asked for: a suite starts a server per case, so
@@ -196,9 +235,15 @@ fn asked_for(variable: &str) -> bool {
     std::env::var(variable).is_ok_and(|value| value != "0")
 }
 
-/// A case file split at its `//= expected` line.
+/// A case file split at its `//= expected` lines.
 struct Case {
     fixture: String,
+    expectations: Vec<Expectation>,
+}
+
+/// The answer a case expects at some versions.
+struct Expectation {
+    versions: Versions,
     expected: String,
 }
 
@@ -206,15 +251,36 @@ impl Case {
     fn read(file: &Path) -> Self {
         let text = std::fs::read_to_string(file)
             .unwrap_or_else(|error| panic!("{} is readable: {error}", file.display()));
-        let (fixture, expected) = text.split_once(SEPARATOR).unwrap_or_else(|| {
-            panic!("{} has a `{SEPARATOR}` line", file.display());
-        });
-        Self {
-            fixture: fixture.to_owned(),
-            expected: normalized(expected),
-        }
+        Self::parse(&text).unwrap_or_else(|problem| panic!("{}: {problem}", file.display()))
     }
 
+    fn parse(text: &str) -> Result<Self, String> {
+        let mut blocks = text.split(SEPARATOR);
+        let fixture = blocks.next().unwrap_or_default().to_owned();
+        let mut expectations = Vec::new();
+        for block in blocks {
+            let (header, body) = block.split_once('\n').unwrap_or((block, ""));
+            expectations.push(Expectation {
+                versions: Versions::parse(header)?,
+                expected: normalized(body),
+            });
+        }
+        if expectations.is_empty() {
+            return Err(format!("no `{SEPARATOR}` line"));
+        }
+        let versions: Vec<Versions> = expectations
+            .iter()
+            .map(|expectation| expectation.versions)
+            .collect();
+        check_cover(&versions)?;
+        Ok(Self {
+            fixture,
+            expectations,
+        })
+    }
+}
+
+impl Expectation {
     /// A case whose answer is nothing is asked once; any other waits for
     /// the server to have something to say.
     fn settles(&self) -> Settles {

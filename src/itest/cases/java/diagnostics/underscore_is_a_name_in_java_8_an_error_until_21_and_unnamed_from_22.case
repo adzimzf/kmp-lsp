@@ -1,0 +1,16 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    void run() {
+        int _ = 1;
+    }
+}
+//= expected
+(nothing)
+//= expected java 8
+(nothing)
+//= expected java 9..21
+/src/main/java/com/demo/Main.java:5:13  unnamed variables need Java 22 or later
+//= expected java 22..
+(nothing)

@@ -49,6 +49,17 @@ Notes on how an answer is written down:
   it is at the line and column javac reports it (the wording is kmp-lsp's);
   every `(nothing)` case compiles with javac. The missing-package check reads
   the package out of the path, so those cases live under `/src/main/java/`.
+- **Java releases.** A case whose answer depends on the release the project
+  is compiled for has one `//= expected java <range>` block per range
+  (`..15`, `16..`, `9..21`, `21`) covering every release from 8 to 25 once,
+  and usually a plain `//= expected` beside them: the answer when the
+  release is not known, which is the newest's. Each range is asked at both
+  its ends, the server told the release as `indexingOptions.javaRelease`.
+  `scripts/check-java-version-cases.py --javac <JDK 25 javac>` compiles
+  every case at every release of every range with `javac --release` and
+  compares the positions: below a feature's release the errors are where
+  javac reports them (javac reports each missing feature once per file, at
+  its first use), and the file compiles from that release on.
 - **signature_help** cases that end in a syntax error do so on purpose, as
   the jdtls tests do: help is asked while a call is being typed.
 
@@ -447,3 +458,28 @@ error a case expects is at a line and column where javac reports one.
 | `unclosed_char_literal` | `'a;` |
 | `varargs_an_array_initializer_and_a_cast_parse` | nothing |
 | `while_without_parens` | `while true {`: both parentheses missing |
+
+### Java releases
+
+Each case says from which release a construct compiles; checked with
+`javac --release` of JDK 25 at every release from 8 to 25.
+
+| case | releases |
+| --- | --- |
+| `a_compact_source_file_needs_java_25` | a file of only `void main()`: an error up to 24 |
+| `a_local_declared_with_var_needs_java_10` | `var count = 1;`: an error up to 9 |
+| `a_module_import_needs_java_25` | `import module java.base;`: an error up to 24 |
+| `a_private_interface_method_needs_java_9` | an error in 8 |
+| `a_record_needs_java_16` | an error up to 15 |
+| `a_record_pattern_needs_java_21` | `instanceof Pair(int left, int right)`: an error up to 20 |
+| `a_resource_variable_in_try_needs_java_9` | `try (resource)`: an error in 8 |
+| `a_sealed_interface_needs_java_17` | an error up to 16 |
+| `a_statement_before_super_needs_java_25` | a statement before `super(…)`: an error up to 24 |
+| `a_switch_expression_needs_java_14` | the switch expression and its first `->` label: errors up to 13 |
+| `a_text_block_needs_java_15` | an error up to 14 |
+| `a_type_pattern_in_a_switch_needs_java_21` | `case String name:`: an error up to 20 |
+| `an_instanceof_pattern_needs_java_16` | an error up to 15 |
+| `an_unnamed_pattern_needs_java_22_inside_a_record_pattern_that_needs_21` | both errors up to 20, the `_` alone in 21 |
+| `underscore_is_a_name_in_java_8_an_error_until_21_and_unnamed_from_22` | `int _ = 1;`: a name in 8 (javac only warns), an error from 9 to 21, an unnamed variable from 22 |
+| `var_lambda_parameters_need_java_11` | `(var a, var b) ->`: `var` is no type up to 9, the lambda form an error in 10 |
+| `var_names_a_class_until_java_9` | `class var`: a class up to 9, an error from 10 (and with no release known) |
