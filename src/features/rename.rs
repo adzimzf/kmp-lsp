@@ -44,13 +44,15 @@ pub(crate) async fn prepare_rename_impl(
     }))
 }
 
-/// Whether a Java name may be renamed, as jdtls has it: not a package or
-/// import name, and not a type declared outside the workspace (`Exception`
-/// of the JDK). Every other name, and a name in another language, may.
+/// Whether a Java name may be renamed, as jdtls has it: a name, not of a
+/// package or an import, and not a type or a member declared outside the
+/// workspace (`Exception` or `String.length` of the JDK). Every other name, and a name in another language, may.
 async fn java_name_is_renamable(indexer: &Indexer, uri: &Url, position: Position) -> bool {
     match crate::indexer::java_name_site(indexer, uri, position) {
-        Some(JavaNameSite::PackageOrImport) => false,
-        Some(JavaNameSite::TypeReference) => declared_in_workspace(indexer, uri, position).await,
+        Some(JavaNameSite::PackageOrImport | JavaNameSite::NotAName) => false,
+        Some(JavaNameSite::TypeReference | JavaNameSite::MemberThroughReceiver) => {
+            declared_in_workspace(indexer, uri, position).await
+        }
         Some(JavaNameSite::Other) | None => true,
     }
 }

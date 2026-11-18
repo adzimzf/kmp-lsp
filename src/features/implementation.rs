@@ -51,9 +51,14 @@ pub(crate) async fn find_implementation_at(
             ..
         } = &sym.role
         {
-            if let Some(response) =
-                find_method_implementations(&sym.name, &receiver_type.type_path(), indexer, uri)
-                    .await
+            if let Some(response) = find_method_implementations(
+                &sym.name,
+                &receiver_type.type_path(),
+                None,
+                indexer,
+                uri,
+            )
+            .await
             {
                 return Some(response);
             }
@@ -115,10 +120,12 @@ async fn java_use_site_implementations(
         return None;
     }
     let container = declared.container.as_deref()?;
-    let overriding = find_method_implementations(&declared.name, container, indexer, uri)
-        .await
-        .map(response_locations)
-        .unwrap_or_default();
+    let overridden = OverriddenMethod::of(indexer, &declared, &declaration.uri);
+    let overriding =
+        find_method_implementations(&declared.name, container, Some(&overridden), indexer, uri)
+            .await
+            .map(response_locations)
+            .unwrap_or_default();
     let in_an_interface = indexer
         .file_symbols(&declaration.uri)
         .iter()
@@ -129,6 +136,91 @@ async fn java_use_site_implementations(
             .split_whitespace()
             .any(|word| word == "abstract");
     Some(with_declaration(declaration, overriding, has_a_body))
+}
+
+/// Implementations of the Java method declared at `line` named `word`, as
+/// jdtls answers them: the methods overriding it with its parameters, and
+/// the method itself when it has a body (a `default` method of an
+/// interface, a method of a class that is not `abstract`) or nothing
+/// overrides it. `None` when no Java method is declared there.
+async fn java_declaration_site_implementations(
+    word: &str,
+    index: &(impl SymbolIndex + DocumentAccess + SearchAccess),
+    uri: &Url,
+    line: u32,
+) -> Option<Vec<Location>> {
+    if crate::Language::from_path(uri.path()) != crate::Language::Java {
+        return None;
+    }
+    let symbols = index.file_symbols(uri);
+    let declared = symbols.iter().find(|symbol| {
+        symbol.name == word
+            && symbol.kind == SymbolKind::METHOD
+            && symbol.container.is_some()
+            && symbol.selection_range.start.line == line
+    })?;
+    let container = declared.container.as_deref()?;
+    let overridden = OverriddenMethod::of(index, declared, uri);
+    let overriding = find_method_implementations(word, container, Some(&overridden), index, uri)
+        .await
+        .map(response_locations)
+        .unwrap_or_default();
+    let in_an_interface = symbols
+        .iter()
+        .any(|symbol| symbol.name == container && symbol.kind == SymbolKind::INTERFACE);
+    let modifiers: Vec<&str> = declared.detail.split_whitespace().collect();
+    let has_a_body = if in_an_interface {
+        modifiers.contains(&"default")
+    } else {
+        !modifiers.contains(&"abstract")
+    };
+    let declaration = Location::new(uri.clone(), declared.selection_range);
+    Some(with_declaration(&declaration, overriding, has_a_body))
+}
+
+/// The signature an overriding Java method must have: the overridden
+/// method's parameter types, a type variable of it or its class standing
+/// for any type (`T find(int id)` of `Repository<T>`), and where it is
+/// declared (an enum's constant bodies override it there).
+struct OverriddenMethod {
+    parameter_keys: Vec<String>,
+    type_variables: Vec<String>,
+    uri: Url,
+}
+
+impl OverriddenMethod {
+    fn of(index: &impl SymbolIndex, declared: &SymbolEntry, uri: &Url) -> Self {
+        let mut type_variables: Vec<String> = declared.type_params().to_vec();
+        let class_type_variables = index
+            .file_symbols(uri)
+            .into_iter()
+            .filter(|symbol| Some(symbol.name.as_str()) == declared.container.as_deref())
+            .filter(|symbol| is_class_kind(symbol.kind))
+            .flat_map(|class| class.type_params().to_vec());
+        type_variables.extend(class_type_variables);
+        Self {
+            parameter_keys: crate::indexer::parameter_type_keys(&declared.params),
+            type_variables,
+            uri: uri.clone(),
+        }
+    }
+
+    /// Whether a method with parameters `params` overrides this one.
+    fn is_overridden_by(&self, params: &str) -> bool {
+        let keys = crate::indexer::parameter_type_keys(params);
+        keys.len() == self.parameter_keys.len()
+            && keys
+                .iter()
+                .zip(&self.parameter_keys)
+                .all(|(overriding, overridden)| {
+                    let element = overridden.trim_end_matches("[]");
+                    overriding == overridden
+                        || self
+                            .type_variables
+                            .iter()
+                            .any(|variable| variable == element)
+                })
+    }
 }
 
 /// `found` with `declaration` in front when it is `itself_one` or nothing
@@ -170,8 +262,11 @@ pub(crate) async fn find_implementation(
     uri: &Url,
     line: u32,
 ) -> Option<GotoDefinitionResponse> {
+    if let Some(found) = java_declaration_site_implementations(word, index, uri, line).await {
+        return locs_to_opt_response(found);
+    }
     if let Some(declaring_class) = declaring_class_of_method(index, uri, word, line) {
-        find_method_implementations(word, &declaring_class, index, uri).await
+        find_method_implementations(word, &declaring_class, None, index, uri).await
     } else {
         find_type_implementations(word, index, uri).await
     }
@@ -352,11 +447,18 @@ pub(crate) fn range_contains(outer: Range, inner: Range) -> bool {
 /// subtype are included.
 fn method_overrides_in(
     method_name: &str,
+    overridden: Option<&OverriddenMethod>,
     data: &Arc<FileData>,
     subtype: &Location,
 ) -> Vec<Location> {
     let lang = crate::Language::from_path(subtype.uri.path());
     let body = SubtypeBody::of(data, subtype);
+    let java_signature_fits = |symbol: &SymbolEntry| match overridden {
+        Some(overridden) if lang == crate::Language::Java => {
+            overridden.is_overridden_by(&symbol.params)
+        }
+        _ => true,
+    };
     data.symbols
         .iter()
         .filter(|s| {
@@ -364,6 +466,7 @@ fn method_overrides_in(
                 && matches!(s.kind, SymbolKind::FUNCTION | SymbolKind::METHOD)
                 && lang.detail_is_override(&s.detail)
                 && body.declares(s, data)
+                && java_signature_fits(s)
         })
         .map(|s| Location {
             uri: subtype.uri.clone(),
@@ -378,10 +481,12 @@ fn method_overrides_in(
 async fn find_method_implementations(
     method_name: &str,
     declaring_class: &str,
+    overridden: Option<&OverriddenMethod>,
     index: &(impl SymbolIndex + DocumentAccess + SearchAccess),
     uri: &Url,
 ) -> Option<GotoDefinitionResponse> {
-    let mut override_locs: Vec<Location> = Vec::new();
+    let mut override_locs: Vec<Location> =
+        enum_constant_overrides(method_name, declaring_class, overridden, index);
     let mut queue: Vec<String> = vec![declaring_class.to_string()];
     let mut visited: HashSet<String> = HashSet::from([declaring_class.to_string()]);
 
@@ -405,7 +510,7 @@ async fn find_method_implementations(
             }
 
             // Collect all override sites for the method in this file.
-            for loc in method_overrides_in(method_name, &data, &class_loc) {
+            for loc in method_overrides_in(method_name, overridden, &data, &class_loc) {
                 if !override_locs
                     .iter()
                     .any(|l| l.uri == loc.uri && l.range == loc.range)
@@ -449,6 +554,45 @@ async fn find_method_implementations(
     }
 
     locs_to_opt_response(override_locs)
+}
+
+/// The methods of the Java enum `declaring_class`'s constant bodies
+/// (`PLUS { int apply(..) {..} }`) that override its `method_name`: each
+/// constant with a body is an anonymous subclass of the enum.
+fn enum_constant_overrides(
+    method_name: &str,
+    declaring_class: &str,
+    overridden: Option<&OverriddenMethod>,
+    index: &impl SymbolIndex,
+) -> Vec<Location> {
+    let Some(overridden) = overridden else {
+        return Vec::new();
+    };
+    let symbols = index.file_symbols(&overridden.uri);
+    let is_an_enum = symbols
+        .iter()
+        .any(|symbol| symbol.name == declaring_class && symbol.kind == SymbolKind::ENUM);
+    if !is_an_enum {
+        return Vec::new();
+    }
+    let constants: Vec<&SymbolEntry> = symbols
+        .iter()
+        .filter(|symbol| {
+            symbol.kind == SymbolKind::ENUM_MEMBER
+                && symbol.container.as_deref() == Some(declaring_class)
+        })
+        .collect();
+    symbols
+        .iter()
+        .filter(|symbol| symbol.name == method_name && symbol.kind == SymbolKind::METHOD)
+        .filter(|method| {
+            constants
+                .iter()
+                .any(|constant| range_contains(constant.range, method.range))
+        })
+        .filter(|method| overridden.is_overridden_by(&method.params))
+        .map(|method| Location::new(overridden.uri.clone(), method.selection_range))
+        .collect()
 }
 
 #[cfg(test)]

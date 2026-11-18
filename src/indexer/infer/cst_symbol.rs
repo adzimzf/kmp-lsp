@@ -849,6 +849,9 @@ pub(crate) fn narrow_java_overloads(
         return locations;
     };
     let arguments = super::java_cst::java_argument_types(invocation, &doc.bytes, indexer, uri);
+    // A call names a method: a record component stands for its accessor only
+    // while the record declares none.
+    let locations = explicit_accessors_for_components(indexer, locations);
     // A qualified lookup may have answered with one overload of several.
     let candidates = with_sibling_overloads(indexer, locations.clone());
     if candidates.len() < 2 {
@@ -861,6 +864,299 @@ pub(crate) fn narrow_java_overloads(
         return locations;
     }
     best
+}
+
+/// `locations` with each field that its class also declares a method of the
+/// same name for replaced by those methods: `name.value()` calls the
+/// explicit accessor `value()` of `record Name(String value)`.
+fn explicit_accessors_for_components(indexer: &Indexer, locations: Vec<Location>) -> Vec<Location> {
+    let mut replaced: Vec<Location> = Vec::new();
+    for location in locations {
+        let accessors: Vec<Location> = indexer
+            .files
+            .get(location.uri.as_str())
+            .map(|file| {
+                let Some(field) = file.symbols.iter().find(|symbol| {
+                    symbol.selection_range == location.range && symbol.kind == SymbolKind::FIELD
+                }) else {
+                    return Vec::new();
+                };
+                file.symbols
+                    .iter()
+                    .filter(|symbol| {
+                        symbol.kind == SymbolKind::METHOD
+                            && symbol.name == field.name
+                            && symbol.container == field.container
+                    })
+                    .map(|method| Location::new(location.uri.clone(), method.selection_range))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let kept = if accessors.is_empty() {
+            vec![location]
+        } else {
+            accessors
+        };
+        for location in kept {
+            if !replaced.contains(&location) {
+                replaced.push(location);
+            }
+        }
+    }
+    replaced
+}
+
+/// What the type variables of the Java method or constructor declared at
+/// `declaration` stand for in the call whose name is under `position`: its
+/// class's from the receiver's type arguments (`T` → `String` for
+/// `box.put("a")` on a `Box<String>`), its own from the arguments
+/// (`T` → `String` for `first(values)` with a `String[] values`). Empty
+/// when nothing is known.
+pub(crate) fn java_call_type_arguments(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+    declaration: &Location,
+) -> std::collections::HashMap<String, String> {
+    let mut substitution = std::collections::HashMap::new();
+    let Some(doc) = indexer.live_doc_or_parse(uri) else {
+        return substitution;
+    };
+    let Some(name_node) = super::cst_lambda::cursor_node_at(&doc, position.into()) else {
+        return substitution;
+    };
+    let Some(invocation) = super::java_cst::invocation_of_method_name(name_node) else {
+        return substitution;
+    };
+    let Some(file) = indexer.files.get(declaration.uri.as_str()) else {
+        return substitution;
+    };
+    let Some(declared) = file
+        .symbols
+        .iter()
+        .find(|symbol| symbol.selection_range == declaration.range)
+    else {
+        return substitution;
+    };
+    let class_type_parameters: Vec<String> = file
+        .symbols
+        .iter()
+        .find(|symbol| {
+            Some(symbol.name.as_str()) == declared.container.as_deref()
+                && symbol.range.start <= declared.range.start
+                && declared.range.end <= symbol.range.end
+        })
+        .map(|class| type_variable_names(class.type_params()))
+        .unwrap_or_default();
+    let receiver_type = invocation
+        .child_by_field_name("object")
+        .and_then(|receiver| super::java_cst::java_expr_type(receiver, &doc.bytes, indexer, uri));
+    if let Some((receiver_type, _)) = receiver_type {
+        let arguments = top_level_type_arguments(&receiver_type);
+        if arguments.len() == class_type_parameters.len() {
+            substitution.extend(class_type_parameters.into_iter().zip(arguments));
+        }
+    }
+    let method_type_parameters = type_variable_names(declared.type_params());
+    if method_type_parameters.is_empty() {
+        return substitution;
+    }
+    let parameters = super::java_cst::parameter_type_keys(&declared.params);
+    let arguments = super::java_cst::java_argument_types(invocation, &doc.bytes, indexer, uri);
+    for (parameter, argument) in parameters.iter().zip(&arguments) {
+        let argument_key = match argument {
+            super::java_cst::ArgumentType::Known(key)
+            | super::java_cst::ArgumentType::Declared { key, .. } => key,
+            _ => continue,
+        };
+        let parameter_element = parameter.trim_end_matches("[]");
+        let dimensions = (parameter.len() - parameter_element.len()) / 2;
+        let argument_element = argument_key.trim_end_matches("[]");
+        let same_dimensions = (argument_key.len() - argument_element.len()) / 2 == dimensions;
+        let binds_a_variable = method_type_parameters
+            .iter()
+            .any(|variable| variable == parameter_element);
+        if binds_a_variable && same_dimensions && !substitution.contains_key(parameter_element) {
+            substitution.insert(parameter_element.to_owned(), argument_element.to_owned());
+        }
+    }
+    substitution
+}
+
+/// `T`, `K` of type parameters written `T`, `K extends Comparable<K>`.
+fn type_variable_names(type_parameters: &[String]) -> Vec<String> {
+    type_parameters
+        .iter()
+        .filter_map(|parameter| parameter.split_whitespace().next())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// `String`, `List<Integer>` of `Map<String, List<Integer>>`; empty for a
+/// type without type arguments.
+fn top_level_type_arguments(type_text: &str) -> Vec<String> {
+    let Some(open) = type_text.find('<') else {
+        return Vec::new();
+    };
+    let Some(inside) = type_text[open + 1..].strip_suffix('>') else {
+        return Vec::new();
+    };
+    let mut arguments = Vec::new();
+    let mut depth = 0usize;
+    let mut current = String::new();
+    for character in inside.chars() {
+        match character {
+            '<' => depth += 1,
+            '>' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                arguments.push(current.trim().to_owned());
+                current.clear();
+                continue;
+            }
+            _ => {}
+        }
+        current.push(character);
+    }
+    arguments.push(current.trim().to_owned());
+    arguments
+}
+
+/// Where the Java `this` / `super` of a constructor call (`this(0)`,
+/// `super("circle")`) or the member of a method reference (`Dog::new`,
+/// `Checks::isEmpty`) under `position` goes: the constructor or method the
+/// call's arguments or the reference's functional interface select. `None`
+/// when the cursor is on none of those, or nothing could be selected.
+pub(crate) fn java_invoked_member_definition(
+    indexer: &Indexer,
+    uri: &Url,
+    position: Position,
+) -> Option<Vec<Location>> {
+    if !super::java_cst::is_java_file(uri) {
+        return None;
+    }
+    let doc = indexer.live_doc_or_parse(uri)?;
+    let cursor_node = super::cst_lambda::cursor_node_at(&doc, position.into())?;
+    if let Some(invocation) = super::java_cst::constructor_invocation_of_keyword(cursor_node) {
+        let class = invoked_constructor_class(indexer, uri, cursor_node, &doc.bytes)?;
+        let fitting =
+            constructors_fitting_creation(indexer, uri, invocation, &doc.bytes, vec![class]);
+        return (!fitting.is_empty()).then_some(fitting);
+    }
+    let reference = super::java_cst::method_reference_of_member(cursor_node)?;
+    referenced_members(indexer, uri, &reference, cursor_node, &doc.bytes)
+}
+
+/// The class whose constructor `this(..)` (the enclosing class) or
+/// `super(..)` (its superclass) calls, at its declared name.
+fn invoked_constructor_class(
+    indexer: &Indexer,
+    uri: &Url,
+    keyword: Node<'_>,
+    bytes: &[u8],
+) -> Option<Location> {
+    let class = std::iter::successors(keyword.parent(), |node| node.parent()).find(|node| {
+        matches!(
+            node.kind(),
+            "class_declaration" | "enum_declaration" | "record_declaration"
+        )
+    })?;
+    if keyword.kind() == "this" {
+        let text = std::str::from_utf8(bytes).ok()?;
+        return node_to_location(uri, class.child_by_field_name("name")?, text);
+    }
+    let superclass = class.child_by_field_name("superclass")?.named_child(0)?;
+    let superclass_name =
+        super::java_cst::type_name_node(superclass, bytes)?.utf8_text_owned(bytes)?;
+    crate::resolver::resolve_type_name(indexer, &superclass_name, uri)
+        .into_iter()
+        .next()
+}
+
+/// The constructors (`Dog::new`) or methods (`Checks::isEmpty`) of the
+/// type before `::` whose parameters take what the reference's functional
+/// interface passes: as many as its abstract method's parameters for a
+/// constructor or a static method, one fewer for an instance method, whose
+/// receiver is then the first.
+fn referenced_members(
+    indexer: &Indexer,
+    uri: &Url,
+    reference: &super::java_cst::MethodReference<'_>,
+    member_name: Node<'_>,
+    bytes: &[u8],
+) -> Option<Vec<Location>> {
+    use super::java_cst::written_target_type;
+    let interface_type = written_target_type(reference.reference)?;
+    let interface_name =
+        super::java_cst::type_name_node(interface_type, bytes)?.utf8_text_owned(bytes)?;
+    let passed = functional_parameter_keys(indexer, &interface_name, uri)?;
+    let qualifier_name = reference.qualifier.utf8_text_owned(bytes)?;
+    let class = crate::resolver::resolve_type_name(indexer, &qualifier_name, uri)
+        .into_iter()
+        .next()?;
+    let file = indexer.files.get(class.uri.as_str())?;
+    let class_symbol = file
+        .symbols
+        .iter()
+        .find(|symbol| symbol.selection_range == class.range)?
+        .clone();
+    let class_name = class_symbol.name.clone();
+    let member = if reference.is_constructor {
+        class_name.clone()
+    } else {
+        member_name.utf8_text_owned(bytes)?
+    };
+    let receiver_is_the_class = passed
+        .first()
+        .is_some_and(|first| first.as_str() == class_name.as_str());
+    let selected: Vec<Location> = file
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.name == member)
+        .filter(|symbol| symbol.container.as_deref() == Some(class_name.as_str()))
+        .filter(|symbol| {
+            let wanted_kind = if reference.is_constructor {
+                SymbolKind::CONSTRUCTOR
+            } else {
+                SymbolKind::METHOD
+            };
+            symbol.kind == wanted_kind
+        })
+        .filter(|symbol| {
+            let parameter_count = super::java_cst::parameter_type_keys(&symbol.params).len();
+            let is_static = symbol
+                .detail
+                .split_whitespace()
+                .any(|word| word == "static");
+            if reference.is_constructor || is_static {
+                parameter_count == passed.len()
+            } else {
+                receiver_is_the_class && parameter_count + 1 == passed.len()
+            }
+        })
+        .map(|symbol| Location::new(class.uri.clone(), symbol.selection_range))
+        .collect();
+    (!selected.is_empty()).then_some(selected)
+}
+
+/// The type keys of what the functional interface `interface_name`
+/// (resolved from `uri`) passes its implementation.
+fn functional_parameter_keys(
+    indexer: &Indexer,
+    interface_name: &str,
+    uri: &Url,
+) -> Option<Vec<String>> {
+    let interface = crate::resolver::resolve_type_name(indexer, interface_name, uri)
+        .into_iter()
+        .next()?;
+    let doc = indexer.live_doc_or_parse(&interface.uri)?;
+    let declared_name = super::cst_lambda::cursor_node_at(&doc, interface.range.start.into())?;
+    let types = super::java_cst::abstract_method_parameter_types(declared_name, &doc.bytes)?;
+    Some(
+        types
+            .iter()
+            .map(|type_text| super::java_cst::java_overload_type_key(type_text))
+            .collect(),
+    )
 }
 
 /// The declaration of the Java type parameter under `position`
@@ -908,6 +1204,81 @@ pub(crate) fn java_record_component_occurrences(
             .filter_map(|occurrence| node_to_location(uri, occurrence, text))
             .collect(),
     )
+}
+
+/// What a Java reference to a declaration is, for where jdtls starts it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum JavaReferenceTarget {
+    /// A type: a use in a qualified name (`Outer.Nested`,
+    /// `import com.demo.User;`) starts where the qualified name does.
+    Type,
+    /// A constructor: a `new Dog()` starts at `new`.
+    Constructor,
+}
+
+/// The range jdtls gives the reference to `target` whose name is at
+/// `location`: the node it reports is the whole qualified type name or the
+/// whole `new` expression, not the name in it. `location`'s own range when
+/// the name is in none of those.
+pub(crate) fn java_reference_range(
+    indexer: &Indexer,
+    location: &Location,
+    target: JavaReferenceTarget,
+) -> tower_lsp::lsp_types::Range {
+    let start = location.range.start;
+    let widened = (|| {
+        let doc = indexer.live_doc_or_parse(&location.uri)?;
+        let name = super::cst_lambda::cursor_node_at(&doc, start.into())?;
+        let node = match target {
+            JavaReferenceTarget::Type => outermost_qualified_name(name)?,
+            JavaReferenceTarget::Constructor => created_by(name)?,
+        };
+        // From the node's first token to the end of the name: a `new`
+        // expression may run over several lines.
+        let first_token = std::iter::successors(Some(node), |current| current.child(0)).last()?;
+        let text = std::str::from_utf8(&doc.bytes).ok()?;
+        let node_start = node_to_location(&location.uri, first_token, text)?
+            .range
+            .start;
+        Some(tower_lsp::lsp_types::Range::new(
+            node_start,
+            location.range.end,
+        ))
+    })();
+    widened.unwrap_or(location.range)
+}
+
+/// The qualified name `name` ends: `Outer.Nested` of `Nested`. `None` when
+/// `name` is not the last segment of one.
+fn outermost_qualified_name(name: Node<'_>) -> Option<Node<'_>> {
+    let mut qualified = None;
+    let mut segment = name;
+    while let Some(parent) = segment.parent() {
+        let is_qualified = matches!(
+            parent.kind(),
+            "scoped_type_identifier" | "scoped_identifier"
+        );
+        let is_last_segment = parent
+            .named_child(parent.named_child_count().saturating_sub(1) as u32)
+            .is_some_and(|last| last.id() == segment.id());
+        if !is_qualified || !is_last_segment {
+            break;
+        }
+        qualified = Some(parent);
+        segment = parent;
+    }
+    qualified
+}
+
+/// The `new Dog()` whose created type is `name` (or ends in it).
+fn created_by(name: Node<'_>) -> Option<Node<'_>> {
+    let type_node = outermost_qualified_name(name).unwrap_or(name);
+    let creation = type_node.parent()?;
+    let creates_it = creation.kind() == "object_creation_expression"
+        && creation
+            .child_by_field_name("type")
+            .is_some_and(|created| created.id() == type_node.id());
+    creates_it.then_some(creation)
 }
 
 /// The names the Java type parameter under `position` (declared or used)
@@ -1024,7 +1395,14 @@ pub(crate) fn java_completion_place_at(
 pub(crate) fn java_local_hover_line(indexer: &Indexer, declaration: &Location) -> Option<String> {
     let doc = indexer.live_doc_or_parse(&declaration.uri)?;
     let name_node = super::cst_lambda::cursor_node_at(&doc, declaration.range.start.into())?;
-    super::java_cst::java_local_hover_line(name_node, &doc.bytes)
+    if let Some(line) = super::java_cst::java_local_hover_line(name_node, &doc.bytes) {
+        return Some(line);
+    }
+    // `var dog = new Dog()`: the type its initializer has.
+    let initializer = super::java_cst::var_local_initializer(name_node, &doc.bytes)?;
+    let (type_text, _) =
+        super::java_cst::java_expr_type(initializer, &doc.bytes, indexer, &declaration.uri)?;
+    super::java_cst::java_local_hover_line_typed(name_node, &type_text, &doc.bytes)
 }
 
 /// What kind of name the identifier under a position in a Java file is,
@@ -1036,6 +1414,11 @@ pub(crate) enum JavaNameSite {
     /// A type written where it is used: `Exception` of `extends Exception`,
     /// or a segment of `java.lang.Exception`.
     TypeReference,
+    /// A method called or a field read through a receiver: `text.length()`.
+    /// Renamable only when it is declared in the workspace.
+    MemberThroughReceiver,
+    /// No name at all: a literal, an operator, a keyword.
+    NotAName,
     /// Anything else: a declaration's own name, a member, a local.
     Other,
 }
@@ -1063,13 +1446,37 @@ pub(crate) fn java_name_site(
         }
         ancestor = node.parent();
     }
+    if !matches!(name_node.kind(), "identifier" | "type_identifier") {
+        return Some(JavaNameSite::NotAName);
+    }
     let declares_a_type_parameter = name_node
         .parent()
         .is_some_and(|parent| parent.kind() == "type_parameter");
     if name_node.kind() == "type_identifier" && !declares_a_type_parameter {
         return Some(JavaNameSite::TypeReference);
     }
+    if is_member_through_receiver(name_node) {
+        return Some(JavaNameSite::MemberThroughReceiver);
+    }
     Some(JavaNameSite::Other)
+}
+
+/// `length` of `text.length()` or `size` of `list.size`: the name after a
+/// receiver, in a call or a field access.
+fn is_member_through_receiver(name_node: tree_sitter::Node<'_>) -> bool {
+    let Some(parent) = name_node.parent() else {
+        return false;
+    };
+    let field = match parent.kind() {
+        "method_invocation" => "name",
+        "field_access" => "field",
+        _ => return false,
+    };
+    let is_the_member = parent
+        .child_by_field_name(field)
+        .is_some_and(|member| member.id() == name_node.id());
+    let receiver = parent.child_by_field_name("object");
+    is_the_member && receiver.is_some()
 }
 
 /// The declaration of the Java local variable or parameter that the
@@ -1521,7 +1928,11 @@ fn with_sibling_overloads(indexer: &Indexer, locations: Vec<Location>) -> Vec<Lo
                     file.symbols
                         .iter()
                         .filter(|symbol| {
-                            symbol.name == found.name && symbol.container == found.container
+                            // An overload is of the same kind: a record's
+                            // `value()` is no overload of its component.
+                            symbol.name == found.name
+                                && symbol.container == found.container
+                                && symbol.kind == found.kind
                         })
                         .map(|symbol| Location::new(location.uri.clone(), symbol.selection_range))
                         .collect::<Vec<_>>(),

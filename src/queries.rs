@@ -300,6 +300,10 @@ pub(crate) const KIND_SETTER: &str = "setter";
 pub(crate) const KIND_ANONYMOUS_INITIALIZER: &str = "anonymous_initializer";
 pub(crate) const KIND_PARAM_WITH_OPTIONAL_TYPE: &str = "parameter_with_optional_type";
 pub(crate) const KIND_FIELD_DECL: &str = "field_declaration";
+/// A field of an interface (`int SIDES = 0;`): implicitly `static final`.
+pub(crate) const KIND_CONSTANT_DECL: &str = "constant_declaration";
+/// A record's constructor without a parameter list (`Point { .. }`).
+pub(crate) const KIND_COMPACT_CTOR_DECL: &str = "compact_constructor_declaration";
 pub(crate) const KIND_IMPORT_DECL: &str = "import_declaration";
 pub(crate) const KIND_PACKAGE_DECL: &str = "package_declaration";
 pub(crate) const KIND_ANNOTATION_TYPE_DECL: &str = "annotation_type_declaration";

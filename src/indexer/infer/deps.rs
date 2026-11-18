@@ -471,6 +471,21 @@ pub(crate) trait InferDeps {
         None
     }
 
+    /// What the type variable `type_variable` of a supertype of
+    /// `class_name` stands for in it, through the type arguments its
+    /// supertypes are written with: `Dog` for `T` of `class Box<T>` from
+    /// `class DogBox extends Box<Dog>`. `None` when no supertype binds it.
+    ///
+    /// The default implementation returns `None`; overridden by `Indexer`.
+    fn find_inherited_type_argument(
+        &self,
+        _class_name: &str,
+        _type_variable: &str,
+        _uri: &Url,
+    ) -> Option<String> {
+        None
+    }
+
     /// The extension a call on `receiver` binds to — generic or not — with
     /// its declared return type, from the one declaration the receiver and
     /// call shape select.

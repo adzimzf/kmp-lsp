@@ -492,6 +492,7 @@ fn resolve_qualified_jar_extension_overloads_with_source_member() {
         field_access_rhs: vec![],
         type_annotations: vec![],
         syntax_errors: vec![],
+        language_features: vec![],
     });
     idx.jar_files.insert(jar_uri.to_string(), jar_file_data);
     idx.extension_by_receiver
@@ -613,6 +614,7 @@ fn resolve_qualified_bails_on_ubiquitous_name_even_with_receiver_extension() {
         field_access_rhs: vec![],
         type_annotations: vec![],
         syntax_errors: vec![],
+        language_features: vec![],
     });
     idx.jar_files.insert(jar_uri.to_string(), jar_file_data);
     idx.extension_by_receiver

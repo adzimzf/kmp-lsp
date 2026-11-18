@@ -238,8 +238,19 @@ impl<R: ProgressReporter + 'static> ScanHandler<R> {
         self.write_source_paths(data.source_paths.clone());
         self.write_workspace_source_roots(&data.root);
         self.write_module_dependencies(&data.root);
+        self.spawn_language_version_detection();
         self.state.write().await.set_state(data.clone());
         data
+    }
+
+    /// What the new root's build says about its Java release and Kotlin
+    /// language version (see [`crate::language_version`]); the editor's
+    /// setting, when it gave one, still wins.
+    fn spawn_language_version_detection(&self) {
+        let indexer = Arc::clone(&self.indexer);
+        tokio::task::spawn_blocking(move || {
+            crate::language_version::detect_for_workspace(&indexer);
+        });
     }
 
     pub(crate) fn current_root(&self) -> Option<PathBuf> {

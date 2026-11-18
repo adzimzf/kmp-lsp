@@ -321,6 +321,8 @@ Like jdtls (Buildship/m2e) and IntelliJ, kmp-lsp asks the project's own build to
 | `decompileLibraries` | `true` / `false` | `true` |
 | `librarySources` | `"onDemand"` / `"eager"` | `"onDemand"` |
 | `jdkHome` | path to a JDK | found in the environment (see [JDK sources](#jdk-sources)) |
+| `javaRelease` | a Java release: `17`, `"1.8"` | from the build, else the JDK (see [Language versions](#language-versions)) |
+| `kotlinLanguageVersion` | a Kotlin language version: `"2.1"` | from the build (see [Language versions](#language-versions)) |
 
 ### Library sources load on demand
 
@@ -353,6 +355,39 @@ If none has its sources, the JDK isn't indexed and nothing else changes. A JRE h
 - **Public API only.** `java/` and `javax/` packages of `java.base`, `java.logging`, `java.net.http`, `java.prefs`, `java.sql` and `java.xml` — about 1,850 files. AWT/Swing (`java.desktop`) and internal packages (`sun.*`, `jdk.internal.*`) are left out.
 - **Loaded on demand**, like library sources: JDK 21 takes 1.8 s to parse once, 9 ms on later startups and 0.24 s on first use (release build, 4 cores).
 - **Not searched for usages.** Find-references on a JDK member returns your project's calls, not the JDK's own internal ones.
+
+### Language versions
+
+What a file may use depends on the Java release and the Kotlin language version the project is built with: a `record` is an error in Java 15, a guard in a `when` branch an error in Kotlin 2.1. Diagnostics report a construct the project's version doesn't have yet, where the compiler reports it (`records need Java 16 or later`, `guard conditions in `when` need Kotlin 2.2 or later`); a construct a newer version takes away (`class var` from Java 10 on) is reported too.
+
+Each version is the first of:
+
+1. the editor's setting: `indexingOptions.javaRelease` (`17`, or `"1.8"`) and `indexingOptions.kotlinLanguageVersion` (`"2.1"`);
+2. the build, at the workspace root and one directory down (the newest when modules differ):
+   - **Maven** `pom.xml`: `maven.compiler.release`, the compiler plugin's `<release>`, then the source level (`maven.compiler.source`, `<source>`, Spring Boot's `java.version`), `${property}` references resolved; for Kotlin `kotlin.compiler.languageVersion`, then `kotlin.version`;
+   - **Gradle** `build.gradle(.kts)`: the toolchain (`JavaLanguageVersion.of(17)`, `jvmToolchain(17)`), `options.release`, then `sourceCompatibility`; for Kotlin `languageVersion` (`KotlinVersion.KOTLIN_2_1`), then the Kotlin plugin's version (or `kotlin` in `gradle/libs.versions.toml`);
+3. for Java, the JDK the project builds with: `jdkHome`, then `$JAVA_HOME` and the other places [JDK sources](#jdk-sources) looks, read from the JDK's `release` file.
+
+With none of them, the newest version is assumed (Java 25, Kotlin 2.4). The build is read again when a build file changes.
+
+| Java | from |
+|---|---|
+| private interface methods, `try (resource)` | 9 |
+| `var` locals | 10 |
+| `var` lambda parameters | 11 |
+| switch expressions, `case ->` | 14 |
+| text blocks | 15 |
+| records, `instanceof` patterns | 16 |
+| sealed classes | 17 |
+| record patterns, patterns in `switch` | 21 |
+| unnamed variables `_` | 22 |
+| compact source files, `import module`, statements before `super()` | 25 |
+
+| Kotlin | from |
+|---|---|
+| guards in `when`, `$$"…"` strings, `break`/`continue` in inline lambdas | 2.2 |
+| nested type aliases | 2.3 |
+| explicit backing fields | 2.4 |
 
 ### Libraries without sources: decompiled
 

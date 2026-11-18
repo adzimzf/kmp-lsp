@@ -93,7 +93,6 @@ pub(crate) enum SubstitutionContext<'a> {
         calling_uri: &'a str,
         cursor_line: Option<u32>,
     },
-    #[allow(dead_code)]
     Precomputed(&'a HashMap<String, String>),
 }
 
@@ -324,6 +323,13 @@ fn extract_canonical_signature(
     let full = data
         .lines
         .collect_signature(entry.selection_start() as usize);
+    // A record component's line is its record's header: `int x` is its own.
+    let is_record_component = entry.kind == SymbolKind::FIELD
+        && !entry.detail.is_empty()
+        && full.split_whitespace().any(|word| word == "record");
+    if is_record_component {
+        return entry.detail.clone();
+    }
     if !full.is_empty() {
         full
     } else {

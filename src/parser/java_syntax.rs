@@ -388,6 +388,9 @@ fn utf8_width(first: u8) -> usize {
 /// one tree-sitter reports in the wrong place; `None` leaves it to the
 /// generic description.
 pub(super) fn describe_node(node: Node<'_>, bytes: &[u8]) -> Option<Vec<SyntaxError>> {
+    if is_java_tree_sitter_lacks(node, bytes) {
+        return Some(Vec::new());
+    }
     if node.is_missing() {
         return describe_missing(node).map(|error| vec![error]);
     }
@@ -402,6 +405,62 @@ pub(super) fn describe_node(node: Node<'_>, bytes: &[u8]) -> Option<Vec<SyntaxEr
         .or_else(|| do_without_while(node));
     one.map(|error| vec![error])
         .or_else(|| condition_without_parentheses(node))
+}
+
+/// An error node that is Java tree-sitter-java has no rule for: no error
+/// (whether the project's release accepts it is
+/// [`super::java_features`]'s to say).
+///
+/// - `import module java.base;` (Java 25);
+/// - `super(…)` or `this(…)` after another statement of a constructor
+///   (Java 25), which the grammar only parses as the first;
+/// - `0_17`, an octal literal with underscores, which it reads as `0` and a
+///   name `_17`.
+fn is_java_tree_sitter_lacks(node: Node<'_>, bytes: &[u8]) -> bool {
+    if !node.is_error() {
+        return false;
+    }
+    let in_module_import = node
+        .parent()
+        .and_then(|parent| {
+            std::iter::successors(Some(parent), |current| current.parent())
+                .find(|current| current.kind() == "import_declaration")
+        })
+        .and_then(|import| super::java_features::module_import_word(import, bytes))
+        .is_some();
+    let constructor_call = node.parent().is_some_and(|parent| {
+        parent.kind() == "constructor_body"
+            && super::java_features::constructor_call_after_error(
+                node,
+                node.next_named_sibling().as_ref(),
+                bytes,
+            )
+            .is_some()
+    });
+    in_module_import || constructor_call || is_octal_with_underscores(node, bytes)
+}
+
+/// `0_17`: the error is the `0`, the name `_17` right after it.
+fn is_octal_with_underscores(node: Node<'_>, bytes: &[u8]) -> bool {
+    let zero = is_lone(node, &["decimal_integer_literal"])
+        .filter(|zero| zero.utf8_text(bytes).ok() == Some("0"));
+    let Some(zero) = zero else {
+        return false;
+    };
+    let Some(digits) = node
+        .next_sibling()
+        .filter(|next| next.kind() == "identifier")
+    else {
+        return false;
+    };
+    let touches = zero.end_byte() == digits.start_byte();
+    let digits = digits.utf8_text(bytes).unwrap_or("");
+    let is_octal_tail = digits.starts_with('_')
+        && digits.ends_with(|char: char| ('0'..='7').contains(&char))
+        && digits
+            .chars()
+            .all(|char| char == '_' || ('0'..='7').contains(&char));
+    touches && is_octal_tail
 }
 
 fn error_at(position: Position, message: impl Into<String>) -> SyntaxError {

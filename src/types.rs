@@ -537,6 +537,10 @@ pub(crate) struct FileData {
     /// Transient — not serialized to disk cache.
     #[serde(skip)]
     pub syntax_errors: Vec<SyntaxError>,
+    /// Where the file uses a construct only some language versions accept
+    /// (see [`crate::language_version`]). Transient, as `syntax_errors`.
+    #[serde(skip)]
+    pub language_features: Vec<crate::language_version::LanguageFeatureUse>,
 }
 
 impl FileData {

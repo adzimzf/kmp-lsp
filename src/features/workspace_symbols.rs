@@ -272,7 +272,7 @@ fn parse_uri(uri_str: &str) -> Option<Url> {
 fn symbol_information(uri: &Url, symbol: &SymbolEntry) -> SymbolInformation {
     SymbolInformation {
         name: symbol.name.clone(),
-        kind: symbol.kind,
+        kind: super::symbols::reported_kind(uri, symbol),
         tags: None,
         deprecated: None,
         location: Location {

@@ -75,6 +75,28 @@ fn java_resolved_hover<W: WorkspaceRead>(
         return None;
     }
     let symbol = crate::indexer::classify_cursor(indexer, uri, position)?;
+    // On a declaration's own name the declaration is the answer: a
+    // constructor's name is no use of its class.
+    let cursor = Location::new(
+        uri.clone(),
+        tower_lsp::lsp_types::Range::new(position, position),
+    );
+    let declared_here = indexer
+        .symbol_declared_at(&symbol.name, &cursor)
+        .filter(|declared| {
+            declared.selection_range.start <= position && position <= declared.selection_range.end
+        });
+    if let Some(declared) = declared_here {
+        let location = Location::new(uri.clone(), declared.selection_range);
+        let info = enrich_at_location(
+            workspace,
+            &location,
+            &symbol.name,
+            hover_substitution_context(uri, position.line),
+            &ResolveOptions::hover(),
+        )?;
+        return Some(make_markdown_hover(format_symbol_hover(&info, uri.path())));
+    }
     // A by-name answer is trusted for the type after `new`: overload
     // narrowing below turns it into the constructor the arguments call.
     let definitions = match crate::indexer::resolve_identity(&symbol, indexer, uri) {
@@ -88,11 +110,19 @@ fn java_resolved_hover<W: WorkspaceRead>(
     };
     let locations = crate::indexer::narrow_java_overloads(indexer, uri, position, definitions.0);
     let location = pick_unambiguous_location(call_shape_ctx(workspace, uri, position), locations)?;
+    // `box.put("a")` on a `Box<String>` shows `put(String value)`.
+    let call_type_arguments =
+        crate::indexer::java_call_type_arguments(indexer, uri, position, &location);
+    let substitution = if call_type_arguments.is_empty() {
+        hover_substitution_context(uri, position.line)
+    } else {
+        SubstitutionContext::Precomputed(&call_type_arguments)
+    };
     let info = enrich_at_location(
         workspace,
         &location,
         &symbol.name,
-        hover_substitution_context(uri, position.line),
+        substitution,
         &ResolveOptions::hover(),
     )?;
     Some(make_markdown_hover(format_symbol_hover(&info, uri.path())))

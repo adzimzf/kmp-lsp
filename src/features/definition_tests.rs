@@ -989,3 +989,63 @@ async fn java_lambda_parameter_takes_its_type_from_the_written_target() {
         vec![2]
     );
 }
+
+/// A variable-arity overload takes a call no fixed-arity one fits, and
+/// loses to one that fits without it (javac's phases).
+#[tokio::test]
+async fn java_varargs_overload_is_chosen_by_the_argument_count() {
+    let idx = Indexer::new();
+    let logger_uri = Url::parse("file:///t/Logger.java").unwrap();
+    let logger = "class Logger {\n\
+                  \x20 void log(String message) {\n\
+                  \x20 }\n\
+                  \x20 void log(String format, Object... arguments) {\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&logger_uri, logger);
+    idx.store_live_tree(&logger_uri, logger);
+    let caller_uri = Url::parse("file:///t/Main.java").unwrap();
+    let caller = "class Main {\n\
+                  \x20 void run(Logger logger) {\n\
+                  \x20   logger.log(\"%s and %s\", \"a\", \"b\");\n\
+                  \x20   logger.log(\"plain\");\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 2, "log(").await,
+        vec![3]
+    );
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 3, "log(").await,
+        vec![1]
+    );
+}
+
+/// `name.value()` calls the accessor a record declares for its component,
+/// not the component.
+#[tokio::test]
+async fn java_explicit_record_accessor_is_the_accessor() {
+    let idx = Indexer::new();
+    let name_uri = Url::parse("file:///t/Name.java").unwrap();
+    let name = "record Name(String value) {\n\
+                \x20 public String value() {\n\
+                \x20   return value.trim();\n\
+                \x20 }\n\
+                }\n";
+    idx.index_content(&name_uri, name);
+    idx.store_live_tree(&name_uri, name);
+    let caller_uri = Url::parse("file:///t/Main.java").unwrap();
+    let caller = "class Main {\n\
+                  \x20 String run(Name name) {\n\
+                  \x20   return name.value();\n\
+                  \x20 }\n\
+                  }\n";
+    idx.index_content(&caller_uri, caller);
+    idx.store_live_tree(&caller_uri, caller);
+    assert_eq!(
+        definition_lines(&idx, &caller_uri, caller, 2, "value(").await,
+        vec![1]
+    );
+}

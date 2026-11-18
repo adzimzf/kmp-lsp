@@ -242,6 +242,11 @@ pub(crate) async fn find_definition(
     if let Some(target) = crate::indexer::java_jump_target(index, uri, position) {
         return Some(GotoDefinitionResponse::Scalar(target));
     }
+    // `this(..)` / `super(..)` and a method reference name the constructor
+    // or method their arguments select.
+    if let Some(selected) = crate::indexer::java_invoked_member_definition(index, uri, position) {
+        return locs_to_opt_response(selected);
+    }
     // So is a Java local or parameter: a same-named member elsewhere is not it.
     if let Some(declared) = crate::indexer::java_local_definition(index, uri, position) {
         return Some(GotoDefinitionResponse::Scalar(declared));
@@ -324,6 +329,7 @@ pub(crate) async fn find_definition(
             if let Some(shape) = call_shape_at_callee(index, uri, position) {
                 locs = crate::indexer::shape_filter_locations(index, shape, locs).resolved();
             }
+            locs = crate::indexer::narrow_java_overloads(index, uri, position, locs);
             if !locs.is_empty() {
                 return Some(locs_to_response(locs));
             }
