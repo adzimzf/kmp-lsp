@@ -14,6 +14,28 @@
 //! /com/demo/Greeter.java:2:24  class Greeter { String greet() { return ""; } }
 //! ```
 //!
+//! A Java case whose answer depends on the Java release the project is
+//! compiled for splits its expectation by release, one block per range:
+//!
+//! ```text
+//! //- /src/main/java/com/demo/Point.java
+//! package com.demo;
+//!
+//! record Po$0int(int x, int y) {}
+//! //= expected java ..15
+//! /src/main/java/com/demo/Point.java:3:1  records need Java 16 or later
+//! //= expected java 16..
+//! (nothing)
+//! ```
+//!
+//! A range is `8..15`, `..15` (from [`OLDEST_JAVA`]), `16..` (up to
+//! [`NEWEST_JAVA`]) or one release, `21`. The ranges of a case cover every
+//! release from the oldest to the newest exactly once, so no release goes
+//! unasked by accident. Each range is asked at both its ends, where an
+//! off-by-one in a feature's release shows; the server is told the release
+//! as `indexingOptions.javaRelease`. A plain `//= expected` holds for every
+//! release and is asked once, without the setting.
+//!
 //! The directory a case sits in says which request is asked of it and which
 //! language it is written in, so a new case is a new file and no Rust: the
 //! set scales to thousands of them. One `#[test]` per language and kind runs
@@ -33,6 +55,13 @@ use super::server::Session;
 
 const EXTENSION: &str = "case";
 const SEPARATOR: &str = "//= expected";
+/// What follows [`SEPARATOR`] when the expectation holds for some Java
+/// releases only.
+const JAVA_RELEASES: &str = "java ";
+/// The oldest and newest releases a range can name: `..15` starts at the
+/// one, `16..` ends at the other.
+pub(super) const OLDEST_JAVA: u8 = 8;
+pub(super) const NEWEST_JAVA: u8 = 25;
 const INTEGRATION_VARIABLE: &str = "INTEGRATION";
 /// How many cases of one suite are in flight; what runs is capped by the
 /// budget they share with every other suite.
@@ -130,6 +159,56 @@ fn every_case_directory_is_run_by_a_suite() {
     );
 }
 
+/// Every case file splits into a fixture and expectations that cover
+/// every Java release: checked without `INTEGRATION=1`, so a bad range is
+/// caught by a plain `cargo test`.
+#[test]
+fn every_case_file_reads() {
+    let mut broken = Vec::new();
+    for language in read_directory(&cases_root()) {
+        for request in read_directory(&language) {
+            for file in case_files(&request) {
+                let text = std::fs::read_to_string(&file).expect("a readable case");
+                if let Err(problem) = Case::parse(&text) {
+                    broken.push(format!("{}: {problem}", file.display()));
+                }
+            }
+        }
+    }
+    assert!(broken.is_empty(), "{}", broken.join("\n"));
+}
+
+#[test]
+fn releases_name_a_range_or_one_release() {
+    assert_eq!(Releases::parse(""), Ok(Releases::Every));
+    assert_eq!(
+        Releases::parse("java ..15"),
+        Ok(Releases::Range(OLDEST_JAVA, 15))
+    );
+    assert_eq!(
+        Releases::parse("java 16.."),
+        Ok(Releases::Range(16, NEWEST_JAVA))
+    );
+    assert_eq!(Releases::parse("java 14..15"), Ok(Releases::Range(14, 15)));
+    assert_eq!(Releases::parse("java 21"), Ok(Releases::Range(21, 21)));
+    assert!(Releases::parse("java 7..").is_err());
+    assert!(Releases::parse("java 16..15").is_err());
+    assert!(Releases::parse("jdk 16").is_err());
+}
+
+#[test]
+fn ranges_have_to_cover_every_release_once() {
+    let case = |text: &str| Case::parse(&format!("//- /A.java\nclass A$0 {{}}\n{text}"));
+    assert!(case("//= expected java ..15\n(nothing)\n//= expected java 16..\n(nothing)\n").is_ok());
+    assert!(
+        case("//= expected java ..14\n(nothing)\n//= expected java 16..\n(nothing)\n").is_err()
+    );
+    assert!(
+        case("//= expected java ..16\n(nothing)\n//= expected java 16..\n(nothing)\n").is_err()
+    );
+    assert!(case("//= expected\n(nothing)\n//= expected java 16..\n(nothing)\n").is_err());
+}
+
 /// Asks `kind` of every case in `cases/<language>/<kind_directory>` and
 /// fails with the ones whose answer is not what their file expects.
 fn suite(language: &str, kind_directory: &str, kind: Kind) {
@@ -166,23 +245,36 @@ fn suite(language: &str, kind_directory: &str, kind: Kind) {
     );
 }
 
-/// `None` when the case passes, otherwise what it answered instead.
+/// `None` when the case passes, otherwise what it answered instead, for
+/// every release it answered differently at.
 async fn run_case(file: &Path, kind: Kind) -> Option<String> {
     let case = Case::read(file);
     let fixture = Fixture::parse(&case.fixture);
-    let mut session = Session::open(&fixture).await;
-    let actual = kind
-        .ask(&mut session, &fixture, &case.expected, case.settles())
-        .await;
-    if actual == case.expected {
-        return None;
+    let mut disagreements = Vec::new();
+    for expectation in &case.expectations {
+        for release in expectation.releases.asked_at() {
+            let mut session = Session::open(&fixture, release).await;
+            let actual = kind
+                .ask(
+                    &mut session,
+                    &fixture,
+                    &expectation.expected,
+                    expectation.settles(),
+                )
+                .await;
+            if actual == expectation.expected {
+                continue;
+            }
+            let at = release.map_or_else(String::new, |release| format!(" (java {release})"));
+            disagreements.push(format!(
+                "{}{at}\n  expected:\n{}  answered:\n{}",
+                file.display(),
+                indented(&expectation.expected),
+                indented(&actual)
+            ));
+        }
     }
-    Some(format!(
-        "{}\n  expected:\n{}  answered:\n{}",
-        file.display(),
-        indented(&case.expected),
-        indented(&actual)
-    ))
+    (!disagreements.is_empty()).then(|| disagreements.join("\n"))
 }
 
 /// Whether the cases were asked for: a suite starts a server per case, so
@@ -196,25 +288,140 @@ fn asked_for(variable: &str) -> bool {
     std::env::var(variable).is_ok_and(|value| value != "0")
 }
 
-/// A case file split at its `//= expected` line.
+/// A case file split at its `//= expected` lines.
 struct Case {
     fixture: String,
+    expectations: Vec<Expectation>,
+}
+
+/// The answer a case expects at some Java releases.
+struct Expectation {
+    releases: Releases,
     expected: String,
+}
+
+/// Which Java releases an expectation holds for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Releases {
+    /// Every release: the answer does not depend on it.
+    Every,
+    /// `first..=last`.
+    Range(u8, u8),
 }
 
 impl Case {
     fn read(file: &Path) -> Self {
         let text = std::fs::read_to_string(file)
             .unwrap_or_else(|error| panic!("{} is readable: {error}", file.display()));
-        let (fixture, expected) = text.split_once(SEPARATOR).unwrap_or_else(|| {
-            panic!("{} has a `{SEPARATOR}` line", file.display());
-        });
-        Self {
-            fixture: fixture.to_owned(),
-            expected: normalized(expected),
+        Self::parse(&text).unwrap_or_else(|problem| panic!("{}: {problem}", file.display()))
+    }
+
+    fn parse(text: &str) -> Result<Self, String> {
+        let mut blocks = text.split(SEPARATOR);
+        let fixture = blocks.next().unwrap_or_default().to_owned();
+        let mut expectations = Vec::new();
+        for block in blocks {
+            let (header, body) = block.split_once('\n').unwrap_or((block, ""));
+            expectations.push(Expectation {
+                releases: Releases::parse(header.trim())?,
+                expected: normalized(body),
+            });
+        }
+        if expectations.is_empty() {
+            return Err(format!("no `{SEPARATOR}` line"));
+        }
+        check_cover(&expectations)?;
+        Ok(Self {
+            fixture,
+            expectations,
+        })
+    }
+}
+
+/// One `//= expected` for every release, or ranges that name each release
+/// from [`OLDEST_JAVA`] to [`NEWEST_JAVA`] exactly once.
+fn check_cover(expectations: &[Expectation]) -> Result<(), String> {
+    let every = expectations
+        .iter()
+        .filter(|expectation| expectation.releases == Releases::Every)
+        .count();
+    if every > 0 {
+        return if expectations.len() == 1 {
+            Ok(())
+        } else {
+            Err("a plain `//= expected` already holds for every release".to_owned())
+        };
+    }
+    for release in OLDEST_JAVA..=NEWEST_JAVA {
+        let naming = expectations
+            .iter()
+            .filter(|expectation| expectation.releases.contains(release))
+            .count();
+        match naming {
+            1 => {}
+            0 => return Err(format!("no expectation for java {release}")),
+            _ => return Err(format!("java {release} is expected {naming} times")),
+        }
+    }
+    Ok(())
+}
+
+impl Releases {
+    /// What follows `//= expected`: nothing, or `java <range>`.
+    fn parse(header: &str) -> Result<Self, String> {
+        if header.is_empty() {
+            return Ok(Self::Every);
+        }
+        let range = header
+            .strip_prefix(JAVA_RELEASES)
+            .ok_or_else(|| format!("`{SEPARATOR} {header}`: expected `{JAVA_RELEASES}<range>`"))?
+            .trim();
+        let release = |text: &str, otherwise: u8| -> Result<u8, String> {
+            if text.is_empty() {
+                return Ok(otherwise);
+            }
+            let release: u8 = text
+                .parse()
+                .map_err(|_| format!("`{text}` is no Java release"))?;
+            if !(OLDEST_JAVA..=NEWEST_JAVA).contains(&release) {
+                return Err(format!(
+                    "java {release} is outside {OLDEST_JAVA}..{NEWEST_JAVA}"
+                ));
+            }
+            Ok(release)
+        };
+        let (first, last) = match range.split_once("..") {
+            Some((first, last)) => (release(first, OLDEST_JAVA)?, release(last, NEWEST_JAVA)?),
+            None if range.is_empty() => return Err("`java` without a release".to_owned()),
+            None => {
+                let only = release(range, OLDEST_JAVA)?;
+                (only, only)
+            }
+        };
+        if first > last {
+            return Err(format!("`{range}` runs backwards"));
+        }
+        Ok(Self::Range(first, last))
+    }
+
+    fn contains(self, release: u8) -> bool {
+        match self {
+            Self::Every => true,
+            Self::Range(first, last) => (first..=last).contains(&release),
         }
     }
 
+    /// The releases the server is told, `None` for no setting at all.
+    fn asked_at(self) -> Vec<Option<u8>> {
+        match self {
+            Self::Every => vec![None],
+            Self::Range(first, last) if first == last => vec![Some(first)],
+            Self::Range(first, last) => vec![Some(first), Some(last)],
+        }
+    }
+}
+
+impl Expectation {
     /// A case whose answer is nothing is asked once; any other waits for
     /// the server to have something to say.
     fn settles(&self) -> Settles {

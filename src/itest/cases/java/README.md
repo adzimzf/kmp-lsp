@@ -49,6 +49,13 @@ Notes on how an answer is written down:
   it is at the line and column javac reports it (the wording is kmp-lsp's);
   every `(nothing)` case compiles with javac. The missing-package check reads
   the package out of the path, so those cases live under `/src/main/java/`.
+- **Java releases.** A case whose answer depends on the release the project
+  is compiled for has one `//= expected java <range>` block per range
+  (`..15`, `16..`, `14..15`, `21`), covering every release from 8 to 25
+  once; each range is asked at both its ends, the server told the release
+  as `indexingOptions.javaRelease`. Check every end with
+  `javac --release <n>`: the error is where javac reports it below the
+  feature's release, and the file compiles from it on.
 - **signature_help** cases that end in a syntax error do so on purpose, as
   the jdtls tests do: help is asked while a call is being typed.
 
@@ -376,7 +383,9 @@ error a case expects is at a line and column where javac reports one.
 | `a_package_declared_after_a_licence_header_is_a_package` | nothing: a comment above it is not a declaration |
 | `a_package_declared_after_an_import_is_still_a_package` | nothing |
 | `a_parenthesized_expression_never_closed` | `(x + 1;`: the `)` missing before the `;` |
+| `a_record_needs_java_16` | a record below Java 16, nothing from 16 on |
 | `a_record_with_a_compact_constructor_and_a_static_member_parses` | nothing |
+| `a_switch_expression_needs_java_14` | a switch expression below Java 14, nothing from 14 on |
 | `a_statement_without_its_semicolon` | the missing `;` |
 | `a_string_never_closed_inside_a_call` | the unclosed string only: the call it is in is its fault |
 | `a_string_that_is_never_closed` | the unclosed string at its quote, then the class it leaves unclosed (as javac) |

@@ -60,7 +60,9 @@ pub(super) struct Session {
 }
 
 impl Session {
-    pub(super) async fn open(fixture: &Fixture) -> Self {
+    /// `java_release`, when given, is the Java release the project is
+    /// compiled for, sent as `indexingOptions.javaRelease`.
+    pub(super) async fn open(fixture: &Fixture, java_release: Option<u8>) -> Self {
         let (reader, writer, root, host) = in_memory();
         let mut session = Self {
             writer,
@@ -70,7 +72,7 @@ impl Session {
             root,
             _host: host,
         };
-        session.initialize().await;
+        session.initialize(java_release).await;
         for file in &fixture.files {
             session.did_open(&file.path, &file.text).await;
         }
@@ -206,9 +208,9 @@ impl Session {
             .await;
     }
 
-    async fn initialize(&mut self) {
+    async fn initialize(&mut self, java_release: Option<u8>) {
         let deadline = Instant::now() + PATIENCE;
-        let params = json!({
+        let mut params = json!({
             "processId": std::process::id(),
             "rootUri": self.root.as_str().trim_end_matches('/'),
             "capabilities": {
@@ -221,6 +223,9 @@ impl Session {
                 "workspace": {"workspaceEdit": {"documentChanges": true}},
             },
         });
+        if let Some(release) = java_release {
+            params["initializationOptions"] = json!({"indexingOptions": {"javaRelease": release}});
+        }
         self.request("initialize", params, OnError::Panic, deadline)
             .await;
         self.notify("initialized", json!({})).await;
