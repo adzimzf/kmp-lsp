@@ -1,0 +1,23 @@
+//- /src/main/kotlin/com/demo/Sum.kt
+package com.demo
+
+inline fun each(items: List<Int>, action: (Int) -> Unit) {
+    for (item in items) action(item)
+}
+
+fun sumUn$0tilZero(items: List<Int>): Int {
+    var sum = 0
+    for (round in 0 until 1) {
+        each(items) { item ->
+            if (item == 0) break
+            sum += item
+        }
+    }
+    return sum
+}
+//= expected
+(nothing)
+//= expected kotlin ..2.1
+/src/main/kotlin/com/demo/Sum.kt:11:28  `break` and `continue` in inline lambdas need Kotlin 2.2 or later
+//= expected kotlin 2.2..
+(nothing)

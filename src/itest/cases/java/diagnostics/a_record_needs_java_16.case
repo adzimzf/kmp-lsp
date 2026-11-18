@@ -2,6 +2,8 @@
 package com.demo;
 
 record Po$0int(int x, int y) {}
+//= expected
+(nothing)
 //= expected java ..15
 /src/main/java/com/demo/Point.java:3:1  records need Java 16 or later
 //= expected java 16..

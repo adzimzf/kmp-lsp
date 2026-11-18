@@ -1,0 +1,19 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    int sides(Object shape) {
+        switch (shape) {
+            case String name:
+                return 1;
+            default:
+                return 0;
+        }
+    }
+}
+//= expected
+(nothing)
+//= expected java ..20
+/src/main/java/com/demo/Main.java:6:18  patterns in `switch` need Java 21 or later
+//= expected java 21..
+(nothing)

@@ -1,0 +1,15 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    void run(AutoCloseable resource) throws Exception {
+        try (resource) {
+        }
+    }
+}
+//= expected
+(nothing)
+//= expected java 8
+/src/main/java/com/demo/Main.java:5:22  resource variables in `try` need Java 9 or later
+//= expected java 9..
+(nothing)

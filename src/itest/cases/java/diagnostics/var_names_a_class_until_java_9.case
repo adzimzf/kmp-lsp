@@ -1,0 +1,11 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class v$0ar {
+}
+//= expected
+/src/main/java/com/demo/Main.java:3:7  `var` cannot name a type from Java 10 on
+//= expected java ..9
+(nothing)
+//= expected java 10..
+/src/main/java/com/demo/Main.java:3:7  `var` cannot name a type from Java 10 on

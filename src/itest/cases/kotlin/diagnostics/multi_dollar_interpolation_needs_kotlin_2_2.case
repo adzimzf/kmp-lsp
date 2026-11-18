@@ -1,0 +1,12 @@
+//- /src/main/kotlin/com/demo/Label.kt
+package com.demo
+
+const val amount = 3
+
+val la$0bel = $$"cost: $$amount $"
+//= expected
+(nothing)
+//= expected kotlin ..2.1
+/src/main/kotlin/com/demo/Label.kt:5:13  multi-dollar interpolation needs Kotlin 2.2 or later
+//= expected kotlin 2.2..
+(nothing)

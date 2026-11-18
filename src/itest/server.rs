@@ -18,6 +18,7 @@ use tower_lsp::lsp_types::Url;
 use tower_lsp::{LspService, Server};
 
 use super::fixture::Fixture;
+use super::versions::Version;
 use crate::indexer::Indexer;
 
 /// Where the server is told its workspace is. Nothing is there.
@@ -60,9 +61,9 @@ pub(super) struct Session {
 }
 
 impl Session {
-    /// `java_release`, when given, is the Java release the project is
-    /// compiled for, sent as `indexingOptions.javaRelease`.
-    pub(super) async fn open(fixture: &Fixture, java_release: Option<u8>) -> Self {
+    /// `version`, when given, is the language version the project is built
+    /// with, sent in `initializationOptions` as an editor would.
+    pub(super) async fn open(fixture: &Fixture, version: Option<Version>) -> Self {
         let (reader, writer, root, host) = in_memory();
         let mut session = Self {
             writer,
@@ -72,7 +73,7 @@ impl Session {
             root,
             _host: host,
         };
-        session.initialize(java_release).await;
+        session.initialize(version).await;
         for file in &fixture.files {
             session.did_open(&file.path, &file.text).await;
         }
@@ -208,7 +209,7 @@ impl Session {
             .await;
     }
 
-    async fn initialize(&mut self, java_release: Option<u8>) {
+    async fn initialize(&mut self, version: Option<Version>) {
         let deadline = Instant::now() + PATIENCE;
         let mut params = json!({
             "processId": std::process::id(),
@@ -223,8 +224,8 @@ impl Session {
                 "workspace": {"workspaceEdit": {"documentChanges": true}},
             },
         });
-        if let Some(release) = java_release {
-            params["initializationOptions"] = json!({"indexingOptions": {"javaRelease": release}});
+        if let Some(version) = version {
+            params["initializationOptions"] = version.initialization_options();
         }
         self.request("initialize", params, OnError::Panic, deadline)
             .await;

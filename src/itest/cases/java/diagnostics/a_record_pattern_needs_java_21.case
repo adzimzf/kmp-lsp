@@ -1,0 +1,22 @@
+//- /src/main/java/com/demo/Pair.java
+package com.demo;
+
+record Pair(int left, int right) {
+}
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Ma$0in {
+    int sum(Object value) {
+        if (value instanceof Pair(int left, int right)) {
+            return left + right;
+        }
+        return 0;
+    }
+}
+//= expected
+(nothing)
+//= expected java ..20
+/src/main/java/com/demo/Main.java:5:34  record patterns need Java 21 or later
+//= expected java 21..
+(nothing)

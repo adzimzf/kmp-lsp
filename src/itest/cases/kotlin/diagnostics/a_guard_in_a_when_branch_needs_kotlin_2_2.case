@@ -1,0 +1,19 @@
+//- /src/main/kotlin/com/demo/Shapes.kt
+package com.demo
+
+sealed interface Shape
+class Circle(val radius: Int) : Shape
+class Square(val side: Int) : Shape
+
+fun desc$0ribe(shape: Shape): String =
+    when (shape) {
+        is Circle if shape.radius == 0 -> "dot"
+        is Circle -> "circle"
+        is Square -> "square"
+    }
+//= expected
+(nothing)
+//= expected kotlin ..2.1
+/src/main/kotlin/com/demo/Shapes.kt:9:19  guard conditions in `when` need Kotlin 2.2 or later
+//= expected kotlin 2.2..
+(nothing)

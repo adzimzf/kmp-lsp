@@ -1,0 +1,20 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+class Base {
+    Base(int size) {
+    }
+}
+
+class Ma$0in extends Base {
+    Main(int size) {
+        int checked = size < 0 ? 0 : size;
+        super(checked);
+    }
+}
+//= expected
+(nothing)
+//= expected java ..24
+/src/main/java/com/demo/Main.java:11:14  statements before `super()` need Java 25 or later
+//= expected java 25..
+(nothing)

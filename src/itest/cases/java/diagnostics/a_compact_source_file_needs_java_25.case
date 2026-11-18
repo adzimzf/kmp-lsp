@@ -1,0 +1,10 @@
+//- /src/main/java/Main.java
+void ma$0in() {
+    System.out.println("Hello");
+}
+//= expected
+(nothing)
+//= expected java ..24
+/src/main/java/Main.java:1:1  compact source files need Java 25 or later
+//= expected java 25..
+(nothing)

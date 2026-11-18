@@ -1,0 +1,14 @@
+//- /src/main/java/com/demo/Main.java
+package com.demo;
+
+import module java.base;
+
+class Ma$0in {
+    List<String> names = new ArrayList<>();
+}
+//= expected
+(nothing)
+//= expected java ..24
+/src/main/java/com/demo/Main.java:3:8  module imports need Java 25 or later
+//= expected java 25..
+(nothing)

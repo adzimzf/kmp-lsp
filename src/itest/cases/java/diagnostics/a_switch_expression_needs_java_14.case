@@ -9,7 +9,10 @@ class Ma$0in {
         };
     }
 }
+//= expected
+(nothing)
 //= expected java ..13
 /src/main/java/com/demo/Main.java:5:16  switch expressions need Java 14 or later
+/src/main/java/com/demo/Main.java:6:20  `case ->` labels need Java 14 or later
 //= expected java 14..
 (nothing)
