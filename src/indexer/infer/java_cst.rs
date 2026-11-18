@@ -191,6 +191,18 @@ fn declaration_at(node: Node<'_>, parent: Node<'_>) -> Option<JavaDeclaration> {
     ) && is_name;
     let is_lambda_parameter = parent_kind == INFERRED_PARAMETERS
         || (parent_kind == LAMBDA_EXPRESSION && is_field_named(parent, "parameters", node));
+    let is_pattern_variable = node.kind() == IDENTIFIER
+        && match parent_kind {
+            "instanceof_expression" => is_name,
+            "type_pattern" | "record_pattern_component" => {
+                parent.named_child(parent.named_child_count().saturating_sub(1) as u32)
+                    == Some(node)
+            }
+            _ => false,
+        };
+    if is_pattern_variable {
+        return Some(JavaDeclaration::Local);
+    }
     let is_type_parameter = parent_kind == TYPE_PARAMETER;
     let is_spread_parameter = parent_kind == SPREAD_PARAMETER && node.kind() == IDENTIFIER;
     (declares_local || is_lambda_parameter || is_type_parameter || is_spread_parameter)
@@ -448,6 +460,37 @@ pub(crate) fn enclosing_java_class_names(node: Node<'_>, bytes: &[u8]) -> Vec<St
 /// parameter).
 pub(crate) fn java_local_hover_line(name_node: Node<'_>, bytes: &[u8]) -> Option<String> {
     let type_text = local_written_type(name_node, bytes)?;
+    java_local_hover_line_typed(name_node, &type_text, bytes)
+}
+
+/// The initializer of the `var` local whose name is `name_node`, which its
+/// type is inferred from: `new Dog()` of `var dog = new Dog();`.
+pub(crate) fn var_local_initializer<'tree>(
+    name_node: Node<'tree>,
+    bytes: &[u8],
+) -> Option<Node<'tree>> {
+    let declarator = name_node
+        .parent()
+        .filter(|parent| parent.kind() == VARIABLE_DECLARATOR)?;
+    let declaration = declarator
+        .parent()
+        .filter(|declaration| declaration.kind() == LOCAL_VARIABLE_DECLARATION)?;
+    let is_var = declaration
+        .child_by_field_name("type")
+        .is_some_and(|type_node| type_node.utf8_text(bytes).ok() == Some(INFERRED_LOCAL_TYPE));
+    if !is_var {
+        return None;
+    }
+    declarator.child_by_field_name("value")
+}
+
+/// [`java_local_hover_line`] for a local whose type is `type_text` (its
+/// written one, or the one a `var` infers).
+pub(crate) fn java_local_hover_line_typed(
+    name_node: Node<'_>,
+    type_text: &str,
+    bytes: &[u8],
+) -> Option<String> {
     let name = name_node.utf8_text(bytes).ok()?;
     let declaration = format!("{type_text} {name}");
     let Some(method) = std::iter::successors(name_node.parent(), |node| node.parent())
@@ -719,7 +762,12 @@ fn java_local_named_at<'tree>(
     let mut inner = use_site;
     while let Some(scope) = inner.parent() {
         let kind = scope.kind();
-        if is_class_like_body(kind) || kind == PROGRAM {
+        if kind == PROGRAM {
+            return None;
+        }
+        // A class declared in a method (an anonymous or a local class) sees
+        // the method's locals, unless it declares a field of that name.
+        if is_class_like_body(kind) && declares_field(scope, name, bytes) {
             return None;
         }
         if let Some(local) = local_in_scope(scope, inner, use_site.start_byte(), name, bytes) {
@@ -977,8 +1025,18 @@ fn local_in_scope<'tree>(
     bytes: &[u8],
 ) -> Option<JavaLocal<'tree>> {
     match scope.kind() {
-        BLOCK | CONSTRUCTOR_BODY | SWITCH_BLOCK_GROUP => {
-            earlier_local_declaration(scope, use_start, name, bytes)
+        BLOCK | CONSTRUCTOR_BODY => earlier_local_declaration(scope, use_start, name, bytes),
+        SWITCH_BLOCK_GROUP => earlier_local_declaration(scope, use_start, name, bytes)
+            .or_else(|| switch_label_binding(scope, name, bytes)),
+        "switch_rule" => {
+            let in_label = scope
+                .children_of_kind("switch_label")
+                .iter()
+                .any(|label| label.id() == inner.id());
+            if in_label {
+                return None;
+            }
+            switch_label_binding(scope, name, bytes)
         }
         FOR_STATEMENT => {
             let mut cursor = scope.walk();
@@ -1081,9 +1139,10 @@ fn local_in_scope<'tree>(
     }
 }
 
-/// The pattern variable called `name` that an `instanceof` test in
-/// `condition` declares (`Circle circle` of `shape instanceof Circle
-/// circle`), not looking into lambdas or classes declared there.
+/// The pattern variable called `name` that a pattern in `condition`
+/// declares (`Circle circle` of `shape instanceof Circle circle`, `int x` of
+/// `case Point(int x, int y)`), not looking into lambdas or classes
+/// declared there.
 fn pattern_binding<'tree>(
     condition: Node<'tree>,
     name: &str,
@@ -1091,17 +1150,30 @@ fn pattern_binding<'tree>(
 ) -> Option<JavaLocal<'tree>> {
     let mut pending = vec![condition];
     while let Some(node) = pending.pop() {
-        if node.kind() == "instanceof_expression" {
-            let declared = node
+        let declared_with_type = match node.kind() {
+            "instanceof_expression" => node
                 .child_by_field_name("name")
-                .filter(|declared| declared.utf8_text(bytes).ok() == Some(name));
-            if let Some(declared) = declared {
-                let binding = node
-                    .child_by_field_name("right")
-                    .and_then(|type_node| type_node.utf8_text_owned(bytes))
-                    .map_or(JavaLocalBinding::Untyped, JavaLocalBinding::Typed);
-                return Some(JavaLocal::new(declared, binding));
+                .zip(node.child_by_field_name("right")),
+            "type_pattern" | "record_pattern_component" => {
+                let mut cursor = node.walk();
+                let parts: Vec<Node<'tree>> = node.named_children(&mut cursor).collect();
+                match parts.as_slice() {
+                    [.., type_node, declared] if declared.kind() == IDENTIFIER => {
+                        Some((*declared, *type_node))
+                    }
+                    _ => None,
+                }
             }
+            _ => None,
+        };
+        let declared_here =
+            declared_with_type.filter(|(declared, _)| declared.utf8_text(bytes).ok() == Some(name));
+        if let Some((declared, type_node)) = declared_here {
+            let binding = type_node
+                .utf8_text_owned(bytes)
+                .filter(|type_text| type_text != INFERRED_LOCAL_TYPE)
+                .map_or(JavaLocalBinding::Untyped, JavaLocalBinding::Typed);
+            return Some(JavaLocal::new(declared, binding));
         }
         if matches!(node.kind(), LAMBDA_EXPRESSION | "class_body") {
             continue;
@@ -1110,6 +1182,79 @@ fn pattern_binding<'tree>(
         pending.extend(node.named_children(&mut cursor));
     }
     None
+}
+
+/// Whether the class body `body` declares a field called `name`.
+fn declares_field(body: Node<'_>, name: &str, bytes: &[u8]) -> bool {
+    let mut cursor = body.walk();
+    let fields: Vec<Node<'_>> = body
+        .named_children(&mut cursor)
+        .filter(|member| matches!(member.kind(), FIELD_DECLARATION | "constant_declaration"))
+        .collect();
+    fields.into_iter().any(|field| {
+        field
+            .children_of_kind(VARIABLE_DECLARATOR)
+            .into_iter()
+            .any(|declarator| declared_name_node(declarator, name, bytes).is_some())
+    })
+}
+
+/// The pattern variable called `name` of the `case` labels of a switch
+/// rule or statement group: in scope in its body.
+fn switch_label_binding<'tree>(
+    case: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<JavaLocal<'tree>> {
+    case.children_of_kind("switch_label")
+        .into_iter()
+        .find_map(|label| pattern_binding(label, name, bytes))
+}
+
+/// `text` after `if (!(value instanceof String text)) { return ..; }`: a
+/// pattern variable of a negated test is in scope after an `if` whose
+/// branch never completes, for the rest of the block.
+fn binding_after_negated_test<'tree>(
+    statement: Node<'tree>,
+    name: &str,
+    bytes: &[u8],
+) -> Option<JavaLocal<'tree>> {
+    if statement.kind() != "if_statement" || statement.child_by_field_name("alternative").is_some()
+    {
+        return None;
+    }
+    let consequence = statement.child_by_field_name("consequence")?;
+    if !completes_abruptly(consequence) {
+        return None;
+    }
+    let mut condition = statement.child_by_field_name("condition")?;
+    while condition.kind() == PARENTHESIZED_EXPRESSION {
+        condition = condition.named_child(0)?;
+    }
+    let is_negation = condition.kind() == "unary_expression"
+        && condition
+            .child_by_field_name("operator")
+            .is_some_and(|operator| operator.kind() == "!");
+    if !is_negation {
+        return None;
+    }
+    pattern_binding(condition.child_by_field_name("operand")?, name, bytes)
+}
+
+/// Whether `statement` always leaves the code after it: a `return`,
+/// `throw`, `break` or `continue`, or a block ending in one.
+fn completes_abruptly(statement: Node<'_>) -> bool {
+    match statement.kind() {
+        "return_statement" | "throw_statement" | "break_statement" | "continue_statement" => true,
+        BLOCK => {
+            let count = statement.named_child_count();
+            count > 0
+                && statement
+                    .named_child((count - 1) as u32)
+                    .is_some_and(completes_abruptly)
+        }
+        _ => false,
+    }
 }
 
 /// The nearest local `name` declared in `block` before the use site at
@@ -1129,6 +1274,12 @@ fn earlier_local_declaration<'tree>(
         }
         if statement.kind() == LOCAL_VARIABLE_DECLARATION {
             if let Some(local) = declared_local(statement, use_start, name, bytes) {
+                nearest = Some(local);
+            }
+        }
+        let after_the_statement = statement.end_byte() <= use_start;
+        if after_the_statement {
+            if let Some(local) = binding_after_negated_test(statement, name, bytes) {
                 nearest = Some(local);
             }
         }
@@ -1616,6 +1767,15 @@ fn inferred_from_arguments(
     if !is_type_variable {
         return found;
     }
+    // `Util.<Dog>make()`: the type argument written on the call.
+    if let Some(written) = single_explicit_type_argument(invocation, bytes) {
+        return (written, uri.clone());
+    }
+    // `box.get()` on a `DogBox extends Box<Dog>`: what the supertype was
+    // declared with.
+    if let Some(inherited) = deps.find_inherited_type_argument(class_name, type_text, uri) {
+        return (inherited, uri.clone());
+    }
     let Some(params) =
         deps.find_method_params_text(class_name, method, uri, java_call_shape(invocation))
     else {
@@ -1637,6 +1797,17 @@ fn inferred_from_arguments(
         .and_then(|index| argument_nodes.get(index))
         .and_then(|argument| expr_type_at_depth(*argument, bytes, deps, uri, depth + 1))
         .unwrap_or(found)
+}
+
+/// `Dog` of `Util.<Dog>make()`: the one type argument written on a call.
+fn single_explicit_type_argument(invocation: Node<'_>, bytes: &[u8]) -> Option<String> {
+    let arguments = invocation.child_by_field_name("type_arguments")?;
+    let mut cursor = arguments.walk();
+    let written: Vec<Node<'_>> = arguments.named_children(&mut cursor).collect();
+    match written.as_slice() {
+        [only] => only.utf8_text_owned(bytes),
+        _ => None,
+    }
 }
 
 /// `foo()` with no receiver: a method of an enclosing class — declared in
@@ -1804,7 +1975,13 @@ pub(crate) trait ClassHierarchy {
 
 /// What an overload whose parameter count equals the argument count scores
 /// before any argument is compared.
-const ARITY_MATCH: u32 = 1;
+const ARITY_MATCH: u32 = 2;
+
+/// What a variable-arity overload the arguments fit scores (`log(String,
+/// Object...)` for `log("%s", a, b)`): above one whose arity can't take the
+/// arguments, below any whose arity matches, as javac only tries variable
+/// arity when nothing fits otherwise (JLS 15.12.2.4).
+const VARIABLE_ARITY_MATCH: u32 = 1;
 
 /// Java's primitive widening order (JLS 5.1.2), `char` aside.
 const NUMERIC_WIDENING: [&str; 6] = ["byte", "short", "int", "long", "float", "double"];
@@ -2036,7 +2213,7 @@ pub(crate) fn overload_fit_score(
     hierarchy: &impl ClassHierarchy,
 ) -> Option<u32> {
     if arguments.len() != parameters.len() {
-        return Some(0);
+        return Some(variable_arity_fit(arguments, parameters, hierarchy).unwrap_or(0));
     }
     // Matching the argument count already beats a candidate that would need
     // varargs or default values: `new Writer()` is `Writer()`, not
@@ -2050,6 +2227,30 @@ pub(crate) fn overload_fit_score(
         score += argument_fit.score();
     }
     Some(score)
+}
+
+/// [`VARIABLE_ARITY_MATCH`] when `parameters` ends in an array (`Object...`
+/// reads `Object[]`) that takes the arguments past the others, each fitting
+/// its element type; `None` otherwise.
+fn variable_arity_fit(
+    arguments: &[ArgumentType],
+    parameters: &[String],
+    hierarchy: &impl ClassHierarchy,
+) -> Option<u32> {
+    let (last, fixed) = parameters.split_last()?;
+    let element = last.strip_suffix("[]")?;
+    if arguments.len() < fixed.len() {
+        return None;
+    }
+    let (fixed_arguments, variable_arguments) = arguments.split_at(fixed.len());
+    let fixed_fit = fixed_arguments
+        .iter()
+        .zip(fixed)
+        .all(|(argument, parameter)| fit(argument, parameter, hierarchy) != Fit::Impossible);
+    let variable_fit = variable_arguments
+        .iter()
+        .all(|argument| fit(argument, element, hierarchy) != Fit::Impossible);
+    (fixed_fit && variable_fit).then_some(VARIABLE_ARITY_MATCH)
 }
 
 /// Whether an overload with parameter keys `specific` is more specific than
@@ -2248,24 +2449,88 @@ pub(crate) fn lambda_target<'tree>(name_node: Node<'tree>) -> Option<LambdaTarge
     } else {
         (parent, 0)
     };
-    let mut written_around = lambda.parent()?;
+    Some(LambdaTarget {
+        target_type: written_target_type(lambda)?,
+        parameter_index,
+    })
+}
+
+/// The functional interface type a lambda or method reference is written
+/// for, as the source spells it next to it: the type of the variable it
+/// initializes, the type it is cast to, or the return type of the method
+/// that returns it. `None` anywhere else (a method argument).
+pub(crate) fn written_target_type(expression: Node<'_>) -> Option<Node<'_>> {
+    let mut written_around = expression.parent()?;
     while written_around.kind() == PARENTHESIZED_EXPRESSION {
         written_around = written_around.parent()?;
     }
-    let target_type = match written_around.kind() {
-        CAST_EXPRESSION => written_around.child_by_field_name("type")?,
-        VARIABLE_DECLARATOR => written_around.parent()?.child_by_field_name("type")?,
+    match written_around.kind() {
+        CAST_EXPRESSION => written_around.child_by_field_name("type"),
+        VARIABLE_DECLARATOR => written_around.parent()?.child_by_field_name("type"),
         // `return circle -> ..` targets the type the method returns.
         "return_statement" => std::iter::successors(written_around.parent(), |node| node.parent())
             .find(|node| matches!(node.kind(), METHOD_DECLARATION | LAMBDA_EXPRESSION))
             .filter(|owner| owner.kind() == METHOD_DECLARATION)?
-            .child_by_field_name("type")?,
-        _ => return None,
-    };
-    Some(LambdaTarget {
-        target_type,
-        parameter_index,
+            .child_by_field_name("type"),
+        _ => None,
+    }
+}
+
+/// A method reference, `Dog::new` or `Checks::isEmpty`, the cursor is on
+/// the member name of.
+pub(crate) struct MethodReference<'tree> {
+    pub(crate) reference: Node<'tree>,
+    /// The type or expression before `::`.
+    pub(crate) qualifier: Node<'tree>,
+    /// Whether it names a constructor (`::new`).
+    pub(crate) is_constructor: bool,
+}
+
+/// The [`MethodReference`] whose member name (or `new`) is `name_node`.
+pub(crate) fn method_reference_of_member<'tree>(
+    name_node: Node<'tree>,
+) -> Option<MethodReference<'tree>> {
+    let reference = name_node
+        .parent()
+        .filter(|parent| parent.kind() == "method_reference")?;
+    let qualifier = reference.named_child(0)?;
+    if qualifier.id() == name_node.id() {
+        return None;
+    }
+    Some(MethodReference {
+        reference,
+        qualifier,
+        is_constructor: name_node.kind() == "new",
     })
+}
+
+/// The parameter types of the abstract method of the functional interface
+/// whose declared name is `interface_name`, as written there; `None` when
+/// it is no functional interface.
+pub(crate) fn abstract_method_parameter_types<'tree>(
+    interface_name: Node<'tree>,
+    bytes: &[u8],
+) -> Option<Vec<String>> {
+    let mut types = Vec::new();
+    while let Some(parameter) = abstract_method_parameter(interface_name, types.len(), bytes) {
+        types.push(parameter.parameter_type.utf8_text_owned(bytes)?);
+    }
+    // An interface with no single abstract method is told apart from one
+    // whose method takes nothing.
+    let has_one_abstract_method = !types.is_empty()
+        || interface_name
+            .parent()
+            .and_then(|interface| interface.child_by_field_name("body"))
+            .is_some_and(|body| {
+                let mut cursor = body.walk();
+                let abstract_methods = body
+                    .named_children(&mut cursor)
+                    .filter(|member| member.kind() == METHOD_DECLARATION)
+                    .filter(|method| is_abstract_interface_method(*method, bytes))
+                    .count();
+                abstract_methods == 1
+            });
+    has_one_abstract_method.then_some(types)
 }
 
 /// The type arguments written on `type_node` (`String`, `Long` of

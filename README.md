@@ -38,7 +38,7 @@ kmp-lsp extract-sources
 - [More editors](docs/editors.md) — Helix, Neovim, VS Code, Zed
 - [Features & CLI reference](docs/features.md) — capabilities, CLI subcommands, resolution chain, completion ranking
 - [Debugging Java & Kotlin](docs/debugging.md) — java-debug through jdtls-compatible commands (nvim-dap, Zed)
-- [Configuration](docs/features.md#configuration) — workspace root, ignore patterns, source paths, `jarPaths`, [`jdkHome`](docs/features.md#jdk-sources)
+- [Configuration](docs/features.md#configuration) — workspace root, ignore patterns, source paths, `jarPaths`, [`jdkHome`](docs/features.md#jdk-sources), [language versions](docs/features.md#language-versions) (`javaRelease`, `kotlinLanguageVersion`)
 - [Limitations & vs. official Kotlin LSP](docs/features.md#limitations)
 - [Architecture](docs/architecture.md) · [Performance & profiling](docs/performance.md) · [Changelog](CHANGELOG.md)
 

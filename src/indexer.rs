@@ -30,11 +30,11 @@ pub(crate) use self::infer::args::has_named_params_not_it;
 #[allow(unused_imports)]
 pub(crate) use self::infer::deps::TestDeps;
 pub(crate) use self::infer::java_cst::{
-    closed_before, java_scope_locals_at, JavaCompletionPlace, JavaScopeLocal,
+    closed_before, java_scope_locals_at, parameter_type_keys, JavaCompletionPlace, JavaScopeLocal,
 };
 pub(crate) use self::infer::speculative::{
     java_receiver_node_for_marker, lambda_doc_at, receiver_node_for_marker, speculative_doc,
-    COMPLETION_MARKER,
+    speculative_doc_ending, COMPLETION_MARKER,
 };
 #[allow(unused_imports)]
 pub(crate) use self::infer::{
@@ -45,11 +45,12 @@ pub(crate) use self::infer::{
         classify_cursor, classify_occurrence_at, classify_symbol_at, declared_parameters_at,
         enclosing_nav_expr_if_member, implicit_receiver_of, is_call_callee, is_declaration_site,
         is_java_created_type_at, is_java_type_name_at, is_local_declaration_at,
-        is_local_value_reference, java_completion_place_at, java_javadoc_parameter_tag,
-        java_jump_target, java_local_declaration_at, java_local_definition, java_local_hover_line,
-        java_name_site, java_record_component_occurrences, java_reference_range,
-        java_type_parameter_definition, java_type_parameter_occurrences, local_scope_occurrences,
-        narrow_java_overloads, navigation_member_ident, navigation_receiver_node, resolve_identity,
+        is_local_value_reference, java_call_type_arguments, java_completion_place_at,
+        java_invoked_member_definition, java_javadoc_parameter_tag, java_jump_target,
+        java_local_declaration_at, java_local_definition, java_local_hover_line, java_name_site,
+        java_record_component_occurrences, java_reference_range, java_type_parameter_definition,
+        java_type_parameter_occurrences, local_scope_occurrences, narrow_java_overloads,
+        navigation_member_ident, navigation_receiver_node, resolve_identity,
         resolve_identity_with_io, shape_filter_locations, type_definition_step, JavaNameSite,
         JavaReferenceTarget, NavigationSource, NotCodeKind, OccurrenceSite, SymbolAtCursor,
         SymbolRole, TypeDefinitionStep,
@@ -461,6 +462,31 @@ pub(crate) struct Indexer {
 /// type the exact overload can't be picked anyway, so bound the work.
 pub(crate) const MAX_BY_NAME_DEFS: usize = 64;
 
+impl Indexer {
+    /// The supertypes `class_name` is declared with, each with the type
+    /// arguments written there (`Box`, `["Dog"]` of `extends Box<Dog>`),
+    /// from the file `uri` resolves the class to, else any declaring it.
+    fn written_supertypes(&self, class_name: &str, uri: &Url) -> Vec<(String, Vec<String>)> {
+        let declarations = crate::resolver::resolve_type_name(self, class_name, uri);
+        for declaration in declarations {
+            let Some(file) = self.files.get(declaration.uri.as_str()) else {
+                continue;
+            };
+            let line = declaration.range.start.line;
+            let supertypes: Vec<(String, Vec<String>)> = file
+                .supers
+                .iter()
+                .filter(|(declared_on, _, _)| *declared_on == line)
+                .map(|(_, supertype, arguments)| (supertype.clone(), arguments.clone()))
+                .collect();
+            if !supertypes.is_empty() {
+                return supertypes;
+            }
+        }
+        Vec::new()
+    }
+}
+
 impl InferDeps for Indexer {
     fn find_fun_params_text(&self, fn_name: &str, uri: &Url) -> Option<String> {
         // Index-only: lambda/receiver inference is a hot path (called per lambda in
@@ -553,6 +579,50 @@ impl InferDeps for Indexer {
             });
         declared_params.unwrap_or_else(|| self.find_class_type_params(class_name))
     }
+    fn find_inherited_type_argument(
+        &self,
+        class_name: &str,
+        type_variable: &str,
+        uri: &Url,
+    ) -> Option<String> {
+        const MAX_SUPERTYPE_DEPTH: usize = 8;
+        // `(class, what its type variables stand for)`, starting from the
+        // receiver's class, whose own variables stand for nothing known.
+        let mut pending: Vec<(String, std::collections::HashMap<String, String>)> =
+            vec![(class_name.to_owned(), std::collections::HashMap::new())];
+        let mut visited: Vec<String> = Vec::new();
+        while let Some((class, bound)) = pending.pop() {
+            if visited.contains(&class) || visited.len() > MAX_SUPERTYPE_DEPTH {
+                continue;
+            }
+            visited.push(class.clone());
+            for (supertype, arguments) in self.written_supertypes(&class, uri) {
+                let parameters: Vec<String> = self
+                    .find_class_type_params(&supertype)
+                    .iter()
+                    .filter_map(|parameter| parameter.split_whitespace().next())
+                    .map(str::to_owned)
+                    .collect();
+                if parameters.len() != arguments.len() {
+                    continue;
+                }
+                let substituted: std::collections::HashMap<String, String> = parameters
+                    .into_iter()
+                    .zip(arguments)
+                    .map(|(parameter, argument)| {
+                        let argument = bound.get(&argument).cloned().unwrap_or(argument);
+                        (parameter, argument)
+                    })
+                    .collect();
+                if let Some(found) = substituted.get(type_variable) {
+                    return Some(found.clone());
+                }
+                pending.push((supertype, substituted));
+            }
+        }
+        None
+    }
+
     fn find_class_type_params(&self, class_name: &str) -> Vec<String> {
         if let Some(locations) = self.definitions.get(class_name) {
             for loc in locations.iter() {
@@ -1676,6 +1746,50 @@ impl Indexer {
 
     /// The Java locals and parameters in scope at `position` — the names a
     /// bare-word completion there may offer. Empty for a non-Java file.
+    /// The members a Java file imports by name with `import static
+    /// com.demo.util.Strings.shout;`: what a bare name may complete to.
+    pub(crate) fn java_statically_imported_members(
+        &self,
+        uri: &Url,
+    ) -> Vec<crate::types::SymbolEntry> {
+        if crate::Language::from_path(uri.path()) != crate::Language::Java {
+            return Vec::new();
+        }
+        let Some(file) = self.files.get(uri.as_str()) else {
+            return Vec::new();
+        };
+        let imports = file.imports.clone();
+        drop(file);
+        let mut members = Vec::new();
+        for import in imports.iter().filter(|import| !import.is_star) {
+            let Some((class_path, member)) = import.full_path.rsplit_once('.') else {
+                continue;
+            };
+            let Some(class) = crate::resolver::find_qualified_type(self, class_path) else {
+                continue;
+            };
+            let class_name = class_path.rsplit('.').next().unwrap_or(class_path);
+            let Some(class_file) = self.files.get(class.uri.as_str()) else {
+                continue;
+            };
+            members.extend(
+                class_file
+                    .symbols
+                    .iter()
+                    .filter(|symbol| {
+                        symbol.name == member
+                            && symbol.container.as_deref() == Some(class_name)
+                            && matches!(
+                                symbol.kind,
+                                SymbolKind::METHOD | SymbolKind::FIELD | SymbolKind::CONSTANT
+                            )
+                    })
+                    .cloned(),
+            );
+        }
+        members
+    }
+
     pub(crate) fn java_scope_locals(&self, uri: &Url, position: Position) -> Vec<JavaScopeLocal> {
         if crate::Language::from_path(uri.path()) != crate::Language::Java {
             return Vec::new();

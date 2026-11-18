@@ -272,3 +272,75 @@ fn kotlin_version_from_a_pom() {
         Some(KotlinLanguageVersion::new(2, 2))
     );
 }
+
+fn java_use(feature: JavaFeature, line: u32, character: u32) -> LanguageFeatureUse {
+    LanguageFeatureUse {
+        feature: LanguageFeature::Java(feature),
+        position: tower_lsp::lsp_types::Position::new(line, character),
+    }
+}
+
+fn reported_lines(uses: &[LanguageFeatureUse], java: Option<u32>) -> Vec<(u32, String)> {
+    let versions = LanguageVersions {
+        java: java.map(JavaRelease),
+        kotlin: None,
+    };
+    feature_diagnostics(uses, versions)
+        .into_iter()
+        .map(|diagnostic| (diagnostic.range.start.line, diagnostic.message))
+        .collect()
+}
+
+#[test]
+fn a_missing_feature_is_reported_once_per_file_at_its_first_use() {
+    let uses = [
+        java_use(JavaFeature::Record, 7, 0),
+        java_use(JavaFeature::Record, 2, 0),
+    ];
+    assert_eq!(
+        reported_lines(&uses, Some(15)),
+        vec![(2, "records need Java 16 or later".to_owned())]
+    );
+    assert!(reported_lines(&uses, Some(16)).is_empty());
+}
+
+#[test]
+fn var_is_reported_at_each_use() {
+    let uses = [
+        java_use(JavaFeature::VarType, 1, 4),
+        java_use(JavaFeature::VarType, 2, 4),
+    ];
+    assert_eq!(reported_lines(&uses, Some(9)).len(), 2);
+}
+
+#[test]
+fn an_unknown_release_is_the_newest() {
+    let uses = [
+        java_use(JavaFeature::CompactSourceFile, 0, 0),
+        java_use(JavaFeature::VarAsTypeName, 3, 6),
+    ];
+    assert_eq!(
+        reported_lines(&uses, None),
+        vec![(3, "`var` cannot name a type from Java 10 on".to_owned())]
+    );
+}
+
+#[test]
+fn underscore_is_a_name_in_java_8_only_until_unnamed_variables() {
+    let feature = JavaFeature::UnderscoreVariable;
+    assert!(!feature.is_error_at(JavaRelease(8)));
+    assert!(feature.is_error_at(JavaRelease(9)));
+    assert!(feature.is_error_at(JavaRelease(21)));
+    assert!(!feature.is_error_at(JavaRelease(22)));
+}
+
+#[test]
+fn kotlin_features_need_their_language_version() {
+    let feature = KotlinFeature::NestedTypeAlias;
+    assert!(feature.is_error_at(KotlinLanguageVersion::new(2, 2)));
+    assert!(!feature.is_error_at(KotlinLanguageVersion::new(2, 3)));
+    assert_eq!(
+        feature.message(),
+        "nested type aliases need Kotlin 2.3 or later"
+    );
+}

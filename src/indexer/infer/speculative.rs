@@ -67,11 +67,24 @@ pub(crate) fn speculative_doc(
     lang: tree_sitter::Language,
     cursor: CursorPos,
 ) -> Option<(LiveDoc, usize)> {
-    let (offset, point) = insertion_site(&base.bytes, cursor)?;
+    speculative_doc_ending(base, lang, cursor, "")
+}
 
-    let mut bytes = Vec::with_capacity(base.bytes.len() + COMPLETION_MARKER.len());
+/// [`speculative_doc`] with `ending` written right after the marker: a
+/// Java member access typed at the end of a line (`dog.ba|`) parses as
+/// the statement it will be once its `;` is there, not as a broken type.
+pub(crate) fn speculative_doc_ending(
+    base: &LiveDoc,
+    lang: tree_sitter::Language,
+    cursor: CursorPos,
+    ending: &str,
+) -> Option<(LiveDoc, usize)> {
+    let (offset, point) = insertion_site(&base.bytes, cursor)?;
+    let inserted = format!("{COMPLETION_MARKER}{ending}");
+
+    let mut bytes = Vec::with_capacity(base.bytes.len() + inserted.len());
     bytes.extend_from_slice(&base.bytes[..offset]);
-    bytes.extend_from_slice(COMPLETION_MARKER.as_bytes());
+    bytes.extend_from_slice(inserted.as_bytes());
     bytes.extend_from_slice(&base.bytes[offset..]);
 
     // Incremental reparse: clone the immutable base tree, record the insertion,
@@ -80,12 +93,12 @@ pub(crate) fn speculative_doc(
     tree.edit(&InputEdit {
         start_byte: offset,
         old_end_byte: offset,
-        new_end_byte: offset + COMPLETION_MARKER.len(),
+        new_end_byte: offset + inserted.len(),
         start_position: point,
         old_end_position: point,
         new_end_position: Point {
             row: point.row,
-            column: point.column + COMPLETION_MARKER.len(),
+            column: point.column + inserted.len(),
         },
     });
     // Per-thread parser reuse (same rationale as `parser.rs`): `Parser::new()`

@@ -2594,8 +2594,12 @@ impl crate::types::FileData {
             for child in node.children(&mut cur) {
                 if child.kind() == KIND_SUPERCLASS {
                     if let Some(name) = child.java_first_type_name(bytes) {
-                        self.supers
-                            .push((name_line, name, child.type_arg_strings(bytes)));
+                        // `extends Box<Dog>`: the arguments are the generic type's.
+                        let type_args = child
+                            .first_child_of_kind(KIND_GENERIC_TYPE)
+                            .map(|generic| generic.type_arg_strings(bytes))
+                            .unwrap_or_default();
+                        self.supers.push((name_line, name, type_args));
                     }
                 } else if child.kind() == KIND_SUPER_INTERFACES {
                     for (name, type_args) in child.java_type_list(bytes) {
@@ -2866,8 +2870,9 @@ impl crate::types::FileData {
         let Some(parameters) = record.child_by_field_name("parameters") else {
             return;
         };
-        let detail = extract_detail_from_node(*record, bytes, &self.lines);
         for component in parameters.children_of_kind(KIND_FORMAL_PARAM) {
+            // `int x`: what a hover on the component (or its accessor) shows.
+            let detail = component.utf8_text_owned(bytes).unwrap_or_default();
             let Some(name_node) = component.child_by_field_name("name") else {
                 continue;
             };
@@ -2880,7 +2885,7 @@ impl crate::types::FileData {
                 visibility: Visibility::Public,
                 range: ts_to_lsp(component.range()),
                 selection_range: ts_to_lsp(name_node.range()),
-                detail: detail.clone(),
+                detail,
                 container: None,
                 params: String::new(),
                 param_counts: (0, 0),
@@ -2926,10 +2931,9 @@ impl crate::types::FileData {
     }
 
     fn push_field_declaration(&mut self, node: &Node, bytes: &[u8]) {
+        // An interface's fields are implicitly `static final`.
         let is_interface_field = node.kind() == KIND_CONSTANT_DECL;
-        let kind = if is_interface_field {
-            SymbolKind::CONSTANT
-        } else if node
+        let is_static_final = node
             .first_child_of_kind(KIND_MODIFIERS)
             .is_some_and(|mods| {
                 let found_kinds: Vec<&str> = (0..mods.child_count() as u32)
@@ -2939,8 +2943,8 @@ impl crate::types::FileData {
                 [KIND_MOD_STATIC, KIND_MOD_FINAL]
                     .iter()
                     .all(|&req| found_kinds.contains(&req))
-            })
-        {
+            });
+        let kind = if is_interface_field || is_static_final {
             SymbolKind::CONSTANT
         } else {
             SymbolKind::FIELD

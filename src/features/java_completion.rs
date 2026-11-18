@@ -31,8 +31,8 @@ use crate::features::signature_help::{
 };
 use crate::features::type_hierarchy::{declared_name, resolve_type, supertypes};
 use crate::indexer::{
-    closed_before, java_receiver_node_for_marker, speculative_doc, split_params_at_depth_zero,
-    CstQuery, Indexer, JavaCompletionPlace, LiveDoc, Resolution, COMPLETION_MARKER,
+    closed_before, java_receiver_node_for_marker, split_params_at_depth_zero, CstQuery, Indexer,
+    JavaCompletionPlace, LiveDoc, Resolution, COMPLETION_MARKER,
 };
 use crate::inlay_hints::{line_starts, ts_pos_to_lsp};
 use crate::resolver::complete::completion_item_for_nested_symbol;
@@ -815,14 +815,32 @@ fn enclosing_call(indexer: &Indexer, uri: &Url, position: Position) -> Option<(P
 fn marked_doc(indexer: &Indexer, uri: &Url, position: Position) -> Option<(LiveDoc, usize)> {
     let base = indexer.live_doc_or_parse(uri)?;
     let language = crate::indexer::live_tree::lang_for_path(uri.path())?;
-    speculative_doc(
-        &base,
-        language,
-        CursorPos {
-            line: position.line as usize,
-            utf16_col: position.character as usize,
-        },
-    )
+    let cursor = CursorPos {
+        line: position.line as usize,
+        utf16_col: position.character as usize,
+    };
+    let unfinished_access = indexer
+        .mem_lines_for(uri.as_str())
+        .and_then(|lines| {
+            let line = lines.get(position.line as usize)?;
+            let column =
+                crate::indexer::live_tree::utf16_col_to_byte(line, position.character as usize)
+                    .min(line.len());
+            Some(is_unfinished_member_access(
+                &line[..column],
+                &line[column..],
+            ))
+        })
+        .unwrap_or(false);
+    let ending = if unfinished_access { ";" } else { "" };
+    crate::indexer::speculative_doc_ending(&base, language, cursor, ending)
+}
+
+/// `dog.ba|` with nothing after it on the line: a member access whose
+/// statement has no `;` yet.
+fn is_unfinished_member_access(before: &str, after: &str) -> bool {
+    let receiver_end = before.trim_end_matches(|char: char| char.is_alphanumeric() || char == '_');
+    receiver_end.ends_with('.') && after.trim().is_empty()
 }
 
 /// The member access being completed, as read from the marked document.

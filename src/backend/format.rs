@@ -160,12 +160,48 @@ pub(crate) fn java_declaration_line(
             | tower_lsp::lsp_types::SymbolKind::PROPERTY
             | tower_lsp::lsp_types::SymbolKind::VARIABLE
     );
-    if is_field && !is_final {
-        if let Some(equals) = rest.find(" =") {
+    if let Some(equals) = rest.find(" =").filter(|_| is_field) {
+        if !is_final {
             return rest[..equals].to_owned();
+        }
+        // A constant shows its value as the compiler has it: `1_000L` is 1000.
+        let value = rest[equals + 2..].trim();
+        if let Some(number) = java_numeric_value(value) {
+            return format!("{} = {number}", &rest[..equals]);
         }
     }
     rest.to_owned()
+}
+
+/// The value of the Java integer literal `literal` (`1_000L`, `0xFF`,
+/// `0b101`, `017`) in decimal, or of a floating-point one without its
+/// underscores and type suffix (`1.5f` → `1.5`). `None` for anything else.
+fn java_numeric_value(literal: &str) -> Option<String> {
+    let digits: String = literal.chars().filter(|char| *char != '_').collect();
+    let lowercase = digits.to_ascii_lowercase();
+    let is_hex = lowercase.starts_with("0x");
+    let is_floating = !is_hex
+        && (lowercase.contains('.')
+            || lowercase.contains('e')
+            || lowercase.ends_with('f')
+            || lowercase.ends_with('d'));
+    if is_floating {
+        let number = lowercase.trim_end_matches(['f', 'd']);
+        return number.parse::<f64>().ok().map(|_| number.to_owned());
+    }
+    let integer = lowercase.trim_end_matches('l');
+    let (radix, body) = if let Some(hex) = integer.strip_prefix("0x") {
+        (16, hex)
+    } else if let Some(binary) = integer.strip_prefix("0b") {
+        (2, binary)
+    } else if integer.len() > 1 && integer.starts_with('0') {
+        (8, &integer[1..])
+    } else {
+        (10, integer)
+    };
+    u64::from_str_radix(body, radix)
+        .ok()
+        .map(|value| value.to_string())
 }
 
 /// `line` without its leading annotations and modifiers, and whether one of

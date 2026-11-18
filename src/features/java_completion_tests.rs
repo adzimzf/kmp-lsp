@@ -494,3 +494,77 @@ fn keywords_follow_the_scope_being_typed_in() {
     assert_eq!(in_block, vec!["return"]);
     assert!(keyword_labels(&idx, "package a;\nclass Foo {\n  int x = re|;\n}\n").is_empty());
 }
+
+const DOG: &str = "package com.demo;\nclass Dog {\n  void bark() {\n  }\n  void bite() {\n  }\n}\n";
+
+#[tokio::test]
+async fn a_field_through_qualified_outer_this() {
+    let idx = Indexer::new();
+    index(&idx, "com/demo/Dog.java", DOG);
+    let offered = labels(
+        &idx,
+        "com/demo/Outer.java",
+        "package com.demo;\nclass Outer {\n  Dog dog;\n  class Inner {\n    void run() {\n      Outer.this.dog.ba|\n    }\n  }\n}\n",
+    )
+    .await;
+    assert_eq!(offered, vec!["bark"]);
+}
+
+#[tokio::test]
+async fn a_lambda_parameter_typed_by_the_interface() {
+    let idx = Indexer::new();
+    index(&idx, "com/demo/Dog.java", DOG);
+    index(
+        &idx,
+        "com/demo/DogAction.java",
+        "package com.demo;\ninterface DogAction {\n  void act(Dog dog);\n}\n",
+    );
+    let offered = labels(
+        &idx,
+        "com/demo/Main.java",
+        "package com.demo;\nclass Main {\n  DogAction action = dog -> dog.ba|\n}\n",
+    )
+    .await;
+    assert_eq!(offered, vec!["bark"]);
+}
+
+#[tokio::test]
+async fn an_explicit_generic_method_call() {
+    let idx = Indexer::new();
+    index(&idx, "com/demo/Dog.java", DOG);
+    index(
+        &idx,
+        "com/demo/Util.java",
+        "package com.demo;\nclass Util {\n  static <T> T make() {\n    return null;\n  }\n}\n",
+    );
+    let offered = labels(
+        &idx,
+        "com/demo/Main.java",
+        "package com.demo;\nclass Main {\n  void run() {\n    Util.<Dog>make().ba|\n  }\n}\n",
+    )
+    .await;
+    assert_eq!(offered, vec!["bark"]);
+}
+
+#[tokio::test]
+async fn an_inherited_generic_supertype_argument() {
+    let idx = Indexer::new();
+    index(&idx, "com/demo/Dog.java", DOG);
+    index(
+        &idx,
+        "com/demo/Box.java",
+        "package com.demo;\nclass Box<T> {\n  T value;\n  T get() {\n    return value;\n  }\n}\n",
+    );
+    index(
+        &idx,
+        "com/demo/DogBox.java",
+        "package com.demo;\nclass DogBox extends Box<Dog> {\n}\n",
+    );
+    let offered = labels(
+        &idx,
+        "com/demo/Main.java",
+        "package com.demo;\nclass Main {\n  void run(DogBox box) {\n    box.get().ba|\n  }\n}\n",
+    )
+    .await;
+    assert_eq!(offered, vec!["bark"]);
+}

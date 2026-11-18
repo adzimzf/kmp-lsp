@@ -519,3 +519,82 @@ fn a_documented_symbol_shows_its_signature_before_its_doc() {
     let doc = text.find("Runs it.").expect("the doc");
     assert!(signature < doc, "{text}");
 }
+
+/// The hover at the first `needle` on line `line` of the last of `files`
+/// (`(path, source)`), each indexed as an open Java file.
+fn java_hover_at(files: &[(&str, &str)], line: u32, needle: &str) -> String {
+    let idx = Indexer::new();
+    let mut last = None;
+    for (path, source) in files {
+        let uri = Url::parse(&format!("file:///t/{path}")).unwrap();
+        idx.index_content(&uri, source);
+        idx.store_live_tree(&uri, source);
+        last = Some((uri, *source));
+    }
+    let (uri, source) = last.expect("a file");
+    let column = source
+        .lines()
+        .nth(line as usize)
+        .unwrap()
+        .find(needle)
+        .unwrap() as u32;
+    let position = Position::new(line, column);
+    let ctx = CursorContext::build(&idx, &uri, position).unwrap();
+    compute_hover(&idx, &ctx, &uri, position)
+        .map(|hover| hover_text(&hover))
+        .unwrap_or_default()
+}
+
+#[test]
+fn java_constructor_declaration_shows_its_parameters() {
+    let point = "class Point {\n  Point() {\n  }\n  Point(int x, int y) {\n  }\n}\n";
+    let text = java_hover_at(&[("Point.java", point)], 3, "Point(");
+    assert!(text.contains("Point(int x, int y)"), "{text}");
+}
+
+#[test]
+fn java_generic_method_call_shows_the_inferred_type_argument() {
+    let util = "class Util {\n  static <T> T first(T[] values) {\n    return values[0];\n  }\n}\n";
+    let main =
+        "class Main {\n  String run(String[] values) {\n    return Util.first(values);\n  }\n}\n";
+    let text = java_hover_at(&[("Util.java", util), ("Main.java", main)], 2, "first");
+    assert!(
+        text.contains("<String> String first(String[] values)"),
+        "{text}"
+    );
+}
+
+#[test]
+fn java_implicit_record_accessor_call_shows_the_component() {
+    let point = "record Point(int x, int y) {\n}\n";
+    let main = "class Main {\n  int run(Point point) {\n    return point.x();\n  }\n}\n";
+    let text = java_hover_at(&[("Point.java", point), ("Main.java", main)], 2, "x()");
+    assert!(text.contains("int x"), "{text}");
+}
+
+#[test]
+fn java_long_constant_shows_its_value() {
+    let limits = "class Limits {\n  static final long MAX = 1_000L;\n  long twice() {\n    return MAX * 2;\n  }\n}\n";
+    let text = java_hover_at(&[("Limits.java", limits)], 3, "MAX");
+    assert!(text.contains("long MAX = 1000\n"), "{text}");
+}
+
+#[test]
+fn java_method_of_a_generic_class_called_on_a_parameterized_receiver() {
+    let boxed = "class Box<T> {\n  void put(T value) {\n  }\n}\n";
+    let main = "class Main {\n  void run(Box<String> box) {\n    box.put(\"a\");\n  }\n}\n";
+    let text = java_hover_at(&[("Box.java", boxed), ("Main.java", main)], 2, "put");
+    assert!(text.contains("void put(String value)"), "{text}");
+}
+
+#[test]
+fn java_local_declared_with_var_shows_the_inferred_type() {
+    let dog = "package com.demo;\nclass Dog {\n}\n";
+    let main = "package com.demo;\nclass Main {\n  void run() {\n    var dog = new Dog();\n    System.out.println(dog);\n  }\n}\n";
+    let text = java_hover_at(
+        &[("com/demo/Dog.java", dog), ("com/demo/Main.java", main)],
+        4,
+        "dog)",
+    );
+    assert!(text.contains("Dog dog - com.demo.Main.run()"), "{text}");
+}

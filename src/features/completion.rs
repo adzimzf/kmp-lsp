@@ -236,6 +236,7 @@ pub(crate) fn run_completions(
             items.retain(names_a_type);
         } else {
             add_java_scope_local_completions(&mut items, index, uri, position, prefix);
+            add_java_static_import_completions(&mut items, index, uri, prefix);
         }
         add_named_arg_completions(index, &mut items, uri, prefix, ctx.call_info.as_ref());
         let wants_keywords = !ctx.annotation_only && !is_java_instantiation(uri, before_prefix);
@@ -459,6 +460,36 @@ fn add_java_scope_local_completions(
             // Ahead of everything the index offers: a name in scope here is
             // what the user is most likely typing.
             sort_text: Some(format!("000:{}", local.name)),
+            ..Default::default()
+        });
+    }
+}
+
+/// The members a Java file imports with `import static` whose name
+/// matches `prefix`: usable by their bare name.
+fn add_java_static_import_completions(
+    items: &mut Vec<CompletionItem>,
+    index: &Indexer,
+    uri: &Url,
+    prefix: &str,
+) {
+    for member in index.java_statically_imported_members(uri) {
+        if crate::resolver::complete::match_score(&member.name, prefix).is_none() {
+            continue;
+        }
+        if items.iter().any(|item| item.label == member.name) {
+            continue;
+        }
+        let kind = if member.kind == tower_lsp::lsp_types::SymbolKind::METHOD {
+            CompletionItemKind::METHOD
+        } else {
+            CompletionItemKind::FIELD
+        };
+        items.push(CompletionItem {
+            label: member.name.clone(),
+            kind: Some(kind),
+            detail: (!member.detail.is_empty()).then(|| member.detail.clone()),
+            sort_text: Some(format!("001:{}", member.name)),
             ..Default::default()
         });
     }

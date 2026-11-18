@@ -296,6 +296,28 @@ impl Indexer {
         if names_a_type {
             return candidates;
         }
+        // An anonymous class has no name to be a container: its members are
+        // the candidates declared in its body, ahead of the enclosing class's.
+        let mut anonymous_bodies: Vec<Range> = file_data
+            .anonymous_classes
+            .iter()
+            .map(|anonymous| anonymous.body)
+            .filter(|body| body.start <= position && position <= body.end)
+            .collect();
+        anonymous_bodies.sort_by_key(|body| std::cmp::Reverse(body.start));
+        for body in anonymous_bodies {
+            let members: Vec<Location> = candidates
+                .iter()
+                .filter(|candidate| candidate.uri == *uri)
+                .filter(|candidate| {
+                    body.start <= candidate.range.start && candidate.range.start <= body.end
+                })
+                .cloned()
+                .collect();
+            if !members.is_empty() {
+                return members;
+            }
+        }
         let container_of =
             |candidate: &Location| symbol_of(candidate).and_then(|symbol| symbol.container.clone());
         for class in enclosing {
