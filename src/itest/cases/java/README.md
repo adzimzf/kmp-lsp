@@ -337,7 +337,9 @@ jdtls: `FoldingRangeHandlerTest`.
 | case | jdtls test |
 | --- | --- |
 | `file_that_does_not_scan` | `testInvalidInput` |
+| `folds_a_catch_followed_by_a_catch_or_a_finally` | — |
 | `folds_comments_imports_and_bodies` | `testTypes` |
+| `folds_lambdas_that_close_where_the_next_one_opens` | — |
 | `folds_nested_switches_and_braces_on_their_own_line` | `testNestedSwitchFoldingRanges`, `testCurlyBracesOwnLine` (eclipse.jdt.ls#2865) |
 | `folds_region_comments` | `testRegionFoldingRanges` |
 | `folds_statements` | `testStatementFoldingRanges` |

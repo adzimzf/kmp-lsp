@@ -119,6 +119,32 @@ fn collect_folds(node: tree_sitter::Node, bytes: &[u8], out: &mut Vec<FoldingRan
         collect_region_comment_folds(node, bytes, out);
     }
     collect_folds_at(node, out, 0, source);
+    if source.syntax == Syntax::Java {
+        end_before_a_shared_closing_line(out);
+    }
+}
+
+/// A Java region whose closing line opens the next region (`}).then(next -> {`,
+/// `}, () -> {`, `} finally {` after a catch) ends on the line before, as jdtls
+/// has it, so the two folds don't overlap and the closing line stays in view.
+/// A region left with no line to hide is dropped.
+fn end_before_a_shared_closing_line(folds: &mut Vec<FoldingRange>) {
+    let is_region = |fold: &FoldingRange| fold.kind == Some(FoldingRangeKind::Region);
+    let region_starts: std::collections::HashSet<u32> = folds
+        .iter()
+        .filter(|fold| is_region(fold))
+        .map(|fold| fold.start_line)
+        .collect();
+    folds.retain_mut(|fold| {
+        let closing_line_opens_a_region = is_region(fold)
+            && fold.end_line > fold.start_line
+            && region_starts.contains(&fold.end_line);
+        if !closing_line_opens_a_region {
+            return true;
+        }
+        fold.end_line -= 1;
+        fold.end_line > fold.start_line
+    });
 }
 
 fn collect_folds_at(
