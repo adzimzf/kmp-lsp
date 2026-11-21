@@ -1,0 +1,63 @@
+//- /com/demo/Lambdas.java
+package com.demo;
+
+import java.util.concurrent.CompletableFuture;
+
+class Lam$0bdas {
+    void chain(CompletableFuture<String> future) {
+        future.thenApply(text -> {
+            return text.trim();
+        }).thenAccept(text -> {
+            System.out.println(text);
+        });
+    }
+
+    void twoArguments() {
+        run(() -> {
+            System.out.println("first");
+        }, () -> {
+            System.out.println("second");
+        });
+    }
+
+    void anonymousThenLambda() {
+        run(new Runnable() {
+            public void run() {
+                System.out.println("anonymous");
+            }
+        }, () -> {
+            System.out.println("lambda");
+        });
+    }
+
+    void streams(java.util.List<String> words) {
+        words.stream()
+                .filter(word -> {
+                    return !word.isEmpty();
+                })
+                .forEach(word -> {
+                    System.out.println(word);
+                });
+    }
+
+    void run(Runnable first, Runnable second) {
+        first.run();
+        second.run();
+    }
+}
+//= expected
+5..46
+6..12
+7..8
+9..11
+14..20
+15..16
+17..19
+22..30
+23..26
+24..26
+27..29
+32..40
+34..36
+37..39
+42..45

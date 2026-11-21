@@ -51,6 +51,8 @@
 
 ### Fixes
 
+- **Java folds no longer overlap where one block closes and the next opens** — a lambda, anonymous class or `catch` block whose `}` shares its line with the next block's `{` (`}).thenAccept(text -> {`, `}, () -> {`, `} finally {` after a `catch`) now folds to the line before, as jdtls does. The two folds used to share that line, so editors that only accept nested folds (VS Code) dropped one, and collapsing the first hid the line that opens the second. New cases `folds_lambdas_that_close_where_the_next_one_opens` and `folds_a_catch_followed_by_a_catch_or_a_finally`; a long hand-checking fixture is in `tests/fixtures/java-folding/`.
+
 - **Java names bind the way javac binds them (gson hand-written cases: 120 → 143 of 143)** — fixes for every hand-written integration case kmp-lsp failed:
   - *Overloads:* a box is no longer the same type as its primitive. A primitive argument widens before it is boxed and a box is a `Number` before it is unboxed, so `value(false)` → `value(boolean)`, not `value(Boolean)`, and `value(Double.valueOf(x))` → `value(Number)`, not `value(double)` (new `java_overload_type_key`; Kotlin's `Int`/`Long` still stand for both). Ties go to the most specific overload, so `toJson(null, writer)` → `toJson(JsonElement, Appendable)`, which hover can now show.
   - *Enum `case` labels:* `case STRING:` in `switch (token)` names `JsonToken.STRING`, not a field `STRING` of the enclosing class.
